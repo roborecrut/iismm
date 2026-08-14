@@ -1,0 +1,72 @@
+{
+  "users": [
+    {
+      "id": "16926299042",
+      "email": "shishkarnem@gmail.com",
+      "passwordHash": "3e68786472a585a2f2131a558367f67a0bad51dda091ae0f2fc4c08c935e3d66",
+      "role": "admin",
+      "telegramId": 169262990,
+      "firstName": "Dr.White",
+      "lastName": "SAV AI",
+      "username": "shishkarnem",
+      "photoUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/photos/file_517.jpg",
+      "avatarUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/photos/file_517.jpg",
+      "bio": "",
+      "status": "Активный",
+      "tariff": "Старт",
+      "balance": 10000,
+      "referredBy": 80926979801,
+      "referralRewardBalance": 0,
+      "createdAt": "2026-08-14T01:06:20.058Z"
+    }
+  ],
+  "prompts": [],
+  "publications": [],
+  "dayRequests": [],
+  "publicationLogs": [],
+  "settings": {
+    "telegramBotToken": "8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o",
+    "channelId": "",
+    "backupChannelId": "",
+    "autoPostSchedule": false,
+    "autoPostTime": "07:00",
+    "theme": "light",
+    "protalkBotId": "66275",
+    "protalkBotToken": "GaycdyJeSzd3Jja0E2S9jVTQiekUVkrE",
+    "robokassa": {
+      "merchantLogin": "",
+      "pass1": "",
+      "pass2": "",
+      "isTest": true
+    }
+  },
+  "channels": [],
+  "templates": [
+    {
+      "id": "tpl_1",
+      "type": "header",
+      "name": "Стандартный заголовок с эмодзи",
+      "category": "бизнес/финансы",
+      "content": "💰Случайный промт для бизнеса от ИИ💰",
+      "createdAt": "2026-08-05T20:43:02.508Z"
+    },
+    {
+      "id": "tpl_2",
+      "type": "postText",
+      "name": "Шаблон бизнес-разбора",
+      "category": "бизнес/финансы",
+      "content": "Роль: Гуру бизнес-стратегии.\nЗадача: Разбери нишу и предложи 3 уникальных оффера...",
+      "createdAt": "2026-08-05T20:43:02.508Z"
+    },
+    {
+      "id": "tpl_3",
+      "type": "signature",
+      "name": "Подпись с хештегами",
+      "category": "общие",
+      "content": "Присылайте полученные варианты в комментариях!\n#бизнес #ии #промпт",
+      "createdAt": "2026-08-05T20:43:02.508Z"
+    }
+  ],
+  "scenarios": [],
+  "scenarioLogs": []
+}

@@ -1,0 +1,10 @@
+{
+  "name": "ИИSMM",
+  "description": "Многофункциональный комбайн-контент-завод для автоматизации кросспостинга, автопостинга ИИ по расписанию, рерайта, биржи рекламы и продвижения в соцсетях.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

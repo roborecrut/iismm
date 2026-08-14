@@ -1,0 +1,741 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html {
+  font-size: 14px;
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1e293b;
+}
+
+/* Global minimum font size rule: minimum 14px everywhere */
+html, body, p, span, a, label, button, input, textarea, select, div, li, td, th {
+  font-size: 14px;
+}
+
+/* Override all small Tailwind text utility classes to at least 14px */
+.text-xs,
+.text-sm,
+.text-2xs,
+.text-3xs,
+.text-\[7px\],
+.text-\[8px\],
+.text-\[9px\],
+.text-\[10px\],
+.text-\[10\.5px\],
+.text-\[11px\],
+.text-\[12px\],
+.text-\[13px\] {
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+}
+
+.text-gradient-header {
+  background: linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) !important;
+  background-size: 300% auto !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  animation: text-shine-glow-anim 7s linear infinite !important;
+}
+
+@keyframes text-shine-glow-anim {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    text-shadow: 0 0 16px rgba(236, 72, 153, 0.2), 0 0 32px rgba(56, 189, 248, 0.15);
+  }
+  100% {
+    background-position: 300% 50%;
+  }
+}
+
+/* Custom animated background styling and utility definitions */
+@keyframes kayac-gradient-animation {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-900vh);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.kayac-pastel-gradient-canvas {
+  width: 100%;
+  height: 1000vh;
+  background: linear-gradient(
+    to bottom,
+    #e0f2fe 0%,
+    #fce7f3 25%,
+    #ffedd5 50%,
+    #fce7f3 75%,
+    #e0f2fe 100%
+  );
+  animation: kayac-gradient-animation 50s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes float-gentle {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(2deg);
+  }
+}
+
+@keyframes morph-blob-1 {
+  0%, 100% {
+    border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%;
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    border-radius: 70% 30% 52% 48% / 60% 40% 60% 40%;
+    transform: translate(30px, -50px) scale(1.1) rotate(120deg);
+  }
+  66% {
+    border-radius: 50% 50% 30% 70% / 50% 60% 40% 50%;
+    transform: translate(-20px, 40px) scale(0.9) rotate(240deg);
+  }
+}
+
+@keyframes morph-blob-2 {
+  0%, 100% {
+    border-radius: 50% 50% 30% 70% / 50% 60% 40% 50%;
+    transform: translate(0, 0) scale(1) rotate(180deg);
+  }
+  33% {
+    border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%;
+    transform: translate(-40px, 30px) scale(0.9) rotate(60deg);
+  }
+  66% {
+    border-radius: 70% 30% 52% 48% / 60% 40% 60% 40%;
+    transform: translate(40px, -40px) scale(1.1) rotate(300deg);
+  }
+}
+
+@keyframes shine-glow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient-flow 18s ease infinite;
+}
+
+.animate-float {
+  animation: float-gentle 6s ease-in-out infinite;
+}
+
+/* Liquid Blob layers behind the content */
+.blob-blue {
+  background: radial-gradient(circle at 30% 30%, rgba(56, 189, 248, 0.5) 0%, rgba(186, 230, 253, 0.2) 60%, transparent 100%);
+  filter: blur(80px);
+  animation: morph-blob-1 25s ease-in-out infinite;
+}
+
+.blob-peach {
+  background: radial-gradient(circle at 40% 40%, rgba(251, 146, 60, 0.45) 0%, rgba(254, 215, 170, 0.15) 60%, transparent 100%);
+  filter: blur(85px);
+  animation: morph-blob-2 28s ease-in-out infinite;
+}
+
+.blob-pink {
+  background: radial-gradient(circle at 50% 50%, rgba(244, 114, 182, 0.4) 0%, rgba(251, 207, 232, 0.15) 60%, transparent 100%);
+  filter: blur(75px);
+  animation: morph-blob-1 22s ease-in-out infiniteAlternate;
+}
+
+@keyframes morph-blob-1-alt {
+  0%, 100% {
+    border-radius: 60% 40% 60% 40% / 40% 60% 40% 60%;
+    transform: translate(0, 0) scale(1) rotate(360deg);
+  }
+  50% {
+    border-radius: 40% 60% 40% 60% / 60% 40% 60% 40%;
+    transform: translate(-30px, 20px) scale(1.05) rotate(180deg);
+  }
+}
+
+.blob-pink-alt {
+  background: radial-gradient(circle at 50% 50%, rgba(244, 114, 182, 0.4) 0%, rgba(251, 207, 232, 0.15) 60%, transparent 100%);
+  filter: blur(75px);
+  animation: morph-blob-1-alt 22s ease-in-out infinite;
+}
+
+/* Apple Liquid Glass Panels */
+.apple-liquid-glass {
+  position: relative;
+  border: 2px solid transparent !important;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.45)) padding-box,
+              linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) border-box !important;
+  background-size: 200% auto !important;
+  animation: gradient-flow 6s linear infinite !important;
+  backdrop-filter: blur(28px) saturate(210%);
+  -webkit-backdrop-filter: blur(28px) saturate(210%);
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.8),
+    0 4px 20px rgba(31, 38, 135, 0.06);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.apple-liquid-glass:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.55)) padding-box,
+              linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) border-box !important;
+  box-shadow: 
+    inset 0 1px 2px rgba(255, 255, 255, 0.9),
+    0 12px 35px rgba(31, 38, 135, 0.12);
+  transform: translateY(-2px);
+}
+
+/* Heavy Liquid Glass for modals or focus components */
+.apple-liquid-glass-heavy {
+  position: relative;
+  border: 2px solid transparent !important;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.55)) padding-box,
+              linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) border-box !important;
+  background-size: 200% auto !important;
+  animation: gradient-flow 6s linear infinite !important;
+  backdrop-filter: blur(35px) saturate(220%);
+  -webkit-backdrop-filter: blur(35px) saturate(220%);
+  box-shadow: 
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.95),
+    0 20px 45px rgba(31, 38, 135, 0.1);
+}
+
+/* High Specular Gloss Gel Buttons */
+.btn-liquid-glass {
+  position: relative;
+  overflow: hidden;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  border-radius: 14px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 
+    0 4px 15px rgba(0, 0, 0, 0.05),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.08),
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.6);
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.15);
+}
+
+.btn-liquid-glass::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.12) 80%, transparent 100%);
+  border-radius: 12px 12px 14px 14px;
+  pointer-events: none;
+}
+
+.btn-liquid-glass:hover {
+  transform: translateY(-1.5px) scale(1.02);
+  box-shadow: 
+    0 6px 20px rgba(0, 0, 0, 0.08),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.1),
+    inset 0 2px 3px rgba(255, 255, 255, 0.82);
+}
+
+.btn-liquid-glass:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 
+    0 2px 5px rgba(0, 0, 0, 0.05),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.06),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+
+/* Blue Liquid Gel */
+.btn-glass-blue {
+  background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+  color: #ffffff;
+  text-shadow: 0 -1px 1px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.4);
+}
+.btn-glass-blue:hover {
+  background: linear-gradient(135deg, #7dd3fc 0%, #0369a1 100%);
+}
+
+/* Peach Liquid Gel */
+.btn-glass-peach {
+  background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+  color: #ffffff;
+  text-shadow: 0 -1px 1px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(249, 115, 22, 0.4);
+}
+.btn-glass-peach:hover {
+  background: linear-gradient(135deg, #fdba74 0%, #c2410c 100%);
+}
+
+/* Pink Liquid Gel */
+.btn-glass-pink {
+  background: linear-gradient(135deg, #f472b6 0%, #db2777 100%);
+  color: #ffffff;
+  text-shadow: 0 -1px 1px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(236, 72, 153, 0.4);
+}
+.btn-glass-pink:hover {
+  background: linear-gradient(135deg, #f9a8d4 0%, #be185d 100%);
+}
+
+/* Neutral/Gloss Dark */
+.btn-glass-dark {
+  background: linear-gradient(135deg, #475569 0%, #0f172a 100%);
+  color: #ffffff;
+  text-shadow: 0 -1px 1px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(15, 23, 42, 0.5);
+}
+.btn-glass-dark:hover {
+  background: linear-gradient(135deg, #64748b 0%, #1e293b 100%);
+}
+
+/* White Gloss */
+.btn-glass-white {
+  background: rgba(255, 255, 255, 0.7);
+  color: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.9),
+    0 4px 12px rgba(0, 0, 0, 0.04);
+}
+.btn-glass-white:hover {
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 
+    inset 0 1px 2px rgba(255, 255, 255, 0.95),
+    0 6px 15px rgba(0, 0, 0, 0.06);
+}
+
+/* 3D Cards Carousel */
+.icon-cards {
+  position: relative;
+  width: 100%;
+  height: 540px;
+  max-width: 860px;
+  margin: 0 auto;
+  perspective: 2000px;
+  transform-origin: center;
+}
+
+@media (min-width: 768px) {
+  .icon-cards {
+    height: 450px;
+  }
+}
+
+.icon-cards__content {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
+  transform-style: preserve-3d;
+  transition: transform 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.icon-cards__item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 20px;
+  transform-origin: center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  will-change: transform, opacity;
+  transition: opacity 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+  user-select: none;
+}
+
+@keyframes jelly {
+  from { transform: scale(1, 1); }
+  30% { transform: scale(1.25, 0.75); }
+  40% { transform: scale(0.75, 1.25); }
+  50% { transform: scale(1.15, 0.85); }
+  65% { transform: scale(0.95, 1.05); }
+  75% { transform: scale(1.05, 0.95); }
+  to { transform: scale(1, 1); }
+}
+
+.jelly-animate {
+  animation: jelly 0.6s ease;
+}
+
+/* Hide scrollbar for clean applet UI but allow scrolling */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Base resets */
+body {
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  color: #1e293b; /* slate-800 */
+}
+
+/* Blue-Pink-Orange-Pink-Blue Multicolor Gradients */
+.bg-multicolor-gradient {
+  background: linear-gradient(90deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) !important;
+}
+
+.text-multicolor-gradient {
+  background: linear-gradient(90deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+}
+
+/* Advantages Dual-Face Sliding Header Cards setup */
+.new-adv-card {
+  position: relative;
+  width: 100%;
+  height: 255px;
+  background: rgba(250, 251, 250, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.08), 0 2px 8px -2px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+  cursor: pointer;
+  z-index: 10;
+}
+
+@media (min-width: 640px) {
+  .new-adv-card {
+    height: 290px;
+  }
+}
+
+/* Hover or Active toggles */
+.new-adv-card:hover,
+.new-adv-card.is-active {
+  box-shadow: 0 20px 35px -8px rgba(236, 72, 153, 0.22);
+  transform: translateY(-4px);
+  border-color: rgba(236, 72, 153, 0.4);
+  z-index: 50;
+}
+
+/* Face base style */
+.new-adv-face {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+  overflow: hidden;
+}
+
+/* Face 1 (Rear/Text details) - Light background as requested, now 60% transparent */
+.new-adv-face1 {
+  bottom: 0;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.4);
+  box-sizing: border-box;
+  padding: 14px;
+}
+
+@media (min-width: 640px) {
+  .new-adv-face1 {
+    padding: 18px;
+  }
+}
+
+/* Face 2 (Front Premium Gradient cover) */
+.new-adv-face2 {
+  top: 0;
+  height: 100%;
+  background: linear-gradient(135deg, #afe5fc 0%, #f7b6d6 25%, #fdc7a2 50%, #f7b6d6 75%, #afe5fc 100%) !important;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  z-index: 2;
+}
+
+/* Hover/Active height collapse: Front cover shrinks to a 60px header at the top */
+.new-adv-card:hover .new-adv-face2,
+.new-adv-card.is-active .new-adv-face2 {
+  height: 60px;
+  padding: 8px 14px;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .new-adv-card:hover .new-adv-face2,
+  .new-adv-card.is-active .new-adv-face2 {
+    height: 52px;
+    padding: 6px 10px;
+    gap: 6px;
+  }
+}
+
+/* Emoji transitions */
+.new-adv-emoji {
+  font-size: 34px;
+  line-height: 1;
+  transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+  margin-bottom: 12px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+@media (max-width: 480px) {
+  .new-adv-emoji {
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+}
+
+.new-adv-card:hover .new-adv-emoji,
+.new-adv-card.is-active .new-adv-emoji {
+  font-size: 22px;
+  margin-bottom: 0;
+  transform: rotate(12deg);
+}
+
+@media (max-width: 480px) {
+  .new-adv-card:hover .new-adv-emoji,
+  .new-adv-card.is-active .new-adv-emoji {
+    font-size: 18px;
+  }
+}
+
+/* Title transitions */
+.new-adv-title {
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #cb0080;
+  text-align: center;
+  line-height: 1.4;
+  transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+
+@media (min-width: 640px) {
+  .new-adv-title {
+    font-size: 12px;
+  }
+}
+
+.new-adv-card:hover .new-adv-title,
+.new-adv-card.is-active .new-adv-title {
+  font-size: 10px;
+  text-align: left;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 480px) {
+  .new-adv-card:hover .new-adv-title,
+  .new-adv-card.is-active .new-adv-title {
+    font-size: 8.5px;
+  }
+}
+
+/* Unique premium classes for the updated Social Network */
+.iirky-social-bg-gradient {
+  background: linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) !important;
+  background-size: 200% auto !important;
+  animation: gradient-flow 6s linear infinite !important;
+}
+
+.iirky-social-border-gradient {
+  position: relative !important;
+  z-index: 1 !important;
+  border: none !important;
+}
+
+.iirky-social-border-gradient::before {
+  content: "" !important;
+  position: absolute !important;
+  top: -2.5px !important;
+  left: -2.5px !important;
+  right: -2.5px !important;
+  bottom: -2.5px !important;
+  background: linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) !important;
+  background-size: 200% auto !important;
+  border-radius: inherit !important;
+  z-index: -1 !important;
+  animation: gradient-flow 6s linear infinite !important;
+  pointer-events: none !important;
+}
+
+/* Master high-contrast animated gradient border class with liquid glass for ALL cards and blocks */
+.iirky-card-block,
+.glass-card,
+.liquid-glass-card,
+.liquid-glass-block {
+  position: relative !important;
+  border: 2px solid transparent !important;
+  background: linear-gradient(120deg, rgba(240, 249, 255, 0.9) 0%, rgba(253, 242, 248, 0.9) 25%, rgba(255, 247, 237, 0.9) 50%, rgba(253, 242, 248, 0.9) 75%, rgba(240, 249, 255, 0.9) 100%) padding-box,
+              linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) border-box !important;
+  background-size: 200% auto !important;
+  animation: gradient-flow 6s linear infinite !important;
+  backdrop-filter: blur(28px) saturate(210%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(210%) !important;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.8), 0 8px 32px rgba(31, 38, 135, 0.06) !important;
+}
+
+/* Global utility classes for light container/modal bg and vibrant buttons/headings/borders */
+.iirky-light-bg-gradient {
+  background: linear-gradient(120deg, rgba(240, 249, 255, 0.92) 0%, rgba(253, 242, 248, 0.92) 25%, rgba(255, 247, 237, 0.92) 50%, rgba(253, 242, 248, 0.92) 75%, rgba(240, 249, 255, 0.92) 100%) !important;
+}
+
+.iirky-modal-bg-gradient {
+  background: linear-gradient(135deg, rgba(240, 249, 255, 0.96) 0%, rgba(253, 242, 248, 0.95) 25%, rgba(255, 247, 237, 0.94) 50%, rgba(253, 242, 248, 0.95) 75%, rgba(240, 249, 255, 0.96) 100%) !important;
+}
+
+.iirky-btn-gradient {
+  background: linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) !important;
+  background-size: 200% auto !important;
+  animation: gradient-flow 6s linear infinite !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+.iirky-heading-gradient {
+  background: linear-gradient(120deg, #0284c7 0%, #db2777 25%, #ea580c 50%, #db2777 75%, #0284c7 100%) !important;
+  background-size: 200% auto !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  animation: gradient-flow 6s linear infinite !important;
+}
+
+/* Premium fields automatically styled with custom gradient borders */
+.iirky-field-gradient,
+.iirky-social-container input,
+.iirky-social-container textarea,
+.iirky-social-container select {
+  outline: none !important;
+  border: 2px solid transparent !important;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.75)) padding-box,
+              linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) border-box !important;
+  background-size: 200% auto !important;
+  animation: gradient-flow 6s linear infinite !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+.iirky-field-gradient:focus,
+.iirky-social-container input:focus,
+.iirky-social-container textarea:focus,
+.iirky-social-container select:focus {
+  filter: brightness(0.98) !important;
+  box-shadow: 0 0 10px rgba(236, 72, 153, 0.2) !important;
+}
+
+/* Chat message bubbles with stunning premium gradient borders */
+.msg-bubble-sent {
+  border: 2px solid transparent !important;
+  background: linear-gradient(135deg, rgba(253, 242, 248, 0.85), rgba(240, 249, 255, 0.85)) padding-box,
+              linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) border-box !important;
+  background-size: 200% auto !important;
+  animation: gradient-flow 6s linear infinite !important;
+  color: #0f172a !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08) !important;
+}
+
+.msg-bubble-received {
+  border: 2px solid transparent !important;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.85), rgba(250, 250, 250, 0.85)) padding-box,
+              linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%) border-box !important;
+  background-size: 200% auto !important;
+  animation: gradient-flow 6s linear infinite !important;
+  color: #1e293b !important;
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Mobile responsive margins and paddings: minimum 4px (p-1/gap-1) external and internal offsets */
+@media (max-width: 640px) {
+  /* External padding / margins from screen edges */
+  .iirky-social-container {
+    padding: 4px !important;
+    border-radius: 12px !important;
+  }
+  .iirky-social-container > .max-w-7xl {
+    padding: 4px !important;
+    gap: 4px !important;
+  }
+  
+  /* Internal block container paddings and card margins */
+  .iirky-card-block {
+    padding: 4px !important;
+    margin-bottom: 4px !important;
+    border-radius: 12px !important;
+  }
+  
+  /* Compact flex / grid padding overrides for child contents */
+  .iirky-card-block > * {
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+  }
+  
+  /* Section elements inside columns stack tightly with 4px gap */
+  section.col-span-1,
+  section.col-span-3,
+  aside.col-span-1,
+  .space-y-6 > * {
+    margin-top: 4px !important;
+    margin-bottom: 4px !important;
+  }
+}
+
+/* Color replacement rule: 90a1b9 -> 434c58 */
+.text-slate-400,
+.text-\[\#90a1b9\],
+[style*="90a1b9"] {
+  color: #434c58 !important;
+}
+
+
+
+
+
+

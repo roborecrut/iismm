@@ -1,0 +1,42 @@
+User-agent: *
+Allow: /
+Allow: /blog
+Allow: /blog/*
+Allow: /posts
+Allow: /channels
+Allow: /templates
+Allow: /calendar
+Allow: /history
+Allow: /gallery
+Allow: /scenarios
+Allow: /market
+Allow: /bundles
+Allow: /social
+Allow: /ai
+Allow: /oferta
+Allow: /tarif
+Allow: /file/*
+Disallow: /api/
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /settings
+Disallow: /reset-password
+Disallow: /api-keys
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Yandex
+Allow: /
+
+Sitemap: https://iism.ru/sitemap.xml
+Host: iism.ru
