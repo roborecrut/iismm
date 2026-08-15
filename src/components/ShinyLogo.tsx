@@ -8,8 +8,8 @@ interface ShinyLogoProps {
 }
 
 export default function ShinyLogo({ height = 40, className = '', largeHero = false }: ShinyLogoProps) {
-  // Direct transparent image URL from file storage (ID 2)
-  const logoUrl = "/file/2/iismmlogo.png";
+  // Direct transparent image URL from file storage (ID 9)
+  const logoUrl = "/file/9/iismmlogo.png";
   
   // Real aspect ratio of the 1058x262 image is ~4.038
   const actualHeight = largeHero ? 96 : height;

@@ -6,10 +6,12 @@ import { initPostsTable } from './postsTable';
 import { initChannelsTable } from './channelsTable';
 import { initSceneriesTable } from './sceneriesTable';
 import { initPromptsTable } from './promptsTable';
-import { initTransactionsTable } from './transactionsTable';
+import { initTransactionsTable, addTransactionWithBalanceUpdate } from './transactionsTable';
+import { initTariffsTable } from './tariffsTable';
+import { initNotificationsTable } from './notificationsTable';
 import { initBlogPostsTable } from './blogPostsTable';
 import { initCronTable } from './cronTable';
-import { initFilesTable } from './filesTable';
+import { initFilesTable, seedEssentialFiles } from './filesTable';
 import { initAIAgentsTable } from './aiAgentsTable';
 import { initTelegramBotTable } from './telegramBotTable';
 import { initHistoryLogsTable } from './historyLogsTable';
@@ -51,10 +53,59 @@ function scheduleDailyBackup() {
           console.log(`[SQLite Backup] Daily backup created at 03:00 AM: ${backupPath}`);
         }
       }
+
+      // Periodically check monthly tariff accruals (every hour)
+      if (dbInstance) {
+        checkAndApplyMonthlyTariffs(dbInstance);
+      }
     } catch (err) {
       console.error('[SQLite Backup] Daily backup failed:', err);
     }
   }, 60 * 1000);
+}
+
+export function checkAndApplyMonthlyTariffs(db: Database) {
+  try {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    
+    // Find users whose balance_time is null or older than 30 days
+    const stmt = db.prepare(`
+      SELECT u.id, u.tariff, u.balance_time, t.monthly_iirky 
+      FROM users u
+      LEFT JOIN tarifs t ON LOWER(t.name) = LOWER(u.tariff) OR t.id = LOWER(u.tariff)
+      WHERE u.balance_time IS NULL OR u.balance_time < ?
+    `);
+    stmt.bind([thirtyDaysAgo]);
+    const eligibleUsers: Array<{ id: string; tariff: string; monthly_iirky: number }> = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as any;
+      eligibleUsers.push({
+        id: row.id,
+        tariff: row.tariff || 'Старт',
+        monthly_iirky: Number(row.monthly_iirky || (row.tariff === 'Отрыв' || row.tariff === 'vip' ? 4900 : row.tariff === 'Разгон' || row.tariff === 'pro' ? 990 : 300))
+      });
+    }
+    stmt.free();
+
+    for (const u of eligibleUsers) {
+      const amount = u.monthly_iirky || 300;
+      addTransactionWithBalanceUpdate(db, {
+        userId: u.id,
+        type: 'tarif',
+        balanceType: 'tarif',
+        amount,
+        description: `Ежемесячное начисление по тарифу «${u.tariff}»: +${amount} ИИрок`,
+        createdAt: now.toISOString()
+      });
+    }
+    if (eligibleUsers.length > 0) {
+      console.log(`[Tariff Cron] Applied monthly tariff accruals for ${eligibleUsers.length} users.`);
+      saveDatabaseToDisk();
+    }
+  } catch (e) {
+    console.error('[Tariff Cron] Error processing monthly tariffs:', e);
+  }
 }
 
 export async function getSQLiteDB(): Promise<Database> {
@@ -92,7 +143,7 @@ export async function getSQLiteDB(): Promise<Database> {
     dbInstance = new SQL.Database();
   }
 
-  // 1. Apply high-concurrency PRAGMAs for 20,000 users/day
+  // 1. High performance PRAGMAs
   try {
     dbInstance.exec("PRAGMA busy_timeout = 5000;");
     dbInstance.exec("PRAGMA cache_size = -64000;"); // 64MB memory cache
@@ -101,11 +152,13 @@ export async function getSQLiteDB(): Promise<Database> {
 
   // 2. Initialize modular tables
   initUsersTable(dbInstance);
+  initTariffsTable(dbInstance);
+  initNotificationsTable(dbInstance);
+  initTransactionsTable(dbInstance);
   initPostsTable(dbInstance);
   initChannelsTable(dbInstance);
   initSceneriesTable(dbInstance);
   initPromptsTable(dbInstance);
-  initTransactionsTable(dbInstance);
   initBlogPostsTable(dbInstance);
   initCronTable(dbInstance);
   initFilesTable(dbInstance);
@@ -114,30 +167,26 @@ export async function getSQLiteDB(): Promise<Database> {
   initHistoryLogsTable(dbInstance);
   initTeamsTable(dbInstance);
 
-  // 3. Purge unwanted tables to 0 records
-  try {
-    dbInstance.run("DELETE FROM posts;");
-    dbInstance.run("DELETE FROM sceneries;");
-    dbInstance.run("DELETE FROM transactions;");
-    dbInstance.run("DELETE FROM prompts;");
-    dbInstance.run("DELETE FROM channels;");
-    dbInstance.run("DELETE FROM history;");
-    dbInstance.run("DELETE FROM logs;");
-    dbInstance.run("DELETE FROM files;");
-    dbInstance.run("DELETE FROM blog_posts;");
-  } catch (e) {
-    console.error('[SQLite DB] Error during table purge:', e);
-  }
-
-  // 4. Seed default parsed Telegram users into users table
+  // 3. Seed default parsed Telegram users into users table
   try {
     for (const user of DEFAULT_PARSED_USERS) {
       insertDefaultUserInDb(dbInstance, user);
     }
-    console.log(`[SQLite DB] Successfully loaded ${DEFAULT_PARSED_USERS.length} default Telegram users.`);
   } catch (e) {
     console.error('[SQLite DB] Error seeding default parsed users:', e);
   }
+
+  // 4. Seed essential permanent file_storage assets
+  try {
+    seedEssentialFiles(dbInstance);
+  } catch (e) {
+    console.error('[SQLite DB] Error seeding essential files:', e);
+  }
+
+  // 5. Initial monthly tariff check
+  try {
+    checkAndApplyMonthlyTariffs(dbInstance);
+  } catch (e) {}
 
   saveDatabaseToDisk();
   scheduleDailyBackup();

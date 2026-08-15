@@ -46,40 +46,40 @@ export default function AdminPage({
         {/* 1. Пользователи & Статистика - /admin */}
         <button
           onClick={() => navigateTo('/admin')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
             activeSection === 'users'
-              ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-md scale-[1.02]'
+              ? 'bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white shadow-md scale-[1.02]'
               : 'text-slate-700 hover:bg-white/80 hover:text-slate-900 bg-white/60 border border-pink-200/60'
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Пользователи & Статистика</span>
+          <span>Пользователи & статистика</span>
         </button>
 
         {/* 2. Триггеры & Крон - /admin/cron */}
         <button
           onClick={() => navigateTo('/admin/cron')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
             activeSection === 'cron'
-              ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-md scale-[1.02]'
+              ? 'bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white shadow-md scale-[1.02]'
               : 'text-slate-700 hover:bg-white/80 hover:text-slate-900 bg-white/60 border border-pink-200/60'
           }`}
         >
           <Clock className="w-4 h-4" />
-          <span>Триггеры & Крон</span>
+          <span>Триггеры & крон</span>
         </button>
 
         {/* 3. Галерея Всех Пользователей - /admin/gallery */}
         <button
           onClick={() => navigateTo('/admin/gallery')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
             activeSection === 'gallery'
-              ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-md scale-[1.02]'
+              ? 'bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white shadow-md scale-[1.02]'
               : 'text-slate-700 hover:bg-white/80 hover:text-slate-900 bg-white/60 border border-pink-200/60'
           }`}
         >
           <FolderGit2 className="w-4 h-4" />
-          <span>Галерея & Файлы Пользователей</span>
+          <span>Галерея & файлы пользователей</span>
         </button>
       </div>
 

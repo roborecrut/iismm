@@ -499,27 +499,27 @@ export const ScenariosPage: React.FC<ScenariosPageProps> = ({ currentUser, chann
   return (
     <div className="space-y-6">
       {/* Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/80 backdrop-blur-md border border-slate-200/80 p-6 rounded-2xl shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 backdrop-blur-md border border-pink-200/80 p-5 md:p-6 rounded-3xl shadow-xs">
         <div>
           <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl">
-              <Workflow className="text-indigo-600" size={24} />
+            <div className="p-2.5 bg-white/90 border border-pink-200 rounded-2xl shadow-2xs">
+              <Workflow className="text-orange-500" size={24} />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                Сценарии
-                <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold">
-                  Конструктор автопубликаций ИИSMM
+              <h1 className="text-base md:text-lg font-bold text-slate-800 flex items-center gap-2">
+                Сценарии ИИ
+                <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-white/80 border border-pink-200 text-pink-700 font-bold">
+                  Конструктор автопубликаций
                 </span>
               </h1>
-              <p className="text-sm text-slate-600 mt-1">
+              <p className="text-xs text-slate-600 mt-1">
                 Пошаговые алгоритмы автогенерации и автопубликации с возможностью пошагового тестирования
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => {
               setActiveTab('list');
@@ -527,10 +527,10 @@ export const ScenariosPage: React.FC<ScenariosPageProps> = ({ currentUser, chann
                 window.history.pushState(null, '', '/scenarios');
               }
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer border shadow-2xs ${
               activeTab === 'list' 
-                ? 'bg-indigo-600 text-white shadow-xs' 
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80'
+                ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white border-white/40' 
+                : 'bg-white/90 text-slate-700 hover:bg-white border-pink-200/80'
             }`}
           >
             Сценарии ({scenarios.length})
@@ -542,17 +542,17 @@ export const ScenariosPage: React.FC<ScenariosPageProps> = ({ currentUser, chann
                 window.history.pushState(null, '', '/scenarios/logs');
               }
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer border shadow-2xs ${
               activeTab === 'logs' 
-                ? 'bg-indigo-600 text-white shadow-xs' 
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80'
+                ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white border-white/40' 
+                : 'bg-white/90 text-slate-700 hover:bg-white border-pink-200/80'
             }`}
           >
-            История / Логи
+            История / Логи ({logs.length})
           </button>
           <button
             onClick={handleOpenCreateFlow}
-            className="flex items-center space-x-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white px-4 py-2 rounded-xl text-xs font-extrabold transition-all shadow-md cursor-pointer border border-white/20 active:scale-95"
+            className="flex items-center space-x-1.5 px-4 py-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white rounded-2xl text-xs font-bold transition-all shadow-md cursor-pointer border border-white/30"
           >
             <Plus size={16} />
             <span>Создать сценарий</span>

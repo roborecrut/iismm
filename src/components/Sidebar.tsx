@@ -29,9 +29,7 @@ export default function Sidebar({
     { label: 'Профиль', path: '/profile', icon: <User className="w-5 h-5 text-orange-500" /> },
     { label: 'Соцсеть', path: '/social', icon: <Users className="w-5 h-5 text-pink-500" /> },
     { label: 'Посты', path: '/posts', icon: <FileText className="w-5 h-5 text-indigo-500" /> },
-    { label: 'СценарИИ', path: '/scenarios', icon: <Cpu className="w-5 h-5 text-cyan-500" /> },
     { label: 'Календарь', path: '/calendar', icon: <CalendarDays className="w-5 h-5 text-sky-500" /> },
-    { label: 'Галерея', path: '/gallery', icon: <ImageIcon className="w-5 h-5 text-pink-500" /> },
   ];
 
   if (isAdmin) {
@@ -55,7 +53,9 @@ export default function Sidebar({
         <div className="pt-2">
           <nav className="space-y-1">
             {navItems.map((item) => {
-              const isActive = currentPath.replace('169262990', '').startsWith(item.path);
+              const cleanP = currentPath.replace('169262990', '');
+              const isPostsRelated = item.path === '/posts' && (cleanP.startsWith('/posts') || cleanP.startsWith('/scenarios') || cleanP.startsWith('/crosspost'));
+              const isActive = isPostsRelated || cleanP.startsWith(item.path);
               return (
                 <button
                   id={`btn-sidebar-nav-${item.path.substring(1)}`}

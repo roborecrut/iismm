@@ -22,9 +22,7 @@ export default function BottomNavbar({ currentPath, onNavigate }: BottomNavbarPr
       ]
     : [
         { label: 'Посты', path: '/posts', icon: <FileText className="w-5 h-5 text-indigo-500" /> },
-        { label: 'СценарИИ', path: '/scenarios', icon: <Cpu className="w-5 h-5 text-cyan-500" /> },
         { label: 'Календарь', path: '/calendar', icon: <CalendarDays className="w-5 h-5 text-sky-500" /> },
-        { label: 'Галерея', path: '/gallery', icon: <ImageIcon className="w-5 h-5 text-pink-500" /> },
         { label: 'Соцсеть', path: '/social', icon: <Users className="w-5 h-5 text-pink-500" /> },
         { label: 'Профиль', path: '/profile', icon: <User className="w-5 h-5 text-orange-500" /> }
       ];
@@ -33,9 +31,10 @@ export default function BottomNavbar({ currentPath, onNavigate }: BottomNavbarPr
     <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white/50 backdrop-blur-md border-t border-white/60 shadow-xl pb-safe-bottom">
       <nav id="bottom-navbar" className="flex items-center justify-around h-16 px-1">
         {navItems.map((item) => {
+          const isPostsRelated = item.path === '/posts' && (cleanPath.startsWith('/posts') || cleanPath.startsWith('/scenarios') || cleanPath.startsWith('/crosspost'));
           const isActive = isSocialPath
             ? (item.path === '/social/feed' && (cleanPath === '/social' || cleanPath === '/social/feed')) || cleanPath === item.path
-            : cleanPath === item.path || cleanPath.startsWith(item.path + '/');
+            : isPostsRelated || cleanPath === item.path || cleanPath.startsWith(item.path + '/');
           return (
             <button
               id={`btn-bottom-nav-${item.path.substring(1).replace(/\//g, '-')}`}

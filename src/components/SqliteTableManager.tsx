@@ -23,6 +23,8 @@ import {
 const TABLES = [
   'users',
   'posts',
+  'teams',
+  'team_reports',
   'sceneries',
   'transactions',
   'telegram_bot',
@@ -515,42 +517,42 @@ export default function SqliteTableManager({
       </div>
 
       {/* Top Banner: SQLite Tables Selector */}
-      <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-200/80 rounded-3xl p-6 shadow-sm space-y-4">
+      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-200/80 rounded-3xl p-6 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-pink-200/60 pb-4">
           <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 rounded-2xl text-white shadow-sm">
+            <div className="p-2.5 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 rounded-2xl text-white shadow-sm">
               <Database size={22} />
             </div>
             <div>
-              <h3 className="text-base font-black text-slate-900 flex items-center space-x-2">
-                <span>Менеджер Таблиц СУБД SQLite</span>
-                <span className="text-[10px] bg-white/90 text-sky-800 border border-sky-300 px-2.5 py-0.5 rounded-full font-mono font-bold">
-                  {TABLES.length} Таблиц
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <span>Менеджер таблиц СУБД SQLite</span>
+                <span className="text-sm bg-white/90 text-sky-800 border border-sky-300 px-2.5 py-0.5 rounded-full font-mono font-bold">
+                  {TABLES.length} таблиц
                 </span>
               </h3>
-              <p className="text-xs text-slate-700 mt-0.5">Визуальное редактирование, добавление и удаление записей базы данных</p>
+              <p className="text-sm text-slate-700 mt-0.5">Визуальное редактирование, добавление и удаление записей базы данных</p>
             </div>
           </div>
 
           <div className="flex items-center space-x-2 shrink-0">
             <button
               onClick={() => { fetchTablesInfo(); fetchTableRows(selectedTable); }}
-              className="bg-white/80 hover:bg-white text-slate-800 border border-pink-200 text-xs font-bold px-3.5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs"
+              className="bg-white/80 hover:bg-white text-slate-800 border border-pink-200 text-sm font-bold px-3.5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs"
             >
-              <RefreshCw size={13} className={loading ? 'animate-spin text-pink-500' : 'text-sky-500'} />
+              <RefreshCw size={14} className={loading ? 'animate-spin text-pink-500' : 'text-sky-500'} />
               <span>Обновить</span>
             </button>
             <button
               onClick={handleOpenAddModal}
-              className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-xs font-bold px-4 py-2 rounded-2xl flex items-center space-x-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+              className="bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white text-sm font-bold px-4 py-2 rounded-2xl flex items-center space-x-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
             >
-              <Plus size={14} />
+              <Plus size={15} />
               <span>Создать строку</span>
             </button>
           </div>
         </div>
 
-        {/* 12 Tables Grid Pills */}
+        {/* Tables Grid Pills */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 pt-1">
           {TABLES.map(tableName => {
             const info = tablesInfo.find(t => t.tableName === tableName);
@@ -566,10 +568,10 @@ export default function SqliteTableManager({
                 }`}
               >
                 <div className="flex justify-between items-center w-full">
-                  <span className="font-mono text-xs font-extrabold truncate">{tableName}</span>
-                  <TableIcon size={12} className={isSelected ? 'text-pink-600' : 'text-slate-400'} />
+                  <span className="font-mono text-sm font-bold truncate">{tableName}</span>
+                  <TableIcon size={14} className={isSelected ? 'text-pink-600' : 'text-slate-400'} />
                 </div>
-                <span className="text-[10px] font-mono text-slate-600 mt-1">
+                <span className="text-sm font-mono text-slate-600 mt-1">
                   Записей: <strong className="text-slate-900">{info ? info.rowCount : '...'}</strong>
                 </span>
               </button>
@@ -579,24 +581,24 @@ export default function SqliteTableManager({
       </div>
 
       {/* Main Table Viewer Card */}
-      <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-200/80 rounded-3xl p-6 shadow-sm space-y-4">
+      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-200/80 rounded-3xl p-6 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-pink-200/60 pb-4">
           <div className="flex items-center space-x-2">
             <TableIcon className="text-pink-600" size={18} />
-            <span className="text-sm font-black text-slate-900 uppercase font-mono">Таблица: {selectedTable}</span>
-            <span className="text-xs text-slate-600 font-mono font-bold">({filteredRows.length} из {tableData.rows.length} строк)</span>
+            <span className="text-sm font-bold text-slate-900 font-mono">Таблица: {selectedTable}</span>
+            <span className="text-sm text-slate-600 font-mono font-bold">({filteredRows.length} из {tableData.rows.length} строк)</span>
           </div>
 
           <div className="flex items-center gap-3">
             {/* Search Input */}
             <div className="relative w-full sm:w-64">
-              <Search size={14} className="absolute left-3 top-2.5 text-pink-400" />
+              <Search size={15} className="absolute left-3 top-2.5 text-pink-400" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Поиск по столбцам..."
-                className="w-full bg-white/90 border border-pink-200 rounded-2xl pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-pink-400"
+                className="w-full bg-white/90 border border-pink-200 rounded-2xl pl-9 pr-3 py-1.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-pink-400"
               />
             </div>
 
@@ -607,20 +609,20 @@ export default function SqliteTableManager({
                 setCsvParsedPreview(null);
                 setIsCsvImportModalOpen(true);
               }}
-              className="bg-white/90 hover:bg-white border border-pink-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-2xl flex items-center space-x-1.5 shrink-0 transition-all cursor-pointer shadow-xs"
+              className="bg-white/90 hover:bg-white border border-pink-200 text-slate-800 text-sm font-bold px-3 py-1.5 rounded-2xl flex items-center space-x-1.5 shrink-0 transition-all cursor-pointer shadow-xs"
             >
-              <Upload size={13} className="text-pink-500" />
-              <span>CSV Импорт</span>
+              <Upload size={14} className="text-pink-500" />
+              <span>CSV импорт</span>
             </button>
 
             {/* CSV Export */}
             <button
               onClick={handleExportCSV}
               disabled={tableData.rows.length === 0}
-              className="bg-white/90 hover:bg-white border border-pink-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-2xl flex items-center space-x-1.5 shrink-0 transition-all disabled:opacity-40 cursor-pointer shadow-xs"
+              className="bg-white/90 hover:bg-white border border-pink-200 text-slate-800 text-sm font-bold px-3 py-1.5 rounded-2xl flex items-center space-x-1.5 shrink-0 transition-all disabled:opacity-40 cursor-pointer shadow-xs"
             >
-              <FileSpreadsheet size={13} className="text-orange-500" />
-              <span>CSV Экспорт</span>
+              <FileSpreadsheet size={14} className="text-orange-500" />
+              <span>CSV экспорт</span>
             </button>
           </div>
         </div>
@@ -628,14 +630,14 @@ export default function SqliteTableManager({
         {/* Table Data Grid */}
         <div className="bg-white/80 border border-pink-200/80 rounded-2xl overflow-x-auto overflow-y-auto max-h-[550px] w-full relative">
           {loading ? (
-            <div className="py-12 text-center text-slate-600 text-xs font-bold flex items-center justify-center space-x-2">
+            <div className="py-12 text-center text-slate-600 text-sm font-bold flex items-center justify-center space-x-2">
               <RefreshCw className="animate-spin text-pink-500" size={16} />
               <span>Загрузка данных таблицы {selectedTable}...</span>
             </div>
           ) : filteredRows.length > 0 ? (
             <div className="min-w-full inline-block align-middle">
-              <table className="min-w-full text-left text-[11px] border-collapse font-mono whitespace-nowrap">
-                <thead className="bg-gradient-to-r from-sky-100 via-pink-100 to-orange-100 sticky top-0 border-b border-pink-200 text-slate-800 uppercase font-black z-10">
+              <table className="min-w-full text-left text-sm border-collapse font-mono whitespace-nowrap">
+                <thead className="bg-gradient-to-r from-sky-100 via-pink-100 to-orange-100 sticky top-0 border-b border-pink-200 text-slate-800 font-bold z-10">
                   <tr>
                     <th className="p-3 w-20 text-center border-b border-pink-200 bg-sky-100/90 sticky left-0 z-20">Действия</th>
                     {tableData.columns.map((col, i) => (
@@ -655,31 +657,31 @@ export default function SqliteTableManager({
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); handleOpenEditModal(row); }}
-                          className="p-1 hover:bg-sky-100 rounded-lg text-sky-600 transition-all cursor-pointer"
+                          className="p-1.5 hover:bg-sky-100 rounded-lg text-sky-600 transition-all cursor-pointer"
                           title="Редактировать строку"
                         >
-                          <Edit2 size={13} />
+                          <Edit2 size={14} />
                         </button>
                         <button
                           type="button"
                           onClick={(e) => confirmDeleteRow(row.id, e)}
-                          className="p-1 hover:bg-pink-100 rounded-lg text-orange-600 transition-all cursor-pointer"
+                          className="p-1.5 hover:bg-pink-100 rounded-lg text-orange-600 transition-all cursor-pointer"
                           title="Удалить строку"
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={14} />
                         </button>
                       </td>
                       {tableData.columns.map((col, cIdx) => {
                         const val = row[col];
                         const isPhoto = (col === 'photo_url' || col === 'photoUrl' || col === 'photo' || col === 'avatar_url') && val && String(val).startsWith('http');
                         return (
-                          <td key={cIdx} className="p-3 max-w-sm truncate whitespace-nowrap" title={String(val ?? '')}>
+                          <td key={cIdx} className="p-3 max-w-sm truncate whitespace-nowrap text-sm" title={String(val ?? '')}>
                             {val === null || val === undefined ? (
                               <span className="text-slate-400 italic">null</span>
                             ) : isPhoto ? (
                               <div className="flex items-center gap-2">
                                 <img src={String(val)} alt="User" className="w-7 h-7 rounded-full object-cover border border-pink-300 shrink-0" />
-                                <span className="text-[10px] text-slate-600 truncate">{String(val)}</span>
+                                <span className="text-sm text-slate-600 truncate">{String(val)}</span>
                               </div>
                             ) : typeof val === 'object' ? (
                               <span className="text-purple-700 font-semibold">{JSON.stringify(val)}</span>
@@ -695,7 +697,7 @@ export default function SqliteTableManager({
               </table>
             </div>
           ) : (
-            <div className="py-12 text-center text-slate-600 text-xs font-mono font-bold">
+            <div className="py-12 text-center text-slate-600 text-sm font-mono font-bold">
               В таблице «{selectedTable}» нет доступных записей (0 строк).
             </div>
           )}

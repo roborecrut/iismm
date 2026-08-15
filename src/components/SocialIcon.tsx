@@ -28,7 +28,7 @@ export default function SocialIcon({ platform, className = '', size = 16 }: Soci
     case 'vk':
       return (
         <img 
-          src="/file/5/vklogo.png" 
+          src="/file/13/vklogo.png" 
           alt="VK" 
           referrerPolicy="no-referrer"
           width={size} 
@@ -40,7 +40,7 @@ export default function SocialIcon({ platform, className = '', size = 16 }: Soci
     case 'ok':
       return (
         <img 
-          src="/file/4/oklogo.png" 
+          src="/file/12/oklogo.png" 
           alt="Одноклассники" 
           referrerPolicy="no-referrer"
           width={size} 
@@ -108,7 +108,7 @@ export default function SocialIcon({ platform, className = '', size = 16 }: Soci
     case 'setka':
       return (
         <img 
-          src="/file/6/setka2.png" 
+          src="/file/14/setka2.png" 
           alt="Сетка" 
           referrerPolicy="no-referrer"
           width={size} 
@@ -164,7 +164,7 @@ export default function SocialIcon({ platform, className = '', size = 16 }: Soci
     case 'max':
       return (
         <img 
-          src="/file/7/maxlogo.png" 
+          src="/file/11/maxlogo.png" 
           alt="Max" 
           referrerPolicy="no-referrer"
           width={size} 

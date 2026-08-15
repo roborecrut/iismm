@@ -975,25 +975,58 @@ function initSchema(db: Database) {
     db.run("DELETE FROM channels;");
     db.run("DELETE FROM history;");
     db.run("DELETE FROM logs;");
-    db.run("DELETE FROM file_storage;");
     db.run("DELETE FROM chat_messages;");
-    db.run("DELETE FROM file_folders;");
-    db.run("DELETE FROM files;");
-    db.run("DELETE FROM file_folder_relations;");
     db.run("DELETE FROM blog_posts;");
-    console.log('[SQLite Cleanup] Successfully wiped default mock data from posts, sceneries, transactions, prompts, channels, history, logs, file_storage, chat_messages, file_folders.');
+    console.log('[SQLite Cleanup] Successfully wiped default mock data from posts, sceneries, transactions, prompts, channels, history, logs, chat_messages.');
   } catch (e) {
     console.error('[SQLite Cleanup] Error during table purge:', e);
   }
+
+  // Ensure essential files are seeded
+  try {
+    const { seedEssentialFiles } = require('./db/filesTable');
+    seedEssentialFiles(db);
+  } catch (e) {}
+
+  // Ensure teams table is initialized and seeded
+  try {
+    const { initTeamsTable, seedDefaultTeams } = require('./db/teamsTable');
+    initTeamsTable(db);
+    seedDefaultTeams(db);
+  } catch (e) {}
+
+  // Ensure team_reports table & user team privacy columns
+  try {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS team_reports (
+        id TEXT PRIMARY KEY,
+        reporter_id TEXT,
+        reporter_name TEXT,
+        team_id TEXT,
+        team_name TEXT,
+        owner_id TEXT,
+        reason TEXT,
+        details TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at TEXT
+      );
+    `);
+    try { db.run(`ALTER TABLE users ADD COLUMN allow_team_invites INTEGER DEFAULT 1;`); } catch (e) {}
+    try { db.run(`ALTER TABLE users ADD COLUMN team_blacklist TEXT DEFAULT '[]';`); } catch (e) {}
+  } catch (e) {}
 
   saveDatabaseToDisk();
 }
 
 export const ALLOWED_TABLES = [
   'users',
-  'posts',
-  'sceneries',
+  'tarifs',
   'transactions',
+  'notifications',
+  'posts',
+  'teams',
+  'team_reports',
+  'sceneries',
   'protalk_settings',
   'prompts',
   'channels',
@@ -1356,7 +1389,7 @@ export function fetchAllBlogPostsFromSQLite(): any[] {
         date: r.date_str || new Date(r.created_at || Date.now()).toLocaleDateString('ru-RU'),
         author: {
           name: r.author_name || 'Администратор ИИSMM',
-          avatar: r.author_avatar || '/file/2/iismmlogo.png',
+          avatar: r.author_avatar || '/file/9/iismmlogo.png',
           role: r.author_role || 'Автор'
         },
         views: r.views_count || 0,
@@ -1408,7 +1441,7 @@ export function createBlogPostInSQLite(post: any): any {
     post.readTime || '3 мин',
     post.date || new Date().toLocaleDateString('ru-RU'),
     post.author?.name || 'Администратор',
-    post.author?.avatar || '/file/2/iismmlogo.png',
+    post.author?.avatar || '/file/9/iismmlogo.png',
     post.author?.role || 'Команда ИИSMM',
     post.views || 10,
     post.likes || 1,

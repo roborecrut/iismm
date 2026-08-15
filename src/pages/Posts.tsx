@@ -8,21 +8,25 @@ import {
   ArrowLeft, 
   Clock, 
   Radio, 
-  Sparkles,
-  Tag,
-  Code,
-  FileText,
-  LayoutGrid,
-  List as ListIcon,
-  Filter,
-  ArrowUpDown,
-  Copy,
-  Check,
-  Loader2,
-  AlertCircle
+  Sparkles, 
+  Tag, 
+  Code, 
+  FileText, 
+  LayoutGrid, 
+  List as ListIcon, 
+  Filter, 
+  ArrowUpDown, 
+  Copy, 
+  Check, 
+  Loader2, 
+  AlertCircle,
+  Cpu,
+  Share2
 } from 'lucide-react';
 import { DayRequest, Channel, PostTemplate, User } from '../types';
 import PromptEditor from '../components/PromptEditor';
+import { ScenariosPage } from '../components/ScenariosPage';
+import FreeCrosspostingView from '../components/FreeCrosspostingView';
 
 interface PostsProps {
   dayRequests: DayRequest[];
@@ -43,6 +47,8 @@ interface PostsProps {
   selectedPostId?: string | null;
   onSelectPostId?: (id: string | null) => void;
   telegramId?: number;
+  currentPath?: string;
+  onNavigate?: (path: string) => void;
 }
 
 const formatScheduleText = (schedule: any) => {
@@ -69,12 +75,37 @@ export default function Posts({
   onSaveTemplate,
   selectedPostId: externalSelectedPostId,
   onSelectPostId: externalOnSelectPostId,
-  telegramId
+  telegramId,
+  currentPath,
+  onNavigate
 }: PostsProps) {
   // Local selected post ID for editing
   const [internalSelectedPostId, setInternalSelectedPostId] = useState<string | null>(null);
 
   const activePostId = externalSelectedPostId !== undefined ? externalSelectedPostId : internalSelectedPostId;
+
+  // Sub-tab switcher state
+  const getSubTabFromPath = (path?: string): 'posts' | 'scenarios' | 'crosspost' => {
+    if (!path) return 'posts';
+    const clean = path.replace('169262990', '');
+    if (clean.startsWith('/scenarios')) return 'scenarios';
+    if (clean.startsWith('/crosspost')) return 'crosspost';
+    return 'posts';
+  };
+
+  const [localSubTab, setLocalSubTab] = useState<'posts' | 'scenarios' | 'crosspost'>('posts');
+  const currentSubTab = currentPath ? getSubTabFromPath(currentPath) : localSubTab;
+
+  const handleTabSwitch = (tab: 'posts' | 'scenarios' | 'crosspost') => {
+    setLocalSubTab(tab);
+    if (onNavigate) {
+      if (tab === 'scenarios') onNavigate('/scenarios');
+      else if (tab === 'crosspost') onNavigate('/crosspost');
+      else onNavigate('/posts');
+    } else {
+      window.history.pushState(null, '', `/${tab}`);
+    }
+  };
 
   React.useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -307,29 +338,86 @@ export default function Posts({
         </div>
       )}
 
-      {/* Header bar with primary action button */}
-      <div className="bg-gradient-to-r from-sky-100/80 via-pink-100/80 via-orange-100/80 via-pink-100/80 to-sky-100/80 backdrop-blur-md border border-pink-200/80 rounded-3xl p-6 shadow-sm flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center space-x-2">
+      {/* Unified Header bar with switcher tabs */}
+      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 backdrop-blur-md border border-pink-200/80 rounded-3xl p-4 md:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Title and Icon */}
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-2xl bg-white/90 border border-pink-200 shadow-2xs shrink-0">
             <Layers className="text-orange-500" size={22} />
-            <span>Управление Постами и Автопостингом</span>
-          </h2>
-          <p className="text-xs text-slate-600 font-medium mt-1">
-            Создавайте заготовленные посты, автосценарии и публикации в телеграм-каналы команды.
-          </p>
+          </div>
+          <div>
+            <h2 className="text-base md:text-lg font-bold text-slate-800 tracking-tight">
+              Управление автопостингом
+            </h2>
+          </div>
         </div>
 
-        <button
-          onClick={handleCreateNewPost}
-          className="flex items-center space-x-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white px-5 py-3 rounded-2xl text-xs font-black transition-all shadow-md cursor-pointer border border-white/30"
-        >
-          <Plus size={18} />
-          <span>Создать новый пост</span>
-        </button>
+        {/* Navigation Switcher Tabs inside Unified Header */}
+        <div className="flex items-center bg-white/85 p-1 rounded-2xl border border-pink-200/80 shadow-2xs gap-1 self-stretch md:self-auto justify-between md:justify-start">
+          <button
+            onClick={() => handleTabSwitch('posts')}
+            className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+              currentSubTab === 'posts'
+                ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-2xs'
+                : 'text-slate-700 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <FileText size={16} />
+            <span>Посты</span>
+          </button>
+
+          <button
+            onClick={() => handleTabSwitch('scenarios')}
+            className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+              currentSubTab === 'scenarios'
+                ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-2xs'
+                : 'text-slate-700 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Cpu size={16} />
+            <span>СценарИИ</span>
+          </button>
+
+          <button
+            onClick={() => handleTabSwitch('crosspost')}
+            className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+              currentSubTab === 'crosspost'
+                ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-2xs'
+                : 'text-slate-700 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Share2 size={16} />
+            <span>Кросспостинг</span>
+          </button>
+        </div>
+
+        {/* Primary Action Button (for Posts tab) */}
+        {currentSubTab === 'posts' && (
+          <button
+            onClick={handleCreateNewPost}
+            className="flex items-center justify-center space-x-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white px-4 py-2.5 rounded-2xl text-sm font-bold transition-all shadow-md cursor-pointer border border-white/30 shrink-0"
+          >
+            <Plus size={18} />
+            <span>Создать новый пост</span>
+          </button>
+        )}
       </div>
 
-      {/* Filter, Search, Sort & View Mode Switcher Bar */}
-      <div className="bg-gradient-to-r from-sky-100/80 via-pink-100/80 via-orange-100/80 via-pink-100/80 to-sky-100/80 backdrop-blur-md border border-pink-200/80 rounded-3xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+      {/* RENDER SCENARIOS TAB */}
+      {currentSubTab === 'scenarios' && (
+        <ScenariosPage currentUser={currentUser} channels={channels} />
+      )}
+
+      {/* RENDER CROSSPOSTING TAB */}
+      {currentSubTab === 'crosspost' && (
+        <FreeCrosspostingView channels={channels} currentUser={currentUser} />
+      )}
+
+      {/* RENDER POSTS LIST TAB */}
+      {currentSubTab === 'posts' && (
+        <>
+          {/* Filter, Search, Sort & View Mode Switcher Bar */}
+          <div className="bg-gradient-to-r from-sky-100/80 via-pink-100/80 via-orange-100/80 via-pink-100/80 to-sky-100/80 backdrop-blur-md border border-pink-200/80 rounded-3xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
         
         {/* Search Input */}
         <div className="flex flex-1 min-w-[240px] bg-white/90 border border-pink-200/80 rounded-2xl px-3.5 py-2 items-center space-x-2 focus-within:ring-2 focus-within:ring-pink-400 shadow-2xs">
@@ -741,6 +829,8 @@ export default function Posts({
             </table>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

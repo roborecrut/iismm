@@ -73,17 +73,17 @@ export default function SuperadminPanel({
   return (
     <div className="space-y-6 text-left">
       {/* Top Banner: Stats & TG Re-parser Button */}
-      <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-slate-200/80 shadow-md">
+      <div className="bg-gradient-to-r from-sky-100/80 via-pink-100/80 via-orange-100/80 via-pink-100/80 to-sky-100/80 backdrop-blur-md p-6 rounded-3xl border border-pink-200/80 shadow-md">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 flex items-center justify-center text-white shadow-md">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 flex items-center justify-center text-white shadow-md shrink-0">
               <Users className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-slate-800">
-                База Данных Пользователей (SQLite)
+              <h2 className="text-lg font-bold text-slate-800">
+                База данных пользователей (SQLite)
               </h2>
-              <p className="text-xs font-semibold text-slate-500">
+              <p className="text-sm font-medium text-slate-600">
                 Полный реестр Telegram-пользователей с верификацией статусов
               </p>
             </div>
@@ -92,62 +92,62 @@ export default function SuperadminPanel({
           <button
             onClick={handleRunTgParser}
             disabled={parsing}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold text-sm shadow-md transition-all cursor-pointer disabled:opacity-50 active:scale-95"
           >
             {parsing ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <RefreshCw className="w-4 h-4" />
             )}
-            <span>{parsing ? 'Проверка пакетами Telegram...' : '🔄 Переспарсить юзеров TG'}</span>
+            <span>{parsing ? 'Проверка пакетами Telegram...' : 'Обновить пользователей Telegram'}</span>
           </button>
         </div>
 
         {/* Stats Cards Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="p-4 rounded-2xl bg-sky-50/80 border border-sky-100 flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white/70 backdrop-blur-md border border-pink-200/70 flex items-center justify-between shadow-xs">
             <div>
-              <div className="text-[11px] font-bold text-sky-600 uppercase tracking-wider">Всего в базе</div>
-              <div className="text-2xl font-black text-slate-800 mt-1">{userStats.total}</div>
+              <div className="text-sm font-semibold text-sky-700">Всего в базе</div>
+              <div className="text-2xl font-bold text-slate-800 mt-1">{userStats.total}</div>
             </div>
-            <Users className="w-6 h-6 text-sky-400" />
+            <Users className="w-6 h-6 text-sky-500" />
           </div>
 
-          <div className="p-4 rounded-2xl bg-cyan-50/80 border border-cyan-100 flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white/70 backdrop-blur-md border border-pink-200/70 flex items-center justify-between shadow-xs">
             <div>
-              <div className="text-[11px] font-bold text-cyan-700 uppercase tracking-wider">Активные</div>
-              <div className="text-2xl font-black text-cyan-900 mt-1">{userStats.active}</div>
+              <div className="text-sm font-semibold text-pink-700">Активные</div>
+              <div className="text-2xl font-bold text-slate-800 mt-1">{userStats.active}</div>
             </div>
-            <UserCheck className="w-6 h-6 text-cyan-500" />
+            <UserCheck className="w-6 h-6 text-pink-500" />
           </div>
 
-          <div className="p-4 rounded-2xl bg-orange-50/80 border border-orange-100 flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white/70 backdrop-blur-md border border-pink-200/70 flex items-center justify-between shadow-xs">
             <div>
-              <div className="text-[11px] font-bold text-orange-600 uppercase tracking-wider">Заблокировали</div>
-              <div className="text-2xl font-black text-orange-800 mt-1">{userStats.blocked}</div>
+              <div className="text-sm font-semibold text-orange-700">Заблокировали</div>
+              <div className="text-2xl font-bold text-slate-800 mt-1">{userStats.blocked}</div>
             </div>
             <UserX className="w-6 h-6 text-orange-500" />
           </div>
 
-          <div className="p-4 rounded-2xl bg-pink-50/80 border border-pink-100 flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white/70 backdrop-blur-md border border-pink-200/70 flex items-center justify-between shadow-xs">
             <div>
-              <div className="text-[11px] font-bold text-pink-600 uppercase tracking-wider">Администраторы</div>
-              <div className="text-2xl font-black text-pink-800 mt-1">1</div>
+              <div className="text-sm font-semibold text-pink-700">Администраторы</div>
+              <div className="text-2xl font-bold text-slate-800 mt-1">1</div>
             </div>
             <Shield className="w-6 h-6 text-pink-500" />
           </div>
         </div>
 
         {parseMessage && (
-          <div className="mt-4 p-3 rounded-xl bg-sky-50 text-sky-900 border border-sky-200 text-xs font-semibold flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0" />
+          <div className="mt-4 p-3.5 rounded-2xl bg-white/80 text-slate-800 border border-pink-300 text-sm font-medium flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-pink-600 shrink-0" />
             <span>{parseMessage}</span>
           </div>
         )}
       </div>
 
       {/* Main Table Inspector for users */}
-      <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-white/80 shadow-md">
+      <div className="bg-gradient-to-r from-sky-100/80 via-pink-100/80 via-orange-100/80 via-pink-100/80 to-sky-100/80 backdrop-blur-md p-6 rounded-3xl border border-pink-200/80 shadow-md">
         <SqliteTableManager key={refreshKey} initialTable="users" />
       </div>
     </div>

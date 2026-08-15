@@ -27,7 +27,7 @@ export interface InlineButton {
 export interface SocialChannel {
   id: string;
   name: string;
-  username: string; // e.g. @tech_trends
+  username: string;
   platform?: SocialNetwork;
   avatarUrl?: string;
   subscribers?: number;
@@ -51,7 +51,7 @@ export interface CampaignPost {
   content: string;
   imageUrl?: string;
   platforms?: SocialNetwork[];
-  scheduledAt?: string; // ISO string or specific time
+  scheduledAt?: string;
   status: 'draft' | 'scheduled' | 'published' | 'sent' | 'failed';
   inlineButtons?: InlineButton[];
   isAiGenerated?: boolean;
@@ -70,11 +70,11 @@ export interface PromoBundle {
   title: string;
   organizerUsername: string;
   rules: string;
-  entryFeeRub: number; // e.g. 500
+  entryFeeRub: number;
   channelsCount: number;
   maxChannels: number;
   status: 'draft' | 'collecting' | 'published';
-  joinedChannels: string[]; // IDs of channels
+  joinedChannels: string[];
   isFreeForOrganizer: boolean;
 }
 
@@ -122,14 +122,14 @@ export interface UserAccount {
   lastName?: string;
   telegramUsername: string;
   telegramId?: number;
-  tariff?: 'free' | 'pro' | 'vip' | 'start' | 'otryv' | 'kosmos';
-  tokens: number; // AI tokens (ИИ-токены)
-  iirky: number;  // ИИрки - internal currency
-  telegramStars?: number; // Telegram Stars balance
-  avatarUrl?: string; // profile photo url
+  tariff?: string;
+  tokens: number;
+  iirky: number;
+  telegramStars?: number;
+  avatarUrl?: string;
   username?: string;
   photoUrl?: string;
-  userAvatar?: string; // custom priority avatar
+  userAvatar?: string;
   user_avatar?: string;
   profileLink?: string;
   bio?: string;
@@ -139,17 +139,25 @@ export interface UserAccount {
   allowsWriteToPm?: boolean;
   latitude?: number;
   longitude?: number;
-  referredBy?: number;
+  referredBy?: number | string;
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
-  referralRewardBalance?: number;
-  lastLogin?: string;
-  balanceRub: number; // income from promos, ad orders etc
   balance?: number;
+  balance_free?: number;
+  balance_pay?: number;
+  balance_start?: number;
+  balance_ref?: number;
+  balance_tarif?: number;
+  balance_admin?: number;
+  balance_cost?: number;
+  balance_time?: string;
+  status?: 'Активный' | 'Блок' | 'Удален';
   timezone?: string;
-  earningsRub: number; // total earnings in system
-  premiumUntil?: string; // Date formatted for premium trial
+  balanceRub: number;
+  earningsRub: number;
+  premiumUntil?: string;
+  lastLogin?: string;
   createdAt?: string;
 }
 
@@ -175,14 +183,68 @@ export interface User {
   allowsWriteToPm?: boolean;
   latitude?: number;
   longitude?: number;
-  referredBy?: number;
+  referredBy?: number | string;
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
-  referralRewardBalance?: number;
-  lastLogin?: string;
   balance?: number;
+  balance_free?: number;
+  balance_pay?: number;
+  balance_start?: number;
+  balance_ref?: number;
+  balance_tarif?: number;
+  balance_admin?: number;
+  balance_cost?: number;
+  balance_time?: string;
+  status?: 'Активный' | 'Блок' | 'Удален';
+  tariff?: string;
   timezone?: string;
+  lastLogin?: string;
+}
+
+export type TransactionType = 'start' | 'pay' | 'tarif' | 'ref' | 'admin' | 'cost';
+
+export interface TransactionRecord {
+  id: string;
+  user_id: string;
+  type: TransactionType;
+  balance_type: string;
+  amount: number;
+  description: string;
+  comment?: string;
+  status: string;
+  created_at: string;
+}
+
+export interface TariffFeature {
+  title: string;
+  desc: string;
+}
+
+export interface TariffRecord {
+  id: string;
+  name: string;
+  price_iirky: string;
+  price_rub: number;
+  sub: string;
+  continuation?: string;
+  monthly_iirky: number;
+  features: string | TariffFeature[];
+  is_active: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationRecord {
+  id: string;
+  user_id: string;
+  type: 'balance' | 'transaction' | 'social' | 'publish' | 'system';
+  title: string;
+  message: string;
+  is_read: number;
+  link?: string;
+  created_at: string;
 }
 
 export interface Prompt {
@@ -218,60 +280,40 @@ export interface DayRequest {
   id: string;
   userId?: string;
   dayOfWeek?: string;
-  category: string; // Тема (max 15 chars)
-  requestTemplate: string; // AI Prompt template
-  channel: string;
-  channels?: string[]; // Мультивыбор каналов публикации
-  title: string;
-  signature: string;
-  messageFormat?: 'v2' | 'rich' | 'markdown' | 'html';
-  uppercaseHeader?: boolean;
-  postText?: string;
-  attachmentType?: 'none' | 'photo' | 'document' | 'video' | 'audio' | 'album' | 'video_note';
+  category?: string;
+  promptText: string;
+  postTitle?: string;
+  published?: boolean;
+  scheduledTime?: string;
+  targetChannel?: string;
   attachmentUrl?: string;
-  attachmentUrls?: string[]; // Up to 10 for album
-  inlineButtons?: InlineButton[][]; // Rows of buttons
-  uniquenessMemoryCount?: number;
-  imagePrompt?: string;
-  status?: 'draft' | 'scheduled' | 'sent' | 'failed' | 'создается' | 'создан' | string;
-  created_at?: string;
-  createdAt?: string;
-  triggerSchedule?: {
-    frequency: 'interval_minutes' | 'interval_hours' | 'daily' | 'dayOfWeek' | 'exact_date';
-    intervalMinutes?: number;
-    intervalHours?: number;
-    time?: string;
-    days?: string[];
-    exactDateTime?: string;
-    scheduledAt?: string;
-    enabled: boolean;
-    notifyUser?: boolean;
-    status?: string;
-    attemptCount?: number;
-    lastError?: string;
-    sentAt?: string;
-    lastAttemptAt?: string;
-  };
 }
 
-export interface PostTemplate {
+export interface PublicationLog {
   id: string;
-  type: 'header' | 'postText' | 'signature' | 'full';
-  name: string;
-  category?: string;
-  content: string;
-  createdAt: string;
+  userId?: string;
+  promptTitle: string;
+  channel: string;
+  time: string;
+  status: 'Успешно' | 'Ошибка';
+  message: string;
 }
 
 export interface Settings {
-  telegramBotToken: string;
-  channelId: string;
-  backupChannelId: string;
-  autoPostSchedule: boolean;
-  autoPostTime: string;
-  theme: 'dark' | 'light';
-  protalkBotId: string;
-  protalkBotToken: string;
+  telegramBotToken?: string;
+  channelId?: string;
+  backupChannelId?: string;
+  autoPostSchedule?: boolean;
+  autoPostTime?: string;
+  theme?: string;
+  protalkBotId?: string;
+  protalkBotToken?: string;
+  robokassa?: {
+    merchantLogin: string;
+    pass1: string;
+    pass2: string;
+    isTest: boolean;
+  };
 }
 
 export interface Channel {
@@ -285,19 +327,22 @@ export interface Channel {
   telegramId?: string;
   description?: string;
   photoUrl?: string;
+  isPremium?: boolean;
+  status?: string;
 }
 
-export interface Stats {
-  totalPrompts: number;
-  publishedThisMonth: number;
-  engagementRate: number;
-  chartData: { name: string; count: number }[];
-  recentPublications: Publication[];
+export interface PostTemplate {
+  id: string;
+  type: 'header' | 'postText' | 'signature' | 'full';
+  name: string;
+  category?: string;
+  content: string;
+  createdAt: string;
 }
 
 export interface ScenarioStep {
   id: string;
-  stepNumber: number; // 1 to 6
+  stepNumber: number;
   type: 'analyze_history' | 'generate_text' | 'generate_image_prompt' | 'generate_image' | 'format_post' | 'schedule_post';
   title: string;
   description: string;
@@ -308,38 +353,22 @@ export interface ScenarioStep {
     requestTemplate?: string;
     imageStylePrompt?: string;
     messageFormat?: 'v2' | 'rich';
-    channel?: string;
-    channels?: string[];
-    autoPublish?: boolean;
+    channelId?: string;
+    postTime?: string;
+    signature?: string;
+    inlineButtons?: InlineButton[];
   };
 }
 
 export interface Scenario {
   id: string;
-  userId?: string;
-  postId?: string;
   name: string;
-  description?: string;
-  basePromptId?: string;
-  basePromptTitle?: string;
-  topicCategory: string;
+  description: string;
+  category: string;
+  enabled: boolean;
+  schedule: string;
   targetChannels: string[];
   messageFormat: 'v2' | 'rich';
-  enabled: boolean;
-  schedule: {
-    frequency: 'interval_minutes' | 'interval_hours' | 'daily' | 'dayOfWeek';
-    intervalMinutes?: number;
-    intervalHours?: number;
-    time?: string;
-    days?: string[];
-  };
-  offsetHoursBeforePost?: number;
-  generatedTopic?: string;
-  generatedText?: string;
-  generatedImagePrompt?: string;
-  generatedImageUrls?: string[];
-  formattedPreview?: string;
-  completedTestSteps?: number[];
   steps: ScenarioStep[];
   lastRunAt?: string;
   nextRunAt?: string;

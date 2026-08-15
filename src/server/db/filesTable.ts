@@ -92,6 +92,168 @@ export function initFilesTable(db: Database) {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_file_folder_rel_file ON file_folder_relations(file_id);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_file_folder_rel_folder ON file_folder_relations(folder_id);`);
+
+  // Seed permanent essential database assets
+  seedEssentialFiles(db);
+}
+
+export const ESSENTIAL_FILE_STORAGE_ITEMS = [
+  {
+    id: 15,
+    file_key: "A06uq4Tj",
+    user_id: "admin",
+    folder_id: 1,
+    name: "heart.png",
+    slug_name: "heart.png",
+    original_url: "https://filestore.pro-talk.ru/GgMpJwQ9JCkYKglyGHQPNFk8O1QnDT8YBRAGaw8fBmQUcTV4PCtGJH8IKk0ZEyNJKz0sKzMVJgMKBR4pdRkmKh08Dz84NRQmEVBrZVICawB2UgdrCjgNKQkRJBVyNhwhaT8nQz0CdhBRAyAcKD4sGAMiDDQMAzouHg5oB3dWCmN4.png",
+    short_url: "/file/A06uq4Tj/heart.png",
+    mime_type: "image/png",
+    file_type: "photo",
+    file_size: 339451,
+    width: 0,
+    height: 0,
+    created_at: "2026-08-14 01:27:36"
+  },
+  {
+    id: 14,
+    file_key: "FpnVFwTE",
+    user_id: "admin",
+    folder_id: 1,
+    name: "setka2.png",
+    slug_name: "setka2.png",
+    original_url: "https://filestore.pro-talk.ru/GgMpJwQ9JCkYKglyGHQPNFkGO1QkAh1iOTcxdzQHECMaYj12Fhl5Bi1IPwMZEyNSKz0sKzMVJgMKByAnaysuNygyNzA4NRQmEVBrZVICawB2UgdrCjgNKQkRJBVyNhwhaT8nQz0CdhBRAyAcKD4sGAMiDDQMAzouHg5oB3dWCmN4.png",
+    short_url: "/file/FpnVFwTE/setka2.png",
+    mime_type: "image/png",
+    file_type: "photo",
+    file_size: 23417,
+    width: 0,
+    height: 0,
+    created_at: "2026-08-14 01:10:41"
+  },
+  {
+    id: 13,
+    file_key: "ZGjXvZtz",
+    user_id: "admin",
+    folder_id: 1,
+    name: "VKlogo.png",
+    slug_name: "vklogo.png",
+    original_url: "https://filestore.pro-talk.ru/GgMpJwQ9JCkYKglyGHQPNFkWO1QkDWEfKjICGwZdLGY7UT9jFVB6OjwbaEMZEyNRKz0sKzMVJgMKTAAnQyAtPww7Aj44NRQmEVBrZVICawB2UgdrCjgNKQkRJBVyNhwhaT8nQz0CdhBRAyAcKD4sGAMiDDQMAzouHg5oB3dWCmN4.png",
+    short_url: "/file/ZGjXvZtz/vklogo.png",
+    mime_type: "image/png",
+    file_type: "photo",
+    file_size: 30574,
+    width: 0,
+    height: 0,
+    created_at: "2026-08-14 01:10:39"
+  },
+  {
+    id: 12,
+    file_key: "9PYJd0pr",
+    user_id: "admin",
+    folder_id: 1,
+    name: "OKlogo.png",
+    slug_name: "oklogo.png",
+    original_url: "https://filestore.pro-talk.ru/GgMpJwQ9JCkYKglyGHQPNFhjO1QkDWkDJQgOAhUCEAoqbwsYCjVWJQg1Mw8ZEyNQKz0sKzMVJgMKQg4RVxoKLgMIKxMpMHUfERRhYFUGbQdzUQFkcTgEMgsDKyg0bQEZEGIPcyxRcVFDMhkSIBccJiIPAxMDCTIxHkphBHRQBWl5Sg.png",
+    short_url: "/file/9PYJd0pr/oklogo.png",
+    mime_type: "image/png",
+    file_type: "photo",
+    file_size: 36324,
+    width: 0,
+    height: 0,
+    created_at: "2026-08-14 01:10:38"
+  },
+  {
+    id: 11,
+    file_key: "lgpokeop",
+    user_id: "admin",
+    folder_id: 1,
+    name: "Maxlogo.png",
+    slug_name: "maxlogo.png",
+    original_url: "https://filestore.pro-talk.ru/GgMpJwQ9JCkYKglyGHQPNFg8O1QkDS0EJVV2YiYcHz8mcwh7AyxQMAVJDAkZEyNXKz0sKzMVJgMKDTIXYz15FWg-FWs4NRQmEVBrZVICawB2UgdrCjgNKQkRJBVyNhwhaT8nQz0CdhBRAyAcKD4sGAMiDDQMAzouHg5oB3dWCmN4.png",
+    short_url: "/file/lgpokeop/maxlogo.png",
+    mime_type: "image/png",
+    file_type: "photo",
+    file_size: 36229,
+    width: 0,
+    height: 0,
+    created_at: "2026-08-14 01:10:36"
+  },
+  {
+    id: 10,
+    file_key: "6L4ApDcy",
+    user_id: "admin",
+    folder_id: 1,
+    name: "social iismm.png",
+    slug_name: "social-iismm.png",
+    original_url: "https://filestore.pro-talk.ru/GgMpJwQ9JCkYKglyGHQPNFgGO1QkDTNiEDwoFD08MTQ0ZWxtAiNUAA8BdCwZEyNWKz0sKzMVJgMKBgw-BRYiMho2NAs4NRQmEVBrZVICawB2UgdrCjgNKQkRJBVyNhwhaT8nQz0CdhBRAyAcKD4sGAMiDDQMAzouHg5oB3dWCmN4.png",
+    short_url: "/file/6L4ApDcy/social-iismm.png",
+    mime_type: "image/png",
+    file_type: "photo",
+    file_size: 47844,
+    width: 0,
+    height: 0,
+    created_at: "2026-08-14 01:10:34"
+  },
+  {
+    id: 9,
+    file_key: "nI19WoBu",
+    user_id: "admin",
+    folder_id: 1,
+    name: "iismmlogo.png",
+    slug_name: "iismmlogo.png",
+    original_url: "https://filestore.pro-talk.ru/GgMpJwQ9JCkYKglyGHQPNFgWO1QkDTo2JwwBbEAlMh0BBithAiUGNGYbLhgZEyNVKz0sKzMVJgMKTC0Aag4bDwdMDhE4NRQmEVBrZVICawB2UgdrCjgNKQkRJBVyNhwhaT8nQz0CdhBRAyAcKD4sGAMiDDQMAzouHg5oB3dWCmN4.png",
+    short_url: "/file/nI19WoBu/iismmlogo.png",
+    mime_type: "image/png",
+    file_type: "photo",
+    file_size: 58579,
+    width: 0,
+    height: 0,
+    created_at: "2026-08-14 01:10:31"
+  }
+];
+
+export function seedEssentialFiles(db: Database) {
+  try {
+    // 1. Ensure folder id 1 exists
+    db.run(`
+      INSERT OR IGNORE INTO file_folders (id, user_id, name, color, folder_type, created_at)
+      VALUES (1, 'admin', 'Картинки', '#0284c7', 'photo', '2026-08-14 01:00:00')
+    `);
+
+    // 2. Insert or replace each file in file_storage
+    for (const f of ESSENTIAL_FILE_STORAGE_ITEMS) {
+      db.run(`
+        INSERT OR REPLACE INTO file_storage (
+          id, file_key, user_id, folder_id, name, slug_name,
+          original_url, short_url, mime_type, file_type, file_size, width, height, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        f.id, f.file_key, f.user_id, f.folder_id, f.name, f.slug_name,
+        f.original_url, f.short_url, f.mime_type, f.file_type, f.file_size, f.width, f.height, f.created_at
+      ]);
+
+      // 3. File folder relation
+      db.run(`
+        INSERT OR REPLACE INTO file_folder_relations (file_id, folder_id)
+        VALUES (?, ?)
+      `, [f.id, f.folder_id]);
+
+      // 4. Legacy files table record
+      const legacyId = 'file_' + f.id + '_' + f.file_key;
+      db.run(`
+        INSERT OR REPLACE INTO files (
+          id, user_id, original_name, name, full_url, short_key,
+          short_url, file_type, mime_type, file_size, size_formatted, width, height, aspect_ratio, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        legacyId, f.user_id, f.name, f.name, f.original_url, f.file_key,
+        f.short_url, f.file_type, f.mime_type, f.file_size, formatFileSize(f.file_size),
+        f.width, f.height, 1, f.created_at
+      ]);
+    }
+  } catch (err) {
+    console.error('[SQLite] Error seeding essential file_storage items:', err);
+  }
 }
 
 export function detectFileType(filename: string, mimeType: string = ''): 'photo' | 'video' | 'audio' | 'document' {

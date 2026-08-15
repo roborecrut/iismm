@@ -270,13 +270,9 @@ export default function TariffCards({ onAction, buttonText = "Подключит
               {/* Action Button */}
               <button 
                 onClick={() => onAction && onAction(plan.name, plan.price, plan.amountRub)} 
-                className={`w-full py-3.5 text-white font-black text-[11px] uppercase rounded-xl tracking-wider shadow-md transition-all duration-200 hover:-translate-y-0.5 cursor-pointer active:translate-y-0 mt-4 flex items-center justify-center gap-1.5 ${
-                  plan.name === 'СТАРТ' 
-                    ? 'bg-slate-700 hover:bg-slate-800' 
-                    : 'bg-multicolor-gradient hover:opacity-95'
-                }`}
+                className="w-full py-3.5 text-white font-black text-[11px] uppercase rounded-xl tracking-wider shadow-md transition-all duration-200 hover:-translate-y-0.5 cursor-pointer active:translate-y-0 mt-4 flex items-center justify-center gap-1.5 bg-multicolor-gradient hover:opacity-95"
               >
-                <span>{plan.name === 'СТАРТ' ? 'Бесплатный тариф' : buttonText}</span>
+                <span>{plan.name === 'СТАРТ' ? 'Бесплатно' : buttonText}</span>
                 <Sparkles className="w-3.5 h-3.5 text-white" />
               </button>
             </motion.div>

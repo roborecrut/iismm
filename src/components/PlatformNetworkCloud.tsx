@@ -105,7 +105,7 @@ export function PlatformNetworkCloud() {
       case 'vk':
         return (
           <img 
-            src="/file/5/vklogo.png" 
+            src="/file/13/vklogo.png" 
             alt="VK" 
             referrerPolicy="no-referrer"
             className="w-[20px] h-[20px] object-contain inline-block"
@@ -115,7 +115,7 @@ export function PlatformNetworkCloud() {
       case 'ok':
         return (
           <img 
-            src="/file/4/oklogo.png" 
+            src="/file/12/oklogo.png" 
             alt="Одноклассники" 
             referrerPolicy="no-referrer"
             className="w-[20px] h-[20px] object-contain inline-block"
@@ -143,7 +143,7 @@ export function PlatformNetworkCloud() {
       case 'max':
         return (
           <img 
-            src="/file/7/maxlogo.png" 
+            src="/file/11/maxlogo.png" 
             alt="Max" 
             referrerPolicy="no-referrer"
             className="w-[18px] h-[18px] rounded-full object-contain"
@@ -188,7 +188,7 @@ export function PlatformNetworkCloud() {
       case 'setka':
         return (
           <img 
-            src="/file/6/setka2.png" 
+            src="/file/14/setka2.png" 
             alt="Сетка" 
             referrerPolicy="no-referrer"
             className="w-[18px] h-[18px] object-contain inline-block shrink-0 fill-none"

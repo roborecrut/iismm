@@ -27,7 +27,7 @@ export default function IntroLiveSimWidget() {
         <div className="flex items-center gap-2">
           <div className="p-1 px-2.5 bg-multicolor-gradient text-white rounded-full text-[9.5px] font-black uppercase tracking-wider shadow-xs flex items-center gap-1">
             <Sparkles className="w-3 h-3 animate-spin" />
-            Интерактивный симулятор «Сценарий ИИSMM»
+            Сценарий ИИSMM
           </div>
         </div>
         <span className="text-[10px] font-mono font-extrabold text-pink-600 bg-pink-50 px-2 py-0.5 rounded-md border border-pink-100">
@@ -106,7 +106,7 @@ export default function IntroLiveSimWidget() {
                   {/* Brand Logo Header Image */}
                   <div className="relative rounded-lg overflow-hidden bg-gradient-to-r from-orange-50 via-pink-50 to-sky-50 p-3 flex items-center justify-center border border-slate-100">
                     <img 
-                      src="/file/2/iismmlogo.png" 
+                      src="/file/9/iismmlogo.png" 
                       alt="ИИSMM Логотип" 
                       className="h-8 sm:h-10 object-contain drop-shadow-xs"
                     />

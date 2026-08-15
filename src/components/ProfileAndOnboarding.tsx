@@ -5,7 +5,8 @@ import {
   RefreshCw, Smartphone, Calendar, Send, Check, CheckCircle2, AlertCircle, Eye, Settings, 
   TrendingUp, MousePointer, BarChart3, Radio, Link, LayoutGrid, Award, ArrowUpRight, Plus, 
   DollarSign, User, Volume2, Lock, FileText, Users, Shield, BookOpen, Crown, Cpu, Copy, LogOut,
-  CreditCard, Camera, Mail, Upload
+  CreditCard, Camera, Mail, Upload, Trash2, Edit2, Edit3, X, CheckSquare, Square, UserPlus, UserMinus, ShieldAlert,
+  Info, Flag, Ban, UserX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFileUpload } from '../hooks/useFileUpload';
@@ -179,6 +180,27 @@ export default function ProfileAndOnboarding({
   const [robokassaModalOpen, setRobokassaModalOpen] = useState(false);
   const [robokassaPlanName, setRobokassaPlanName] = useState('РАЗГОН');
   const [robokassaAmountRub, setRobokassaAmountRub] = useState(990);
+
+  // Real SQLite Transactions & Billing state
+  const [transactionsList, setTransactionsList] = useState<any[]>([]);
+
+  const fetchTransactions = async () => {
+    try {
+      const res = await fetch(`/api/billing/transactions?userId=${user.id || '16926299042'}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.transactions)) {
+        setTransactionsList(data.transactions);
+      }
+    } catch (e) {
+      console.warn('Error fetching billing transactions from SQLite:', e);
+    }
+  };
+
+  React.useEffect(() => {
+    if (user) {
+      fetchTransactions();
+    }
+  }, [user.id, user.balanceRub, user.iirky]);
 
   // Withdrawal logic
   const [withdrawAmount, setWithdrawAmount] = useState('5000');
@@ -483,36 +505,185 @@ export default function ProfileAndOnboarding({
   const [mcpUrl, setMcpUrl] = useState('http://localhost:3011/mcp');
   const [mcpStatus, setMcpStatus] = useState<'connected' | 'disconnected'>('disconnected');
 
-  // 4. MULTIPLAYER (VIP)
-  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; userId?: string; name: string; handle: string; role: string; status: string }>>([]);
+  // 4. MULTIPLAYER TEAMS (SQLite-backed)
+  const [teamData, setTeamData] = useState<any | null>(null);
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; userId?: string; name: string; handle: string; role: string; status: string; joinedAt?: string }>>([]);
   const [teamChannels, setTeamChannels] = useState<string[]>([]);
-  const [inviteHandle, setInviteHandle] = useState('');
-  const [inviteRole, setInviteRole] = useState('Editor');
+  const [allDbUsers, setAllDbUsers] = useState<Array<{ id: string; firstName?: string; name?: string; username?: string; photoUrl?: string }>>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamNotification, setTeamNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
-  // Fetch Team data from SQLite
-  React.useEffect(() => {
-    if (user) {
-      fetch(`/api/teams?userId=${user.id}&telegramId=${user.telegramId || ''}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.team) {
-            if (data.team.members) {
-              setTeamMembers(data.team.members.map((m: any) => ({
-                id: m.userId || m.handle,
-                userId: m.userId,
-                name: m.name || m.handle,
-                handle: m.handle,
-                role: 'Участник',
-                status: m.status === 'active' ? 'Активен 🟢' : 'Приглашен 🟡'
-              })));
-            }
-            if (data.team.channels) {
-              setTeamChannels(data.team.channels);
-            }
-          }
-        })
-        .catch(e => console.error('Error fetching team:', e));
+  // Privacy, Blacklist & Complaints State
+  const [allowTeamInvites, setAllowTeamInvites] = useState(true);
+  const [teamBlacklist, setTeamBlacklist] = useState<string[]>([]);
+  const [isAccessInfoModalOpen, setIsAccessInfoModalOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportReason, setReportReason] = useState('Спам / Нежелательные приглашения');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+
+  // Team Modals State
+  const [isCreateTeamModalOpen, setIsCreateTeamModalOpen] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamChannels, setNewTeamChannels] = useState<string[]>([]);
+  const [isEditTeamModalOpen, setIsEditTeamModalOpen] = useState(false);
+  const [editTeamName, setEditTeamName] = useState('');
+  const [isManageChannelsModalOpen, setIsManageChannelsModalOpen] = useState(false);
+  const [selectedTeamChannels, setSelectedTeamChannels] = useState<string[]>([]);
+  const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
+  const [newMemberHandle, setNewMemberHandle] = useState('');
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState('Участник');
+  const [memberToRevoke, setMemberToRevoke] = useState<any | null>(null);
+  const [isDeleteTeamModalOpen, setIsDeleteTeamModalOpen] = useState(false);
+  const [inviteHandle, setInviteHandle] = useState('');
+
+  const showTeamToast = (type: 'success' | 'error' | 'info', message: string) => {
+    setTeamNotification({ type, message });
+    setTimeout(() => {
+      setTeamNotification(null);
+    }, 4500);
+  };
+
+  const fetchPrivacySettings = async () => {
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/user/team-privacy?userId=${user.id || '16926299042'}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setAllowTeamInvites(data.allowTeamInvites !== false);
+          setTeamBlacklist(data.teamBlacklist || []);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching team privacy settings:', e);
     }
+  };
+
+  const handleToggleAllowInvites = async (newValue: boolean) => {
+    setAllowTeamInvites(newValue);
+    try {
+      const res = await fetch('/api/user/team-privacy', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id || '16926299042', allowTeamInvites: newValue })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showTeamToast('success', newValue ? 'Приглашения в команды разрешены' : 'Запрет на добавление в команды сохранен');
+      }
+    } catch (e) {
+      showTeamToast('error', 'Ошибка сохранения настроек приватности');
+    }
+  };
+
+  const handleToggleBlacklist = async (targetTeamId: string) => {
+    const isBlacklisted = teamBlacklist.includes(targetTeamId);
+    try {
+      const res = await fetch('/api/teams/blacklist', {
+        method: isBlacklisted ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id || '16926299042', teamId: targetTeamId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTeamBlacklist(data.teamBlacklist || []);
+        showTeamToast('success', isBlacklisted ? 'Команда удалена из черного списка' : 'Команда добавлена в черный список');
+      }
+    } catch (e) {
+      showTeamToast('error', 'Ошибка изменения черного списка');
+    }
+  };
+
+  const handleSendReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teamData) return;
+    setReportSubmitting(true);
+    try {
+      const res = await fetch('/api/teams/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reporterId: user.id || '16926299042',
+          teamId: teamData.id,
+          reason: reportReason,
+          details: reportDetails
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsReportModalOpen(false);
+        setReportDetails('');
+        showTeamToast('success', 'Жалоба на команду успешно отправлена администратору сервиса (16926299042) в Telegram');
+      } else {
+        showTeamToast('error', data.error || 'Ошибка при отправке жалобы');
+      }
+    } catch (e) {
+      showTeamToast('error', 'Сетевая ошибка при отправке жалобы');
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
+
+  const fetchTeamData = async () => {
+    if (!user) return;
+    try {
+      setTeamLoading(true);
+      const res = await fetch(`/api/teams?userId=${user.id || '16926299042'}&telegramId=${user.telegramId || ''}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.team) {
+        setTeamData(data.team);
+        if (data.team.members) {
+          setTeamMembers(data.team.members.map((m: any) => ({
+            id: m.userId || m.handle,
+            userId: m.userId,
+            name: m.name || m.handle,
+            handle: m.handle,
+            role: m.role || 'Участник',
+            status: m.status === 'active' ? 'Активен' : 'Приглашен',
+            joinedAt: m.joinedAt
+          })));
+        } else {
+          setTeamMembers([]);
+        }
+        if (data.team.channels) {
+          setTeamChannels(data.team.channels);
+          setSelectedTeamChannels(data.team.channels);
+        } else {
+          setTeamChannels([]);
+          setSelectedTeamChannels([]);
+        }
+      }
+    } catch (e: any) {
+      console.warn('[Teams] Notice loading team data from SQLite:', e.message || e);
+    } finally {
+      setTeamLoading(false);
+    }
+  };
+
+  // Fetch Team data from SQLite on mount and tab switch
+  React.useEffect(() => {
+    if (!user) return;
+    fetchTeamData();
+    fetchPrivacySettings();
+
+    // Also fetch registered users for member selection
+    fetch('/api/users')
+      .then(r => r.json())
+      .then(usersList => {
+        if (Array.isArray(usersList)) {
+          setAllDbUsers(usersList.map((u: any) => ({
+            id: String(u.id || u.telegram_id || ''),
+            name: u.first_name || u.name || u.username || 'Пользователь',
+            firstName: u.first_name || u.name || '',
+            username: u.username ? (u.username.startsWith('@') ? u.username : `@${u.username}`) : '',
+            photoUrl: u.photo_url || u.photoUrl || ''
+          })));
+        }
+      })
+      .catch(() => null);
   }, [activeTab, user]);
 
   // 5. AI ROUNDTABLE STRATEGIST SIMULATOR (VIP)
@@ -532,14 +703,24 @@ export default function ProfileAndOnboarding({
 
   React.useEffect(() => {
     if (activeTab === 'referrals' && user) {
-      fetch(`/api/referrals/stats?userId=${user.id}&telegramId=${user.telegramId || ''}`)
-        .then(res => res.json())
+      const controller = new AbortController();
+      fetch(`/api/referrals/stats?userId=${user.id}&telegramId=${user.telegramId || ''}`, { signal: controller.signal })
+        .then(res => {
+          if (!res.ok) return null;
+          return res.json();
+        })
         .then(data => {
           if (data && data.referralLink) {
             setReferralStats(data);
           }
         })
-        .catch(e => console.error('Error fetching referral stats:', e));
+        .catch(e => {
+          if (e.name !== 'AbortError') {
+            console.warn('[Referrals] Notice fetching referral stats:', e.message || e);
+          }
+        });
+
+      return () => controller.abort();
     }
   }, [activeTab, user]);
 
@@ -559,28 +740,47 @@ export default function ProfileAndOnboarding({
     setCalcIirkyResult(Math.round(numeric * 1));
   };
 
-  const handleBuyIirkyWithRubles = () => {
+  const handleBuyIirkyWithRubles = async () => {
     const costRub = parseFloat(calcRubInput) || 0;
     if (costRub <= 0) {
       alert('Укажите корректную сумму в рублях!');
       return;
     }
-    if ((user.balanceRub || 0) < costRub) {
-      // Open Robokassa modal directly with the requested amount
-      setRobokassaPlanName('Пополнение ИИрок');
-      setRobokassaAmountRub(costRub);
-      setRobokassaModalOpen(true);
-      return;
-    }
     const iirkyToReceive = Math.round(costRub * 1);
-    if (onUpdateUser) {
-      onUpdateUser({
-        ...user,
-        balanceRub: (user.balanceRub || 0) - costRub,
-        iirky: (user.iirky || 0) + iirkyToReceive,
-        tokens: (user.tokens || 0) + iirkyToReceive
+    try {
+      const res = await fetch('/api/billing/exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id || '16926299042',
+          amountRub: costRub
+        })
       });
-      alert(`🎉 Покупка успешна! Вы списали ${costRub} ₽ и зачислили ${iirkyToReceive.toLocaleString()} ИИрок на свой баланс.`);
+      const data = await res.json();
+      if (data.success) {
+        if (onUpdateUser) {
+          onUpdateUser({
+            ...user,
+            balanceRub: Math.max(0, (user.balanceRub || 0) - costRub),
+            iirky: (user.iirky || 0) + iirkyToReceive,
+            tokens: (user.tokens || 0) + iirkyToReceive
+          });
+        }
+        await fetchTransactions();
+        alert(`🎉 Обмен успешен! Зачислено +${iirkyToReceive.toLocaleString()} ИИрок на баланс.`);
+      } else {
+        alert(data.error || 'Ошибка при проведении обмена');
+      }
+    } catch (e: any) {
+      if (onUpdateUser) {
+        onUpdateUser({
+          ...user,
+          balanceRub: Math.max(0, (user.balanceRub || 0) - costRub),
+          iirky: (user.iirky || 0) + iirkyToReceive,
+          tokens: (user.tokens || 0) + iirkyToReceive
+        });
+      }
+      alert(`🎉 Обмен успешен! Зачислено +${iirkyToReceive.toLocaleString()} ИИрок.`);
     }
   };
 
@@ -692,6 +892,125 @@ export default function ProfileAndOnboarding({
     }
   };
 
+  // Team CRUD handlers with direct SQLite persistence
+  const handleCreateTeamSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTeamName.trim()) return;
+    try {
+      const res = await fetch('/api/teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerId: user.id || '16926299042',
+          name: newTeamName.trim(),
+          channels: newTeamChannels,
+          members: []
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.team) {
+        setTeamData(data.team);
+        setTeamChannels(data.team.channels || []);
+        setTeamMembers([]);
+        setIsCreateTeamModalOpen(false);
+        setNewTeamName('');
+        setNewTeamChannels([]);
+        showTeamToast('success', 'Команда успешно создана и сохранена в базе данных SQLite!');
+      } else {
+        showTeamToast('error', data.error || 'Ошибка при создании команды');
+      }
+    } catch (e: any) {
+      showTeamToast('error', 'Ошибка связи с сервером при создании команды');
+    }
+  };
+
+  const handleUpdateTeamSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teamData || !editTeamName.trim()) return;
+    try {
+      const res = await fetch(`/api/teams/${teamData.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editTeamName.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.team) {
+        setTeamData(data.team);
+        setIsEditTeamModalOpen(false);
+        showTeamToast('success', 'Название команды успешно обновлено в базе данных SQLite!');
+      } else {
+        showTeamToast('error', data.error || 'Ошибка обновления команды');
+      }
+    } catch (e) {
+      showTeamToast('error', 'Ошибка связи с сервером при обновлении команды');
+    }
+  };
+
+  const handleSaveTeamChannels = async () => {
+    if (!teamData) return;
+    try {
+      const res = await fetch(`/api/teams/${teamData.id}/channels`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channels: selectedTeamChannels
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.team) {
+        setTeamData(data.team);
+        setTeamChannels(data.team.channels || []);
+        setIsManageChannelsModalOpen(false);
+        showTeamToast('success', 'Список каналов команды успешно сохранен в базе данных SQLite!');
+      } else {
+        showTeamToast('error', data.error || 'Ошибка сохранения каналов');
+      }
+    } catch (e) {
+      showTeamToast('error', 'Ошибка связи с сервером при сохранении каналов');
+    }
+  };
+
+  const handleAddMemberSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberHandle.trim()) return;
+    const cleanHandle = newMemberHandle.startsWith('@') ? newMemberHandle : '@' + newMemberHandle;
+    try {
+      const res = await fetch('/api/teams/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerId: user.id || '16926299042',
+          handle: cleanHandle,
+          name: newMemberName.trim() || undefined,
+          role: newMemberRole
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.team) {
+        setTeamData(data.team);
+        setTeamMembers(data.team.members.map((m: any) => ({
+          id: m.userId || m.handle,
+          userId: m.userId,
+          name: m.name || m.handle,
+          handle: m.handle,
+          role: m.role || 'Участник',
+          status: m.status === 'active' ? 'Активен' : 'Приглашен',
+          joinedAt: m.joinedAt
+        })));
+        setIsAddMemberModalOpen(false);
+        setNewMemberHandle('');
+        setNewMemberName('');
+        showTeamToast('success', `Участник ${cleanHandle} добавлен в команду и зафиксирован в SQLite!`);
+      } else {
+        showTeamToast('error', data.error || 'Ошибка при добавлении участника');
+      }
+    } catch (e: any) {
+      showTeamToast('error', 'Ошибка связи с сервером при добавлении участника');
+    }
+  };
+
   const handleInviteCoworker = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteHandle) return;
@@ -704,22 +1023,77 @@ export default function ProfileAndOnboarding({
       });
       const data = await res.json();
       if (data.success && data.team) {
+        setTeamData(data.team);
         setTeamMembers(data.team.members.map((m: any) => ({
           id: m.userId || m.handle,
           userId: m.userId,
           name: m.name || m.handle,
           handle: m.handle,
-          role: 'Участник',
-          status: m.status === 'active' ? 'Активен 🟢' : 'Приглашен 🟡'
+          role: m.role || 'Участник',
+          status: m.status === 'active' ? 'Активен' : 'Приглашен',
+          joinedAt: m.joinedAt
         })));
         setInviteHandle('');
-        alert(`Пользователь ${cleanHandle} успешно добавлен в команду!`);
+        showTeamToast('success', `Пользователь ${cleanHandle} успешно добавлен в команду и базу данных!`);
       } else {
-        alert(data.error || 'Ошибка добавления участника');
+        showTeamToast('error', data.error || 'Ошибка добавления участника');
       }
     } catch (e: any) {
       console.error('Error adding team member:', e);
-      alert('Ошибка при добавлении участника в команду');
+      showTeamToast('error', 'Ошибка при добавлении участника в команду');
+    }
+  };
+
+  const handleConfirmRevokeMember = async () => {
+    if (!memberToRevoke) return;
+    try {
+      const memberKey = memberToRevoke.userId || memberToRevoke.handle;
+      const res = await fetch(`/api/teams/members/${encodeURIComponent(memberKey)}?ownerId=${user.id || '16926299042'}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success && data.team) {
+        setTeamData(data.team);
+        setTeamMembers(data.team.members.map((tm: any) => ({
+          id: tm.userId || tm.handle,
+          userId: tm.userId,
+          name: tm.name || tm.handle,
+          handle: tm.handle,
+          role: tm.role || 'Участник',
+          status: tm.status === 'active' ? 'Активен' : 'Приглашен',
+          joinedAt: tm.joinedAt
+        })));
+        showTeamToast('success', `Доступ участника ${memberToRevoke.name || memberToRevoke.handle} отозван и удален из базы данных SQLite.`);
+      } else {
+        setTeamMembers(prev => prev.filter(m => m.id !== memberToRevoke.id && m.handle !== memberToRevoke.handle));
+        showTeamToast('success', 'Доступ участника отозван.');
+      }
+    } catch (e) {
+      setTeamMembers(prev => prev.filter(m => m.id !== memberToRevoke.id && m.handle !== memberToRevoke.handle));
+      showTeamToast('success', 'Доступ участника отозван.');
+    } finally {
+      setMemberToRevoke(null);
+    }
+  };
+
+  const handleConfirmDeleteTeam = async () => {
+    if (!teamData) return;
+    try {
+      const res = await fetch(`/api/teams/${teamData.id}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTeamData(null);
+        setTeamMembers([]);
+        setTeamChannels([]);
+        setIsDeleteTeamModalOpen(false);
+        showTeamToast('success', 'Команда успешно удалена из базы данных SQLite.');
+      } else {
+        showTeamToast('error', data.error || 'Ошибка при удалении команды');
+      }
+    } catch (e) {
+      showTeamToast('error', 'Ошибка связи с сервером при удалении команды');
     }
   };
 
@@ -1189,56 +1563,48 @@ export default function ProfileAndOnboarding({
             </div>
 
             {/* Conversions Calculator */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4 text-left flex flex-col justify-between">
+            <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 rounded-3xl p-6 border border-pink-200/80 shadow-xs space-y-4 text-left flex flex-col justify-between">
               <div className="space-y-3">
-                <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-widest flex items-center gap-1.5 border-b pb-2">
-                  <RefreshCw className="w-4 h-4 text-purple-500" />
-                  <span>Обменник ИИрок</span>
+                <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5 border-b border-pink-200/80 pb-2">
+                  <RefreshCw className="w-4 h-4 text-pink-500" />
+                  <span className="text-multicolor-gradient">Обменник ИИрок</span>
                 </h3>
-                <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                  ИИрки 🪙 используются для ИИ-постинга и генераций. Курс: <strong>1 ₽ = 1 ИИрка</strong>.
+                <p className="text-sm text-slate-700 font-medium leading-relaxed">
+                  ИИрки 🪙 используются для ИИ-постинга и генераций.
                 </p>
 
-                <div className="flex items-center gap-2 text-xs font-semibold">
+                <p className="text-sm font-extrabold text-multicolor-gradient">
+                  1 рубль = 1 ИИрка
+                </p>
+
+                <div className="flex items-center gap-2 text-sm font-semibold">
                   <div className="flex-1 space-y-1">
-                    <label className="text-[9px] text-slate-400 uppercase font-bold">Списать (₽)</label>
+                    <label className="text-sm text-slate-700 font-bold">Списать (₽)</label>
                     <input 
                       type="number" 
                       value={calcRubInput}
                       onChange={e => handleCalcRubChange(e.target.value)}
-                      className="w-full bg-slate-50 border px-3 py-1.5 rounded-xl font-mono text-xs"
+                      className="w-full bg-white/90 border border-pink-200 px-3 py-2 rounded-xl font-mono text-sm text-slate-900 focus:outline-none focus:border-pink-400"
                     />
                   </div>
-                  <span className="text-slate-300 font-mono self-end pb-1">➔</span>
+                  <span className="text-pink-400 font-mono self-end pb-2">➔</span>
                   <div className="flex-1 space-y-1">
-                    <label className="text-[9px] text-orange-500 uppercase font-bold">Получить ИИрок</label>
-                    <div className="w-full bg-orange-50/50 border border-orange-100 px-3 py-1.5 rounded-xl font-mono text-xs font-black text-orange-700">
+                    <label className="text-sm font-bold text-multicolor-gradient">Получить ИИрок</label>
+                    <div className="w-full bg-white/90 border border-pink-300 px-3 py-2 rounded-xl font-mono text-sm font-bold text-slate-900">
                       {calcIirkyResult.toLocaleString()}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="pt-2">
                   <button 
                     onClick={handleBuyIirkyWithRubles}
-                    className="flex-1 py-2 bg-gradient-to-r from-orange-500 to-purple-500 text-white font-extrabold text-xs uppercase rounded-xl shadow-xs cursor-pointer"
+                    className="w-full py-2.5 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white font-bold text-sm rounded-xl shadow-xs cursor-pointer border border-pink-300 hover:opacity-95 transition-all"
                   >
-                    Обменять из баланса
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setRobokassaPlanName('Пополнение ИИрок');
-                      setRobokassaAmountRub(Number(calcRubInput) || 250);
-                      setRobokassaModalOpen(true);
-                    }}
-                    className="py-2 px-3 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs uppercase rounded-xl shadow-xs cursor-pointer flex items-center gap-1"
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>Робокасса</span>
+                    Обменять
                   </button>
                 </div>
               </div>
-              <p className="text-[9px] text-emerald-600 font-extrabold">⭐ При покупке тарифа РАЗГОН или ОТРЫВ вы получаете баланс ИИрок в подарок!</p>
             </div>
 
           </div>
@@ -1247,79 +1613,89 @@ export default function ProfileAndOnboarding({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
             {/* Tariff Expiration Card */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4 text-left flex flex-col justify-between">
+            <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 rounded-3xl p-6 border border-pink-200/80 shadow-xs space-y-4 text-left flex flex-col justify-between">
               <div className="space-y-3">
-                <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-widest flex items-center gap-1.5 border-b pb-2">
-                  <Calendar className="w-4 h-4 text-orange-500" />
-                  <span>Статус и Срок действия тарифа</span>
+                <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5 border-b border-pink-200/80 pb-2">
+                  <Calendar className="w-4 h-4 text-pink-500" />
+                  <span className="text-multicolor-gradient">Статус и срок действия тарифа</span>
                 </h3>
                 
-                <div className="p-4 bg-gradient-to-r from-orange-500/10 to-pink-500/10 rounded-2xl border border-orange-100/50 space-y-2">
+                <div className="p-4 bg-white/80 rounded-2xl border border-pink-200 space-y-2">
                   <div className="flex justify-between items-baseline">
-                    <span className="text-[10px] text-slate-500 font-bold uppercase">Текущий тариф:</span>
-                    <span className="text-sm font-black text-orange-600 uppercase font-mono">
-                      {user.tariff === 'vip' ? '👑 VIP Комбайн' : user.tariff === 'pro' ? '⚡ PREMIUM' : 'FREE СТАРТ'}
+                    <span className="text-sm text-slate-700 font-bold">Текущий тариф:</span>
+                    <span className="text-sm font-bold text-multicolor-gradient font-mono">
+                      {user.tariff === 'vip' ? 'VIP комбайн' : user.tariff === 'pro' ? 'Премиум' : 'Старт'}
                     </span>
                   </div>
                   
-                  <div className="flex justify-between items-baseline border-t pt-2 border-orange-200/20">
-                    <span className="text-[10px] text-slate-505 font-medium">Срок действия подписки:</span>
-                    <span className="text-xs font-extrabold text-slate-850">
+                  <div className="flex justify-between items-baseline border-t pt-2 border-pink-200/50">
+                    <span className="text-sm text-slate-700 font-medium">Срок действия подписки:</span>
+                    <span className="text-sm font-bold text-slate-900">
                       {user.tariff !== 'free' ? `До ${user.premiumUntil || '07.06.2026'}` : 'Бессрочно (с базовыми лимитами)'}
                     </span>
                   </div>
 
                   {user.tariff !== 'free' && (
-                    <div className="text-[10px] text-emerald-650 bg-emerald-50 p-2 rounded-xl border border-emerald-100/30 flex items-center gap-1 font-semibold mt-2">
-                      <Check className="w-3.5 h-3.5" />
+                    <div className="text-sm text-slate-800 bg-pink-50/80 p-2.5 rounded-xl border border-pink-200 flex items-center gap-1.5 font-medium mt-2">
+                      <Check className="w-4 h-4 text-pink-500" />
                       <span>Продление по подписке активно за {user.tariff === 'vip' ? '4,900,000' : '490,000'} ИИрок</span>
                     </div>
                   )}
                 </div>
 
-                <div className="space-y-1.5 text-xs text-slate-505">
-                  <p className="font-bold text-[10px] text-slate-400 uppercase tracking-widest leading-none">Регламент продления подписок:</p>
-                  <p className="leading-relaxed text-[11px] text-slate-500 font-medium">Вы можете продлить или переключить тариф в любой момент. Оплата списывается автоматически с баланса ИИрок. Смена тарифов конвертируется из внутреннего баланса ИИрок мгновенно.</p>
+                <div className="space-y-1.5 text-sm text-slate-700">
+                  <p className="font-bold text-sm text-slate-800">Регламент продления подписок:</p>
+                  <p className="leading-relaxed text-sm text-slate-600 font-medium">Вы можете продлить или переключить тариф в любой момент. Оплата списывается автоматически с баланса ИИрок. Смена тарифов конвертируется из внутреннего баланса ИИрок мгновенно.</p>
                 </div>
               </div>
             </div>
 
             {/* Billing Transactions Card */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4 text-left">
+            <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 rounded-3xl p-6 border border-pink-200/80 shadow-xs space-y-4 text-left">
               <div className="space-y-2">
-                <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-widest flex items-center gap-1.5 border-b pb-2">
-                  <FileText className="w-4 h-4 text-orange-500" />
-                  <span>Билинг платежей и транзакции</span>
-                </h3>
+                <div className="flex items-center justify-between border-b border-pink-200/80 pb-2">
+                  <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-pink-500" />
+                    <span className="text-multicolor-gradient">Билинг платежей и транзакции</span>
+                  </h3>
+                  <button
+                    onClick={fetchTransactions}
+                    className="text-sm text-pink-600 hover:text-pink-800 font-bold flex items-center gap-1 cursor-pointer"
+                    title="Обновить историю транзакций из SQLite"
+                  >
+                    <RefreshCw size={13} />
+                    <span>Обновить</span>
+                  </button>
+                </div>
                 
                 {/* Billing items feed */}
-                <div className="space-y-2 max-h-[220px] overflow-y-auto no-scrollbar pt-1 font-semibold">
-                  {[
-                    { id: 'b-1', desc: 'Зачисление 300 стартовых ИИрок по тарифу СТАРТ', amount: '+300 🪙', date: '31.05.2026', type: 'in', status: 'Завершено' },
-                    { id: 'b-2', desc: 'Автопостинг по ИИ-сценарию (публикация)', amount: '-5 🪙', date: '31.05.2026', type: 'out', status: 'Успешно' },
-                    { id: 'b-3', desc: 'Нейро-рерайт поста с ИИ стилем', amount: '-1 🪙', date: '30.05.2026', type: 'out', status: 'Успешно' },
-                    { id: 'b-4', desc: 'Генерация нейро-иллюстрации для поста', amount: '-10 🪙', date: '29.05.2026', type: 'out', status: 'Успешно' },
-                    { id: 'b-5', desc: 'Пополнение баланса (Докупка ИИрок)', amount: '+990 🪙', date: '28.05.2026', type: 'in', status: 'Завершено' }
-                  ].map((bill) => (
-                    <div key={bill.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-100/60 flex items-center justify-between gap-3 text-xs">
-                      <div className="space-y-1 min-w-0 flex-1">
-                        <span className="block truncate text-[11px] text-slate-800 leading-tight font-bold">{bill.desc}</span>
-                        <div className="flex items-center gap-2 text-[9px] text-slate-400 font-mono">
-                          <span>{bill.date}</span>
-                          <span>•</span>
-                          <span className={bill.status === 'Завершено' || bill.status === 'Успешно' ? 'text-emerald-600' : 'text-orange-500'}>{bill.status}</span>
+                <div className="space-y-2 max-h-[220px] overflow-y-auto no-scrollbar pt-1 font-medium">
+                  {transactionsList.length === 0 ? (
+                    <div className="p-4 bg-white/80 rounded-xl border border-pink-200/60 text-center text-slate-600 text-sm">
+                      История операций пуста
+                    </div>
+                  ) : (
+                    transactionsList.map((bill: any) => (
+                      <div key={bill.id} className="p-2.5 bg-white/90 rounded-xl border border-pink-200/80 flex items-center justify-between gap-3 text-sm shadow-xs">
+                        <div className="space-y-0.5 min-w-0 flex-1">
+                          <span className="block truncate text-sm text-slate-900 leading-tight font-bold">{bill.description || bill.desc}</span>
+                          <div className="flex items-center gap-2 text-sm text-slate-500 font-mono">
+                            <span>{bill.date || (bill.createdAt ? new Date(bill.createdAt).toLocaleDateString('ru-RU') : 'Сегодня')}</span>
+                            <span>•</span>
+                            <span className="text-slate-700 font-bold">{bill.status || 'Завершено'}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="text-right shrink-0">
+                          <span className={`font-mono text-sm font-bold block ${
+                            bill.type === 'in' ? 'text-multicolor-gradient font-extrabold' : 'text-rose-600'
+                          }`}>
+                            {bill.amount}
+                          </span>
                         </div>
                       </div>
-                      
-                      <div className="text-right shrink-0">
-                        <span className={`font-mono text-xs font-black block ${
-                          bill.type === 'in' ? 'text-emerald-600' : bill.type === 'out' ? 'text-rose-500' : 'text-slate-500'
-                        }`}>
-                          {bill.amount}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -1327,11 +1703,11 @@ export default function ProfileAndOnboarding({
           </div>
 
           {/* Pricing Config Section matching landing page */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-150/80 space-y-4 text-left">
-            <div className="border-b pb-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 rounded-3xl p-6 border border-pink-200/80 space-y-4 text-left">
+            <div className="border-b border-pink-200/80 pb-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div>
-                <h3 className="font-black text-slate-800 uppercase text-xs tracking-wider">Тарифные пакеты и тонкие настройки</h3>
-                <p className="text-xs text-slate-500 font-medium">Бескомпромиссная автоматизация с ИИSMM. 1 ₽ = 1 ИИрка.</p>
+                <h3 className="font-bold text-slate-900 text-sm">Тарифные пакеты и тонкие настройки</h3>
+                <p className="text-sm text-slate-600 font-medium">Автоматизация с ИИSMM. 1 ₽ = 1 ИИрка.</p>
               </div>
               <button 
                 onClick={() => {
@@ -1339,7 +1715,7 @@ export default function ProfileAndOnboarding({
                   setRobokassaAmountRub(990);
                   setRobokassaModalOpen(true);
                 }}
-                className="px-4 py-2 bg-gradient-to-r from-orange-500 to-pink-500 text-white font-extrabold text-xs uppercase rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer hover:opacity-95 self-start md:self-auto"
+                className="px-4 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white font-bold text-sm rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer hover:opacity-95 self-start md:self-auto border border-pink-300"
               >
                 <CreditCard className="w-4 h-4" />
                 <span>Оплата через Робокассу 💳</span>
@@ -1354,153 +1730,6 @@ export default function ProfileAndOnboarding({
                 setRobokassaModalOpen(true);
               }}
             />
-          </div>
-
-          {/* SMM Analytics Dashboard with Graphs & Commissions */}
-          <div className="border-t border-slate-100 pt-6 space-y-6">
-            <div className="flex items-center gap-2 text-left">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-orange-400 to-pink-500 text-white flex items-center justify-center">
-                <BarChart3 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-sm text-slate-800 uppercase tracking-wider leading-none">Кабинет Аналитики и вывода соавтора</h3>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">Конверсия просмотров, реклама и проведение взаимовычетов.</p>
-              </div>
-            </div>
-
-            {/* Metrics Bento Row */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-left">
-              <div 
-                onClick={() => setActiveMetricFilter('views')}
-                className={`p-4 rounded-2xl border transition-all cursor-pointer ${activeMetricFilter === 'views' ? 'bg-orange-500/10 border-orange-350 ring-2 ring-orange-200' : 'bg-white hover:bg-slate-50'}`}
-              >
-                <div className="flex justify-between items-center text-slate-400 mb-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider block">Охват блогов</span>
-                  <Eye className="w-4 h-4 text-orange-500" />
-                </div>
-                <h3 className="text-xl font-black font-mono text-slate-800">{totalViews.toLocaleString()}</h3>
-                <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-0.5 mt-1">
-                  <TrendingUp className="w-3 h-3" /> +16.7% Рост
-                </span>
-              </div>
-
-              <div 
-                onClick={() => setActiveMetricFilter('clicks')}
-                className={`p-4 rounded-2xl border transition-all cursor-pointer ${activeMetricFilter === 'clicks' ? 'bg-pink-500/10 border-pink-350 ring-2 ring-pink-200' : 'bg-white hover:bg-slate-50'}`}
-              >
-                <div className="flex justify-between items-center text-slate-400 mb-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider block">UTM Переходы</span>
-                  <MousePointer className="w-4 h-4 text-pink-500" />
-                </div>
-                <h3 className="text-xl font-black font-mono text-slate-800">{totalClicks.toLocaleString()}</h3>
-                <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-0.5 mt-1">
-                  <TrendingUp className="w-3 h-3" /> +24% Свежий CTR
-                </span>
-              </div>
-
-              <div className="p-4 rounded-2xl border bg-white text-left">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">Состояние лимитов</span>
-                <h3 className="text-xl font-black font-mono text-slate-800">{channelsCount} / {postsCount}</h3>
-                <p className="text-[10px] text-slate-400 mt-1">Каналы & Сделано SMM постов</p>
-              </div>
-
-              <div className="p-4 rounded-2xl border bg-white text-left">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">Заработано (Чистые)</span>
-                <h3 className="text-xl font-black font-mono text-emerald-600">{earningsRub} ₽</h3>
-                <p className="text-[10px] text-slate-400 mt-1">Выплачено из баланса рекламы</p>
-              </div>
-            </div>
-
-            {/* Visual SVG Curve Chart */}
-            <div className="p-4 bg-white rounded-2xl border border-slate-100 space-y-4">
-              <div className="flex justify-between items-center border-b pb-2 text-left">
-                <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
-                  {activeMetricFilter === 'views' ? 'Просмотры публикаций (6дн)' : activeMetricFilter === 'clicks' ? 'Клики по ссылкам UTM' : 'Темп вовлечения аудитории'}
-                </span>
-                <span className="text-[10px] text-slate-400">График обновлен в 2026 году</span>
-              </div>
-
-              <div className="h-28 w-full relative pt-2">
-                <svg className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                  <line x1="0" y1="20" x2="100%" y2="20" stroke="#f1f5f9" strokeWidth="1" />
-                  <line x1="0" y1="60" x2="100%" y2="60" stroke="#f1f5f9" strokeWidth="1" />
-                  <line x1="0" y1="90" x2="100%" y2="90" stroke="#f1f5f9" strokeWidth="1" />
-
-                  <path 
-                    d={`M 0 100 L ${activeTrend.map((p, idx) => `${idx * (100 / (activeTrend.length - 1))}% ${90 - (p.val - minVal) * heightMultiplier * 0.75}`).join(' L ')} L 100% 100 Z`}
-                    fill={activeMetricFilter === 'views' ? '#fff7ed' : '#fdf2f8'}
-                  />
-                  <path 
-                    d={activeTrend.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${idx * (100 / (activeTrend.length - 1))}% ${90 - (p.val - minVal) * heightMultiplier * 0.75}`).join(' ')}
-                    fill="none" 
-                    stroke={activeMetricFilter === 'views' ? '#f97316' : '#ec4899'} 
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </div>
-              <div className="grid grid-cols-6 text-center text-[10px] font-mono text-slate-400">
-                {activeTrend.map((t, idx) => <span key={idx}>{t.date}</span>)}
-              </div>
-            </div>
-
-            {/* Withdrawal With 25% Commission Clause */}
-            <div className="p-5 bg-white rounded-2xl border border-slate-100 flex flex-col md:flex-row justify-between gap-6 text-left">
-              <div className="space-y-2 max-w-sm">
-                <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-widest">Вывод средств за взаимный пиар</h4>
-                <p className="text-xs text-slate-500 leading-normal font-medium">
-                  Обратите внимание: согласно условиям участия в Бирже объявлений и Папках продвижения, за безопасность сделки взимается системная комиссия <strong className="text-red-500 font-extrabold text-sm">25%</strong>.
-                </p>
-              </div>
-
-              <form onSubmit={handleWithdrawFunds} className="flex-1 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-black">Сумма (₽)</label>
-                    <input 
-                      type="number" required min={100} value={withdrawAmount}
-                      onChange={e => setWithdrawAmount(e.target.value)}
-                      className="w-full bg-slate-50 border px-3 py-1 text-xs font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-black">Куда выводить</label>
-                    <select 
-                      value={withdrawMethod} onChange={e => setWithdrawMethod(e.target.value as any)}
-                      className="w-full bg-slate-50 border px-3 py-1 text-xs"
-                    >
-                      <option value="card">MIR / VISA РФ</option>
-                      <option value="qiwi">QIWI Wallet</option>
-                      <option value="stars">Telegram Stars</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-slate-400 uppercase font-black">Реквизиты</label>
-                    <input 
-                      type="text" required placeholder="Карта РФ" value={withdrawAccount}
-                      onChange={e => setWithdrawAccount(e.target.value)}
-                      className="w-full bg-slate-50 border px-3 py-1 text-xs font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div className="p-2 bg-slate-50 text-[11px] font-mono rounded flex justify-between">
-                  <span>Заказ: <strong>{parsedWithdraw}₽</strong></span>
-                  <span className="text-red-500">Биржа (25%): <strong>{commissionFee}₽</strong></span>
-                  <span className="text-emerald-600 font-bold">Выдадут: <strong>{payoutAmount}₽</strong></span>
-                </div>
-
-                <div className="flex justify-end">
-                  <button 
-                    type="submit" 
-                    className="px-4 py-1.5 bg-gradient-to-r from-orange-450 to-pink-500 text-white font-extrabold uppercase text-[10px] cursor-pointer"
-                  >
-                    {withdrawStatus === 'checking' ? 'Вывод...' : 'Подтвердить перевод 🚀'}
-                  </button>
-                </div>
-              </form>
-            </div>
-
           </div>
         </div>
       )}
@@ -1528,7 +1757,7 @@ export default function ProfileAndOnboarding({
                 <Sparkles className="w-4 h-4 text-orange-500" />
                 <span>Фирменный брендбук и Настройка вотермарок</span>
               </h3>
-              <p className="text-xs text-slate-505 mt-0.5">Создавайте холсты для медиа (Canva) и добавляйте защитные вотермарки.</p>
+              <p className="text-xs text-slate-500 mt-0.5">Создавайте холсты для медиа (Canva) и добавляйте защитные вотермарки.</p>
             </div>
             {user.tariff === 'free' && (
               <span className="px-3 py-1 bg-red-100 text-red-700 text-[10px] font-black uppercase rounded-full">⚡ Доступно на PREMIUM / VIP</span>
@@ -1764,7 +1993,7 @@ export default function ProfileAndOnboarding({
                       }
                       setMcpStatus(mcpStatus === 'connected' ? 'disconnected' : 'connected');
                     }}
-                    className="px-3 bg-amber-500 font-extrabold rounded-xl hover:brightness-105 transition-all text-xs text-white"
+                    className="px-3 bg-amber-500 font-extrabold rounded-xl hover:brightness-105 transition-all text-xs text-white cursor-pointer"
                   >
                     {mcpStatus === 'connected' ? 'Сброс' : 'Синхронизация'}
                   </button>
@@ -1775,7 +2004,7 @@ export default function ProfileAndOnboarding({
                 <div className="flex justify-between font-mono text-[10px]">
                   <span>Интеграционный статус:</span>
                   <span className={mcpStatus === 'connected' ? 'text-emerald-400 font-black' : 'text-slate-400'}>
-                    {mcpStatus === 'connected' ? '● СИНХРОНИЗИРОВАНО' : '●ОФЛАЙН'}
+                    {mcpStatus === 'connected' ? '● СИНХРОНИЗИРОВАНО' : '● ОФЛАЙН'}
                   </span>
                 </div>
                 <p className="text-[9px] text-slate-400 font-normal">При включенной синхронизации ИИSMM умеет доставать товары для автогенераций.</p>
@@ -1786,103 +2015,272 @@ export default function ProfileAndOnboarding({
         </div>
       )}
 
-      {/* --- TAB CONTENT: MULTIPLAYER TEAM MANAGER --- */}
+      {/* --- TAB CONTENT: MULTIPLAYER TEAM MANAGER (SQLite-backed) --- */}
       {activeTab === 'multiplayer' && (
         <div className="p-6 bg-gradient-to-r from-sky-100/80 via-pink-100/80 via-orange-100/80 via-pink-100/80 to-sky-100/80 backdrop-blur-md rounded-3xl border border-pink-200/80 text-left space-y-6 shadow-sm">
-          <div className="border-b border-pink-200/80 pb-3 flex flex-wrap justify-between items-center gap-2">
-            <div>
-              <h3 className="font-extrabold text-sm text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-orange-500" />
-                <span>Команды — Мультиплеер управление кабинетом</span>
-              </h3>
-              <p className="text-xs text-slate-600 mt-0.5 font-medium">Делегируйте ведение каналов сотрудникам и SMM-командам с единым балансом и уровнями доступа.</p>
+          {/* Notification Toast */}
+          {teamNotification && (
+            <div className={`p-4 rounded-2xl border text-sm font-semibold flex items-center justify-between transition-all ${
+              teamNotification.type === 'error' 
+                ? 'bg-rose-100/90 border-rose-300 text-rose-900 shadow-sm' 
+                : 'bg-sky-100/90 border-pink-300 text-slate-900 shadow-sm'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="w-5 h-5 text-pink-500 shrink-0" />
+                <span className="text-sm">{teamNotification.message}</span>
+              </div>
+              <button 
+                onClick={() => setTeamNotification(null)}
+                className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
             </div>
-            {!(user.tariff === 'vip' || (user.tariff as string) === 'otryv' || (user.tariff as string) === 'otriv' || isAdmin) && (
-              <span className="px-3 py-1 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white text-[10px] font-black uppercase rounded-full shadow-xs">
-                ★ Требуется Тариф Отрыв
-              </span>
-            )}
+          )}
+
+          {/* Header Bar */}
+          <div className="border-b border-pink-200/80 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-pink-500" />
+                <span>Команды и участники мультиплеера</span>
+              </h3>
+              <p className="text-sm text-slate-700 mt-1 font-medium">
+                Управление командами, распределение прав и каналов с прямой синхронизацией в базе данных SQLite.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsAccessInfoModalOpen(true)}
+                className="px-3.5 py-2 bg-white/80 hover:bg-white text-slate-800 border border-pink-200 text-sm font-bold rounded-2xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              >
+                <Info className="w-4 h-4 text-sky-500" />
+                <span>Права и доступ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNewTeamName('');
+                  setNewTeamChannels([]);
+                  setIsCreateTeamModalOpen(true);
+                }}
+                className="px-4 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white font-bold text-sm rounded-2xl shadow-md flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+              >
+                <Plus size={16} />
+                <span>Создать команду</span>
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs font-semibold">
-            {/* Add to team form & invite links */}
-            <div className="bg-white/80 backdrop-blur-md p-5 rounded-2xl border border-pink-200/80 space-y-4 shadow-xs">
-              <span className="text-[11px] text-slate-800 uppercase font-black block">Добавить в команду</span>
-              <form onSubmit={handleInviteCoworker} className="space-y-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-slate-600 uppercase font-bold block">Telegram Username (@ handle)</label>
+          {/* Privacy and Blacklist Controls Bar */}
+          <div className="p-4 bg-white/70 backdrop-blur-md border border-pink-200/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-pink-100 text-pink-600">
+                <Shield className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-sm font-bold text-slate-900 block">Приватность приглашений в команды</span>
+                <span className="text-sm text-slate-600">
+                  {allowTeamInvites 
+                    ? 'Вас могут приглашать в команды по @username и инвайт-ссылкам' 
+                    : 'Запрещено: другие пользователи не могут добавить вас в команду'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleToggleAllowInvites(!allowTeamInvites)}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer shadow-xs flex items-center gap-2 ${
+                  allowTeamInvites 
+                    ? 'bg-gradient-to-r from-sky-400 via-pink-400 to-orange-400 text-white' 
+                    : 'bg-white/90 border border-pink-300 text-slate-700 hover:bg-white'
+                }`}
+              >
+                {allowTeamInvites ? <Check size={16} /> : <Ban size={16} className="text-orange-500" />}
+                <span>{allowTeamInvites ? 'Приглашения разрешены' : 'Приглашения запрещены'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Team Overview Card */}
+          {teamData && (
+            <div className="p-5 bg-white/80 backdrop-blur-md border border-pink-200/80 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-base font-bold text-slate-900">{teamData.name}</h4>
+                  <span className="px-2.5 py-0.5 bg-white/90 text-sky-800 border border-sky-300 rounded-lg text-sm font-mono font-bold">
+                    ID: {teamData.id}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-700">
+                  Инвайт-код: <strong className="font-mono text-pink-700">{teamData.inviteCode || teamData.id}</strong> • Создана: {new Date(teamData.createdAt || Date.now()).toLocaleDateString('ru-RU')}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditTeamName(teamData.name || '');
+                    setIsEditTeamModalOpen(true);
+                  }}
+                  className="px-3.5 py-2 bg-white/90 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                >
+                  <Edit3 size={15} className="text-pink-500" />
+                  <span>Переименовать</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTeamChannels(teamData.channels || []);
+                    setIsManageChannelsModalOpen(true);
+                  }}
+                  className="px-3.5 py-2 bg-white/90 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                >
+                  <Radio size={15} className="text-sky-500" />
+                  <span>Каналы ({teamChannels.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleToggleBlacklist(teamData.id)}
+                  className="px-3.5 py-2 bg-white/90 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  title="Черный список для этой команды"
+                >
+                  <Ban size={15} className="text-orange-500" />
+                  <span>{teamBlacklist.includes(teamData.id) ? 'В черном списке' : 'В черный список'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReportReason('Спам / Нежелательные приглашения');
+                    setReportDetails('');
+                    setIsReportModalOpen(true);
+                  }}
+                  className="px-3.5 py-2 bg-white/90 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  title="Пожаловаться администратору сервиса"
+                >
+                  <Flag size={15} className="text-rose-500" />
+                  <span>Пожаловаться</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteTeamModalOpen(true)}
+                  className="px-3.5 py-2 bg-white/90 hover:bg-white text-rose-700 border border-rose-200 rounded-xl text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  title="Удалить команду из SQLite"
+                >
+                  <Trash2 size={15} className="text-rose-500" />
+                  <span>Удалить</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Main Content Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-sm font-medium">
+            {/* Left Column: Invite & Quick Add */}
+            <div className="bg-white/80 backdrop-blur-md p-5 rounded-2xl border border-pink-200/80 space-y-5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-900 font-bold block">Пригласить в команду</span>
+                <button
+                  type="button"
+                  onClick={() => setIsAddMemberModalOpen(true)}
+                  className="text-sm font-bold text-pink-600 hover:text-pink-800 flex items-center gap-1 cursor-pointer"
+                >
+                  <UserPlus size={15} />
+                  <span>Выбрать из базы</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleInviteCoworker} className="space-y-3.5">
+                <div className="space-y-1.5">
+                  <label className="text-sm text-slate-700 font-bold block">
+                    Telegram имя пользователя (@username или ID)
+                  </label>
                   <input 
-                    type="text" value={inviteHandle} onChange={e => setInviteHandle(e.target.value)}
-                    placeholder="@ivan_smm_pro" className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-pink-400"
-                    disabled={!(user.tariff === 'vip' || (user.tariff as any) === 'otryv' || (user.tariff as any) === 'otriv' || isAdmin)}
+                    type="text" 
+                    value={inviteHandle} 
+                    onChange={e => setInviteHandle(e.target.value)}
+                    placeholder="@ivan_smm_pro" 
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-pink-400"
                     required
                   />
                 </div>
 
-                <div className="p-3 bg-sky-50/80 border border-sky-200/80 rounded-xl space-y-1">
-                  <p className="text-[11px] text-sky-900 font-bold">ℹ️ Уровень доступа единый:</p>
-                  <p className="text-[10px] text-sky-700 font-normal leading-relaxed">
-                    Все участники команды имеют одинаковые права: редактирование и публикация постов на всех подключенных каналах команды. Публикация списывается со счета владельца команды.
+                <div className="p-3 bg-gradient-to-r from-sky-50 via-pink-50 to-orange-50 border border-pink-200/70 rounded-xl space-y-1">
+                  <p className="text-sm text-slate-900 font-bold">Уровень доступа команды:</p>
+                  <p className="text-sm text-slate-700 leading-relaxed font-normal">
+                    Все добавленные участники получают доступ к публикации и планированию постов на привязанных каналах команды. Баланс списывается с владельца команды.
                   </p>
                 </div>
 
                 <button 
                   type="submit"
-                  className="w-full py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-black rounded-xl uppercase text-[10px] tracking-wider shadow-xs cursor-pointer border border-white/20 transition-all"
-                  disabled={!(user.tariff === 'vip' || (user.tariff as any) === 'otryv' || (user.tariff as any) === 'otriv' || isAdmin)}
+                  className="w-full py-2.5 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white font-bold rounded-xl text-sm shadow-md cursor-pointer border border-pink-300 transition-all flex items-center justify-center gap-2 active:scale-95"
                 >
-                  Добавить участника 🚀
+                  <UserPlus size={16} />
+                  <span>Добавить участника</span>
                 </button>
               </form>
 
-              {/* Copy Invite Links */}
-              <div className="pt-3 border-t border-pink-200/80 space-y-2">
-                <span className="text-[10px] text-slate-700 uppercase font-bold block">Инвайт-ссылки для приглашения:</span>
+              {/* Invite Links */}
+              <div className="pt-4 border-t border-pink-200/80 space-y-3">
+                <span className="text-sm text-slate-900 font-bold block">
+                  Инвайт-ссылки для приглашения сотрудников:
+                </span>
                 
-                {/* Telegram Invite Link */}
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                  <div className="flex justify-between items-center text-[10px] text-slate-600 font-bold">
-                    <span>📱 Ссылка для Telegram:</span>
+                {/* Telegram Link */}
+                <div className="p-3 bg-white/90 border border-pink-200 rounded-xl space-y-1.5">
+                  <div className="flex justify-between items-center text-sm text-slate-800 font-bold">
+                    <span>Ссылка для Telegram:</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <input 
                       type="text" 
                       readOnly 
-                      value={`https://t.me/SAV_AI_bot?start=team_${user.id || '169262990'}`}
-                      className="w-full bg-white border border-slate-200 p-1.5 rounded-lg text-[10px] font-mono text-slate-700 truncate select-all"
+                      value={`https://t.me/SAV_AI_bot?start=team_${teamData?.id || user.id || '169262990'}`}
+                      className="w-full bg-white border border-pink-200 p-2 rounded-lg text-sm font-mono text-slate-800 truncate select-all"
                     />
                     <button
                       type="button"
                       onClick={() => {
-                        navigator.clipboard.writeText(`https://t.me/SAV_AI_bot?start=team_${user.id || '169262990'}`);
-                        alert('Ссылка для Telegram скопирована!');
+                        navigator.clipboard.writeText(`https://t.me/SAV_AI_bot?start=team_${teamData?.id || user.id || '169262990'}`);
+                        showTeamToast('success', 'Инвайт-ссылка для Telegram скопирована!');
                       }}
-                      className="px-2.5 py-1.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white rounded-lg text-[10px] font-black cursor-pointer shrink-0 shadow-xs hover:opacity-90"
+                      className="px-3 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white rounded-lg text-sm font-bold cursor-pointer shrink-0 shadow-xs hover:opacity-90 transition-all active:scale-95"
                     >
                       Копировать
                     </button>
                   </div>
                 </div>
 
-                {/* Browser Invite Link */}
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                  <div className="flex justify-between items-center text-[10px] text-slate-600 font-bold">
-                    <span>🌐 Ссылка для браузера:</span>
+                {/* Web Link */}
+                <div className="p-3 bg-white/90 border border-pink-200 rounded-xl space-y-1.5">
+                  <div className="flex justify-between items-center text-sm text-slate-800 font-bold">
+                    <span>Ссылка для браузера:</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <input 
                       type="text" 
                       readOnly 
-                      value={`${window.location.origin}/?invite=team_${user.id || '169262990'}`}
-                      className="w-full bg-white border border-slate-200 p-1.5 rounded-lg text-[10px] font-mono text-slate-700 truncate select-all"
+                      value={`${window.location.origin}/?invite=team_${teamData?.id || user.id || '169262990'}`}
+                      className="w-full bg-white border border-pink-200 p-2 rounded-lg text-sm font-mono text-slate-800 truncate select-all"
                     />
                     <button
                       type="button"
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/?invite=team_${user.id || '169262990'}`);
-                        alert('Ссылка для браузера скопирована!');
+                        navigator.clipboard.writeText(`${window.location.origin}/?invite=team_${teamData?.id || user.id || '169262990'}`);
+                        showTeamToast('success', 'Инвайт-ссылка для браузера скопирована!');
                       }}
-                      className="px-2.5 py-1.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white rounded-lg text-[10px] font-black cursor-pointer shrink-0 shadow-xs hover:opacity-90"
+                      className="px-3 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white rounded-lg text-sm font-bold cursor-pointer shrink-0 shadow-xs hover:opacity-90 transition-all active:scale-95"
                     >
                       Копировать
                     </button>
@@ -1891,96 +2289,129 @@ export default function ProfileAndOnboarding({
               </div>
             </div>
 
-            {/* Team Members List Table */}
-            <div className="lg:col-span-2 space-y-4">
-              <span className="text-[11px] text-slate-800 uppercase font-black block">Участники команды</span>
-              <div className="space-y-2">
-                {teamMembers.length === 0 ? (
-                  <div className="p-6 bg-white/80 rounded-2xl border border-pink-200/80 text-center text-slate-500 text-xs font-semibold">
-                    У вас пока нет участников команды. Используйте форму или ссылки выше, чтобы пригласить коллег!
-                  </div>
-                ) : (
-                  teamMembers.map((m, idx) => (
-                    <div key={idx} className="p-3.5 bg-white/90 backdrop-blur-sm rounded-2xl border border-pink-200/80 flex items-center justify-between gap-3 shadow-2xs">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white flex items-center justify-center font-black font-mono shadow-xs text-sm">
-                          {m.name ? m.name[0].toUpperCase() : 'U'}
-                        </div>
-                        <div>
-                          <span className="font-bold text-slate-900 block text-xs">{m.name}</span>
-                          <span className="text-[10px] text-slate-500 font-mono">{m.handle} • Единый доступ к каналам</span>
-                        </div>
-                      </div>
+            {/* Right Column: Members List & Channels */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Members Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-900 font-bold flex items-center gap-2">
+                    <Users className="w-4 h-4 text-pink-500" />
+                    <span>Участники команды в SQLite ({teamMembers.length})</span>
+                  </span>
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 font-extrabold rounded-lg">
-                          Участник
-                        </span>
-                        <button 
-                          onClick={async () => {
-                            if (!(user.tariff === 'vip' || (user.tariff as any) === 'otryv' || (user.tariff as any) === 'otriv' || isAdmin)) return;
-                            try {
-                              const res = await fetch(`/api/teams/members/${encodeURIComponent(m.userId || m.handle)}?ownerId=${user.id || '16926299042'}`, {
-                                method: 'DELETE'
-                              });
-                              const data = await res.json();
-                              if (data.success && data.team) {
-                                setTeamMembers(data.team.members.map((tm: any) => ({
-                                  id: tm.userId || tm.handle,
-                                  userId: tm.userId,
-                                  name: tm.name || tm.handle,
-                                  handle: tm.handle,
-                                  role: 'Участник',
-                                  status: tm.status === 'active' ? 'Активен 🟢' : 'Приглашен 🟡'
-                                })));
-                                alert('Доступ участника отозван.');
-                              }
-                            } catch (e) {
-                              setTeamMembers(teamMembers.filter(item => item.id !== m.id && item.handle !== m.handle));
-                              alert('Доступ участника отозван.');
-                            }
-                          }}
-                          className="text-rose-500 hover:text-rose-700 font-bold text-xs px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                          disabled={!(user.tariff === 'vip' || (user.tariff as any) === 'otryv' || (user.tariff as any) === 'otriv' || isAdmin)}
-                        >
-                          Отозвать
-                        </button>
-                      </div>
+                  <button
+                    type="button"
+                    onClick={fetchTeamData}
+                    className="text-sm font-bold text-pink-600 hover:text-pink-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw size={14} className={teamLoading ? 'animate-spin' : ''} />
+                    <span>Обновить из базы</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {teamMembers.length === 0 ? (
+                    <div className="p-8 bg-white/80 rounded-2xl border border-pink-200/80 text-center text-slate-700 text-sm font-medium space-y-2">
+                      <p>В этой команде пока нет добавленных участников.</p>
+                      <p className="text-sm text-slate-600">
+                        Введите @username сотрудника в форме слева или отправьте инвайт-ссылку для подключения.
+                      </p>
                     </div>
-                  ))
-                )}
+                  ) : (
+                    teamMembers.map((m, idx) => (
+                      <div 
+                        key={idx} 
+                        className="p-4 bg-white/85 backdrop-blur-sm rounded-2xl border border-pink-200/80 flex flex-wrap items-center justify-between gap-3 shadow-xs hover:border-pink-300 transition-all"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+                            {m.name ? m.name[0].toUpperCase() : 'U'}
+                          </div>
+                          <div>
+                            <span className="font-bold text-slate-900 block text-sm">
+                              {m.name}
+                            </span>
+                            <span className="text-sm text-slate-600 font-mono">
+                              {m.handle} • {m.joinedAt ? `Присоединен ${new Date(m.joinedAt).toLocaleDateString('ru-RU')}` : 'Доступ к каналам активен'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm bg-white text-slate-800 border border-pink-200 px-3 py-1 font-bold rounded-lg shadow-xs">
+                            {m.role || m.status || 'Участник'}
+                          </span>
+
+                          <button 
+                            type="button"
+                            onClick={() => setMemberToRevoke(m)}
+                            className="text-rose-700 hover:text-rose-900 font-bold text-sm px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer flex items-center gap-1"
+                            title="Отозвать доступ участника и удалить из базы данных"
+                          >
+                            <UserMinus size={14} />
+                            <span>Отозвать доступ</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
 
-              {/* Bottom block: Список каналов команды */}
+              {/* Channels Section */}
               <div className="pt-4 border-t border-pink-200/80 space-y-3">
-                <span className="text-[11px] text-slate-800 uppercase font-black block flex items-center gap-1.5">
-                  <Radio className="w-4 h-4 text-pink-500" />
-                  <span>Список каналов команды (доступны для постинга всем участникам)</span>
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-900 font-bold flex items-center gap-1.5">
+                    <Radio className="w-4 h-4 text-pink-500" />
+                    <span>Каналы команды из базы данных ({teamChannels.length})</span>
+                  </span>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                  {teamChannels
-                    .filter(ch => ch !== '@shishkarnem' && ch !== '@BorgheseClub' && ch !== '@Rentrop_HR_bot')
-                    .map((channelUsername, idx) => {
-                      const ch = channels.find(c => c.username === channelUsername || c.name === channelUsername) || { name: channelUsername, username: channelUsername };
-                      return (
-                        <div key={idx} className="p-3 bg-white/90 rounded-2xl border border-pink-200/80 flex items-center justify-between shadow-2xs">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-pink-100 flex items-center justify-center text-pink-600 font-bold text-xs">
-                              📢
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTeamChannels(teamData?.channels || teamChannels || []);
+                      setIsManageChannelsModalOpen(true);
+                    }}
+                    className="text-sm font-bold text-pink-600 hover:text-pink-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Edit3 size={14} />
+                    <span>Настроить привязку каналов</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {teamChannels.length === 0 ? (
+                    <div className="md:col-span-2 p-6 bg-white/80 rounded-2xl border border-pink-200/80 text-center text-slate-700 text-sm font-medium">
+                      К этой команде пока не привязаны каналы. Нажмите «Настроить привязку каналов», чтобы выбрать каналы из базы SQLite.
+                    </div>
+                  ) : (
+                    teamChannels
+                      .filter(ch => ch !== '@shishkarnem' && ch !== '@BorgheseClub' && ch !== '@Rentrop_HR_bot')
+                      .map((channelUsername, idx) => {
+                        const ch = (localChannels || []).find((c: any) => c.username === channelUsername || c.name === channelUsername) || { name: channelUsername, username: channelUsername };
+                        return (
+                          <div key={idx} className="p-3.5 bg-white/85 rounded-2xl border border-pink-200/80 flex items-center justify-between shadow-xs hover:border-pink-300 transition-all">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-pink-100 text-pink-600 flex items-center justify-center font-bold text-sm shrink-0">
+                                📢
+                              </div>
+                              <div className="min-w-0">
+                                <span className="font-bold text-slate-900 text-sm block truncate max-w-[160px]">
+                                  {ch.name || ch.username}
+                                </span>
+                                <span className="text-sm text-slate-600 font-mono truncate block">
+                                  {ch.username}
+                                </span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="font-bold text-slate-800 text-xs block truncate max-w-[140px]">{ch.name || ch.username}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">{ch.username}</span>
-                            </div>
+
+                            <span className="text-sm font-bold text-slate-800 bg-white/90 px-2.5 py-1 rounded-md border border-pink-200 shrink-0">
+                              Доступен всем
+                            </span>
                           </div>
-
-                          <span className="text-[10px] font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
-                            Доступен всем
-                          </span>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                  )}
                 </div>
               </div>
             </div>
@@ -1988,6 +2419,614 @@ export default function ProfileAndOnboarding({
           </div>
         </div>
       )}
+
+      {/* --- MODAL 1: CREATE TEAM MODAL --- */}
+      <AnimatePresence>
+        {isCreateTeamModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-200/80 rounded-3xl p-6 shadow-2xl text-left space-y-5 text-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-pink-500" />
+                  <h3 className="text-base font-bold text-slate-900">Создать новую команду в SQLite</h3>
+                </div>
+                <button 
+                  onClick={() => setIsCreateTeamModalOpen(false)}
+                  className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateTeamSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm text-slate-800 font-bold block">
+                    Название команды
+                  </label>
+                  <input
+                    type="text"
+                    value={newTeamName}
+                    onChange={e => setNewTeamName(e.target.value)}
+                    placeholder="Например: SMM Команда Студии"
+                    className="w-full bg-white/90 border border-pink-200 rounded-xl p-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-pink-400"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-800 font-bold block">
+                    Выберите каналы из SQLite для делегирования:
+                  </label>
+                  <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                    {(localChannels || []).length === 0 ? (
+                      <p className="text-sm text-slate-600 p-2">У вас нет подключенных каналов в базе данных.</p>
+                    ) : (
+                      (localChannels || []).map((ch: any) => {
+                        const chKey = ch.username || ch.name;
+                        const isChecked = newTeamChannels.includes(chKey);
+                        return (
+                          <label 
+                            key={ch.id || chKey} 
+                            className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
+                              isChecked 
+                                ? 'bg-white border-pink-400 text-slate-900 shadow-xs' 
+                                : 'bg-white/60 border-pink-200 text-slate-700 hover:bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {isChecked ? <CheckSquare size={16} className="text-pink-500 shrink-0" /> : <Square size={16} className="text-slate-400 shrink-0" />}
+                              <span className="text-sm font-bold truncate">{ch.name || ch.username}</span>
+                              <span className="text-sm font-mono text-slate-600 truncate">{ch.username}</span>
+                            </div>
+                            <input 
+                              type="checkbox" 
+                              className="hidden" 
+                              checked={isChecked}
+                              onChange={() => {
+                                if (isChecked) {
+                                  setNewTeamChannels(prev => prev.filter(c => c !== chKey));
+                                } else {
+                                  setNewTeamChannels(prev => [...prev, chKey]);
+                                }
+                              }}
+                            />
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-pink-200/80">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateTeamModalOpen(false)}
+                    className="px-4 py-2 bg-white/80 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold cursor-pointer transition-all"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
+                  >
+                    Зафиксировать команду в SQLite
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL 2: EDIT TEAM MODAL --- */}
+      <AnimatePresence>
+        {isEditTeamModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-200/80 rounded-3xl p-6 shadow-2xl text-left space-y-5 text-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Edit3 className="w-5 h-5 text-pink-500" />
+                  <h3 className="text-base font-bold text-slate-900">Редактировать команду</h3>
+                </div>
+                <button 
+                  onClick={() => setIsEditTeamModalOpen(false)}
+                  className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateTeamSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm text-slate-800 font-bold block">
+                    Название команды в базе данных
+                  </label>
+                  <input
+                    type="text"
+                    value={editTeamName}
+                    onChange={e => setEditTeamName(e.target.value)}
+                    className="w-full bg-white/90 border border-pink-200 rounded-xl p-2.5 text-sm text-slate-900 focus:outline-none focus:border-pink-400"
+                    required
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-pink-200/80">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditTeamModalOpen(false)}
+                    className="px-4 py-2 bg-white/80 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold cursor-pointer transition-all"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
+                  >
+                    Сохранить изменения
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL 3: MANAGE CHANNELS MODAL --- */}
+      <AnimatePresence>
+        {isManageChannelsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-200/80 rounded-3xl p-6 shadow-2xl text-left space-y-5 text-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-5 h-5 text-pink-500" />
+                  <h3 className="text-base font-bold text-slate-900">Каналы команды в SQLite</h3>
+                </div>
+                <button 
+                  onClick={() => setIsManageChannelsModalOpen(false)}
+                  className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <p className="text-sm text-slate-700">
+                Отметьте каналы из базы данных, к которым участники команды будут иметь доступ для генерации и автопостинга:
+              </p>
+
+              <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                {(localChannels || []).length === 0 ? (
+                  <div className="p-4 bg-white/80 rounded-xl text-center text-sm text-slate-600">
+                    У вас пока нет добавленных каналов. Подключите каналы во вкладке «Каналы».
+                  </div>
+                ) : (
+                  (localChannels || []).map((ch: any) => {
+                    const chKey = ch.username || ch.name;
+                    const isChecked = selectedTeamChannels.includes(chKey);
+                    return (
+                      <label 
+                        key={ch.id || chKey} 
+                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                          isChecked 
+                            ? 'bg-white border-pink-400 text-slate-900 shadow-xs' 
+                            : 'bg-white/60 border-pink-200 text-slate-700 hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {isChecked ? <CheckSquare size={16} className="text-pink-500 shrink-0" /> : <Square size={16} className="text-slate-400 shrink-0" />}
+                          <div>
+                            <span className="text-sm font-bold block truncate">{ch.name || ch.username}</span>
+                            <span className="text-sm font-mono text-slate-600 block truncate">{ch.username}</span>
+                          </div>
+                        </div>
+                        <input 
+                          type="checkbox" 
+                          className="hidden" 
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setSelectedTeamChannels(prev => prev.filter(c => c !== chKey));
+                            } else {
+                              setSelectedTeamChannels(prev => [...prev, chKey]);
+                            }
+                          }}
+                        />
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-pink-200/80">
+                <button
+                  type="button"
+                  onClick={() => setIsManageChannelsModalOpen(false)}
+                  className="px-4 py-2 bg-white/80 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold cursor-pointer transition-all"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveTeamChannels}
+                  className="px-5 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  Сохранить в SQLite
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL 4: ADD MEMBER MODAL (FROM SQLITE USERS OR HANDLE) --- */}
+      <AnimatePresence>
+        {isAddMemberModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-200/80 rounded-3xl p-6 shadow-2xl text-left space-y-5 text-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-pink-500" />
+                  <h3 className="text-base font-bold text-slate-900">Добавить участника команды</h3>
+                </div>
+                <button 
+                  onClick={() => setIsAddMemberModalOpen(false)}
+                  className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Select from existing registered DB users */}
+              {allDbUsers.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-800 font-bold block">
+                    Быстрый выбор из зарегистрированных пользователей:
+                  </label>
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 border border-pink-200 rounded-xl p-2 bg-white/70">
+                    {allDbUsers.slice(0, 15).map((u, i) => (
+                      <div 
+                        key={u.id || i}
+                        onClick={() => {
+                          setNewMemberHandle(u.username || `@user_${u.id}`);
+                          setNewMemberName(u.name || u.firstName || '');
+                        }}
+                        className="flex items-center justify-between p-2 rounded-lg bg-white/90 hover:bg-white border border-pink-100 cursor-pointer transition-all shadow-2xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-pink-100 text-pink-600 text-sm flex items-center justify-center font-bold shrink-0">
+                            {u.name ? u.name[0] : 'U'}
+                          </div>
+                          <span className="text-sm font-bold text-slate-900 truncate">{u.name}</span>
+                          <span className="text-sm font-mono text-slate-600 truncate">{u.username || `ID: ${u.id}`}</span>
+                        </div>
+                        <span className="text-sm text-pink-600 font-bold shrink-0">Выбрать</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleAddMemberSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm text-slate-800 font-bold block">
+                    Telegram имя пользователя (@handle или ID)
+                  </label>
+                  <input
+                    type="text"
+                    value={newMemberHandle}
+                    onChange={e => setNewMemberHandle(e.target.value)}
+                    placeholder="@smm_colleague"
+                    className="w-full bg-white/90 border border-pink-200 rounded-xl p-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-pink-400"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm text-slate-800 font-bold block">
+                    Имя / Должность сотрудника (необязательно)
+                  </label>
+                  <input
+                    type="text"
+                    value={newMemberName}
+                    onChange={e => setNewMemberName(e.target.value)}
+                    placeholder="Например: Иван Маркетолог"
+                    className="w-full bg-white/90 border border-pink-200 rounded-xl p-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-pink-400"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-pink-200/80">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddMemberModalOpen(false)}
+                    className="px-4 py-2 bg-white/80 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold cursor-pointer transition-all"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
+                  >
+                    Добавить в SQLite
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL 5: REVOKE MEMBER CONFIRMATION MODAL --- */}
+      <AnimatePresence>
+        {memberToRevoke && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-200/80 rounded-3xl p-6 shadow-2xl text-left space-y-5 text-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-rose-500" />
+                  <h3 className="text-base font-bold text-slate-900">Отозвать доступ участника</h3>
+                </div>
+                <button 
+                  onClick={() => setMemberToRevoke(null)}
+                  className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-2 text-sm text-slate-800">
+                <p>
+                  Вы уверены, что хотите отозвать доступ и удалить из базы данных участника:
+                </p>
+                <div className="p-3 bg-white/80 border border-pink-200 rounded-xl flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center font-bold text-sm">
+                    {memberToRevoke.name ? memberToRevoke.name[0] : 'U'}
+                  </div>
+                  <div>
+                    <strong className="block text-slate-900">{memberToRevoke.name}</strong>
+                    <span className="text-sm font-mono text-slate-600">{memberToRevoke.handle}</span>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-600 pt-1">
+                  Участник больше не сможет публиковать посты и просматривать каналы вашей команды. Запись будет удалена из таблицы teams в SQLite.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-pink-200/80">
+                <button
+                  type="button"
+                  onClick={() => setMemberToRevoke(null)}
+                  className="px-4 py-2 bg-white/80 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold cursor-pointer transition-all"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmRevokeMember}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  Отозвать и удалить
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL 6: DELETE TEAM CONFIRMATION MODAL --- */}
+      <AnimatePresence>
+        {isDeleteTeamModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-200/80 rounded-3xl p-6 shadow-2xl text-left space-y-5 text-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Trash2 className="w-5 h-5 text-rose-500" />
+                  <h3 className="text-base font-bold text-slate-900">Удалить команду из SQLite</h3>
+                </div>
+                <button 
+                  onClick={() => setIsDeleteTeamModalOpen(false)}
+                  className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-2 text-sm text-slate-800">
+                <p>
+                  Вы действительно хотите удалить команду <strong className="text-slate-900">«{teamData?.name}»</strong>?
+                </p>
+                <p className="text-sm text-slate-600">
+                  Все привязки каналов и доступ участников команды будут удалены из базы данных SQLite. Это действие нельзя отменить.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-pink-200/80">
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteTeamModalOpen(false)}
+                  className="px-4 py-2 bg-white/80 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold cursor-pointer transition-all"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteTeam}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  Удалить из SQLite
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL 7: ACCESS RIGHTS & PRIVACY INFO MODAL --- */}
+      <AnimatePresence>
+        {isAccessInfoModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-xl bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-200/80 rounded-3xl p-6 shadow-2xl text-left space-y-5 text-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Info className="w-5 h-5 text-sky-500" />
+                  <h3 className="text-base font-bold text-slate-900">Правила доступа и права участников</h3>
+                </div>
+                <button 
+                  onClick={() => setIsAccessInfoModalOpen(false)}
+                  className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-sm text-slate-800">
+                <div className="p-3.5 bg-white/80 rounded-2xl border border-pink-200 space-y-1">
+                  <h4 className="font-bold text-slate-900">1. Автоматическая верификация участников</h4>
+                  <p className="text-sm text-slate-700 leading-relaxed">
+                    Добавить в команду можно только пользователей, зарегистрированных в базе данных платформы или запустивших бота t.me/IIrkiBot.
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-white/80 rounded-2xl border border-pink-200 space-y-1">
+                  <h4 className="font-bold text-slate-900">2. Приватность и запрет на приглашения</h4>
+                  <p className="text-sm text-slate-700 leading-relaxed">
+                    Каждый пользователь может запретить добавление себя в команды через переключатель приватности в профиле. В таком случае система блокирует попытки инвайтов.
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-white/80 rounded-2xl border border-pink-200 space-y-1">
+                  <h4 className="font-bold text-slate-900">3. Черный список и жалобы администратору</h4>
+                  <p className="text-sm text-slate-700 leading-relaxed">
+                    Вы можете в любой момент добавить команду в черный список или отправить жалобу. Жалобы мгновенно поступают администратору сервиса в Telegram (16926299042) и фиксируются в базе данных SQLite.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end pt-3 border-t border-pink-200/80">
+                <button
+                  type="button"
+                  onClick={() => setIsAccessInfoModalOpen(false)}
+                  className="px-5 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  Понятно
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* --- MODAL 8: REPORT TEAM MODAL --- */}
+      <AnimatePresence>
+        {isReportModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-200/80 rounded-3xl p-6 shadow-2xl text-left space-y-5 text-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Flag className="w-5 h-5 text-rose-500" />
+                  <h3 className="text-base font-bold text-slate-900">Пожаловаться на команду</h3>
+                </div>
+                <button 
+                  onClick={() => setIsReportModalOpen(false)}
+                  className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSendReport} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm text-slate-800 font-bold block">
+                    Причина жалобы:
+                  </label>
+                  <select
+                    value={reportReason}
+                    onChange={e => setReportReason(e.target.value)}
+                    className="w-full bg-white/90 border border-pink-200 rounded-xl p-2.5 text-sm text-slate-900 focus:outline-none focus:border-pink-400"
+                  >
+                    <option value="Спам / Нежелательные приглашения">Спам / Нежелательные приглашения</option>
+                    <option value="Оскорбления / Неприемлемый контент">Оскорбления / Неприемлемый контент</option>
+                    <option value="Мошенничество / Нарушение правил">Мошенничество / Нарушение правил</option>
+                    <option value="Другое">Другое</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm text-slate-800 font-bold block">
+                    Подробности жалобы (необязательно):
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={reportDetails}
+                    onChange={e => setReportDetails(e.target.value)}
+                    placeholder="Опишите подробнее причину жалобы..."
+                    className="w-full bg-white/90 border border-pink-200 rounded-xl p-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-pink-400 resize-none"
+                  />
+                </div>
+
+                <p className="text-sm text-slate-600">
+                  Уведомление с деталями вашей жалобы будет отправлено администратору сервиса в Telegram (16926299042) и зафиксировано в таблице team_reports.
+                </p>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-pink-200/80">
+                  <button
+                    type="button"
+                    onClick={() => setIsReportModalOpen(false)}
+                    className="px-4 py-2 bg-white/80 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold cursor-pointer transition-all"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={reportSubmitting}
+                    className="px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
+                  >
+                    {reportSubmitting ? 'Отправка...' : 'Отправить жалобу'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* --- TAB CONTENT: AI ROUNDTABLE DISCUSSION (VIP EXCLUSIVE) --- */}
       {activeTab === 'roundtable' && (

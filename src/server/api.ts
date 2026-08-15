@@ -13,11 +13,19 @@ import {
   deleteBlogPostFromSQLite, incrementBlogPostViewsInSQLite, incrementBlogPostLikesInSQLite, getBotTokenFromSQLite, getBotDetailsFromSQLite,
   getSQLiteDB, fetchAllUsersFromSQLite, saveSQLiteDB, normalizeUserId
 } from './sqlite';
+import { getAllTariffsFromDb, getTariffById } from './db/tariffsTable';
+import { getUserNotificationsFromDb, markNotificationAsReadInDb, markAllNotificationsAsReadInDb, createNotificationInDb } from './db/notificationsTable';
+import { addTransactionWithBalanceUpdate, getUserTransactionsFromDb, getAllTransactionsFromDb } from './db/transactionsTable';
 import { 
   ensureDefaultFoldersForUser, getFoldersForUser, registerFileInStorage,
   getStorageFilesForUser, slugifyFilename
 } from './db/filesTable';
-import { getTeamsByOwnerOrMember, seedDefaultTeams, addMemberToTeamInDb, removeMemberFromTeamInDb, TeamMember } from './db/teamsTable';
+import { 
+  getTeamsByOwnerOrMember, seedDefaultTeams, addMemberToTeamInDb, 
+  removeMemberFromTeamInDb, TeamMember, createTeamInDb, updateTeamInDb, 
+  deleteTeamInDb, getAllTeamsFromDb, getTeamById, TeamRecord,
+  findUserInDb, syncTeamChannelsFromDb 
+} from './db/teamsTable';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -226,41 +234,46 @@ apiRouter.post('/payments/robokassa/create', (req: Request, res: Response) => {
   }
 });
 
-apiRouter.post('/payments/robokassa/simulate-success', (req: Request, res: Response) => {
+apiRouter.post('/payments/robokassa/simulate-success', async (req: Request, res: Response) => {
   try {
     const { userId, amount, tariffName } = req.body;
     const numAmount = parseFloat(amount) || 0;
-    const idToFind = String(userId || '169262990');
-    
-    const user = DB.getUserById(idToFind) || DB.getUsers().find(u => String(u.telegramId) === idToFind || String(u.id) === idToFind);
-    if (user) {
-      const updates: Partial<User> = {
-        balance: (user.balance || 0) + numAmount,
-        balanceRub: (user.balanceRub || 0) + numAmount,
-        iirky: (user.iirky || 0) + numAmount,
-        tokens: (user.tokens || 0) + numAmount
-      };
+    const cleanUserId = normalizeUserId(userId || '16926299042');
+    const db = await getSQLiteDB();
 
-      if (tariffName && tariffName.toLowerCase() !== 'custom' && !tariffName.includes('Пополнение')) {
-        const lower = tariffName.toLowerCase();
-        if (lower.includes('разгон')) updates.tariff = 'pro';
-        else if (lower.includes('отрыв')) updates.tariff = 'vip';
-        else if (lower.includes('космос')) updates.tariff = 'vip';
-        
-        const now = new Date();
-        now.setMonth(now.getMonth() + 1);
-        updates.premiumUntil = now.toLocaleDateString('ru-RU');
-      }
+    let txType: any = 'pay';
+    let desc = `Пополнение баланса через Робокасса (+${numAmount} ИИрок)`;
+    let targetTariff = '';
 
-      const updatedUser = DB.updateUser(user.id, updates);
-      res.json({
-        success: true,
-        user: updatedUser,
-        message: `🎉 Платеж Робокассы на сумму ${numAmount} ₽ успешно зачислен! Ваш баланс пополнен на +${numAmount} ИИрок.`
-      });
-    } else {
-      res.status(404).json({ error: 'Пользователь не найден в базе данных' });
+    if (tariffName && !tariffName.includes('Пополнение') && tariffName.toLowerCase() !== 'custom') {
+      txType = 'pay';
+      desc = `Оплата тарифа «${tariffName}» (+${numAmount} ИИрок)`;
+      const lower = tariffName.toLowerCase();
+      if (lower.includes('разгон')) targetTariff = 'Разгон';
+      else if (lower.includes('отрыв')) targetTariff = 'Отрыв';
+      else if (lower.includes('космос')) targetTariff = 'Космос';
     }
+
+    const result = addTransactionWithBalanceUpdate(db, {
+      userId: cleanUserId,
+      type: txType,
+      balanceType: 'pay',
+      amount: numAmount,
+      description: desc
+    });
+
+    if (targetTariff) {
+      db.run("UPDATE users SET tariff = ? WHERE id = ?", [targetTariff, cleanUserId]);
+    }
+
+    saveSQLiteDB();
+
+    res.json({
+      success: true,
+      transaction: result.transaction,
+      newBalances: result.newBalances,
+      message: `Платеж на сумму ${numAmount} ₽ успешно зачислен! Ваш баланс пополнен на +${numAmount} ИИрок.`
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -314,7 +327,37 @@ apiRouter.post('/auth/login', (req: Request, res: Response) => {
   });
 });
 
-apiRouter.post('/auth/telegram', (req: Request, res: Response) => {
+function handleAutoJoinTeamInvite(db: any, user: any, rawParam?: string | null) {
+  if (!rawParam || !user) return;
+  try {
+    const code = String(rawParam).trim();
+    if (!code) return;
+    const team = getTeamById(db, code);
+    if (team) {
+      const cleanUserId = normalizeUserId(user.id || user.telegramId);
+      const isAlreadyMember = Array.isArray(team.members) && team.members.some((m: any) => 
+        normalizeUserId(m.userId) === cleanUserId || (m.telegramId && String(m.telegramId) === cleanUserId)
+      );
+      if (!isAlreadyMember && team.ownerId !== cleanUserId) {
+        const newMember: TeamMember = {
+          userId: String(user.id),
+          telegramId: user.telegramId || user.telegram_id,
+          handle: user.username ? (user.username.startsWith('@') ? user.username : `@${user.username}`) : `@user_${user.id}`,
+          name: `${user.firstName || user.first_name || ''} ${user.lastName || user.last_name || ''}`.trim() || user.username || 'Пользователь',
+          joinedAt: new Date().toISOString(),
+          status: 'active',
+          role: 'Участник'
+        };
+        addMemberToTeamInDb(db, team.id, newMember);
+        saveSQLiteDB();
+      }
+    }
+  } catch (e) {
+    console.error('[Auth AutoJoin] Team invite joining error:', e);
+  }
+}
+
+apiRouter.post('/auth/telegram', async (req: Request, res: Response) => {
   const { telegramId, firstName, lastName, password, username, photoUrl, initData } = req.body;
   
   const botToken = DB.getSettings().telegramBotToken || '8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o';
@@ -472,6 +515,10 @@ apiRouter.post('/auth/telegram', (req: Request, res: Response) => {
       referred_by: newUser.referredBy,
       created_at: newUser.createdAt
     }).catch(() => null);
+
+    try {
+      getSQLiteDB().then(db => handleAutoJoinTeamInvite(db, newUser, startParam));
+    } catch (e) {}
 
     res.status(201).json({
       success: true,
@@ -716,6 +763,10 @@ apiRouter.post('/auth/telegram-twa', async (req: Request, res: Response) => {
       last_login: newUser.lastLogin
     }).catch(() => null);
 
+    try {
+      getSQLiteDB().then(db => handleAutoJoinTeamInvite(db, newUser, startParam));
+    } catch (e) {}
+
     res.status(201).json({
       success: true,
       token: `twa_jwt_${telegramId}_${Date.now()}`,
@@ -944,7 +995,6 @@ apiRouter.get('/teams', async (req: Request, res: Response) => {
     const rawUserId = req.query.userId ? String(req.query.userId) : (req.query.telegramId ? String(req.query.telegramId) : '16926299042');
     const userId = normalizeUserId(rawUserId);
     const db = await getSQLiteDB();
-    seedDefaultTeams(db);
 
     const teams = getTeamsByOwnerOrMember(db, userId);
     let team = teams[0] || null;
@@ -954,62 +1004,55 @@ apiRouter.get('/teams', async (req: Request, res: Response) => {
       team = recheck[0] || null;
     }
 
-    // Collect ALL user IDs of team members + owner
-    const allMemberUserIds: string[] = [];
     if (team) {
-      if (team.ownerId) allMemberUserIds.push(normalizeUserId(team.ownerId));
+      // Sync channels from 'channels' table for all participants
+      const syncedChannels = syncTeamChannelsFromDb(db, team.id);
+      team.channels = syncedChannels;
+    }
+
+    // Also get all distinct channels from SQLite channels table
+    let allTeamChannels: Channel[] = [];
+    if (team) {
+      const allUserIds = new Set<string>();
+      if (team.ownerId) allUserIds.add(team.ownerId);
       if (Array.isArray(team.members)) {
         team.members.forEach((m: any) => {
-          if (m.userId) allMemberUserIds.push(normalizeUserId(m.userId));
-          if (m.telegramId) allMemberUserIds.push(normalizeUserId(m.telegramId));
+          if (m.userId) allUserIds.add(String(m.userId));
+          if (m.telegramId) allUserIds.add(String(m.telegramId));
         });
       }
-    } else {
-      allMemberUserIds.push(userId);
+      allUserIds.add('16926299042');
+      allUserIds.add('169262990');
+
+      try {
+        const inClause = Array.from(allUserIds).map(id => `'${id}'`).join(',');
+        const sqlRes = db.exec(`SELECT * FROM channels WHERE user_id IN (${inClause}) OR user_id IS NULL OR user_id = ''`);
+        if (sqlRes && sqlRes.length > 0 && sqlRes[0].values) {
+          const cols = sqlRes[0].columns;
+          sqlRes[0].values.forEach(row => {
+            const chObj: any = {};
+            cols.forEach((col, i) => chObj[col] = row[i]);
+            if (chObj.username || chObj.name) {
+              allTeamChannels.push({
+                id: String(chObj.id),
+                userId: normalizeUserId(chObj.user_id),
+                name: chObj.name || chObj.username,
+                username: chObj.username || chObj.name,
+                telegramId: chObj.telegram_id || '',
+                subscribersCount: chObj.subscribers_count || 0,
+                isActive: chObj.is_active !== undefined ? Boolean(chObj.is_active) : true,
+                isPremium: true,
+                inviteLink: chObj.invite_link || '',
+                description: chObj.description || '',
+                status: chObj.is_active ? 'connected' : 'disconnected'
+              });
+            }
+          });
+        }
+      } catch (e) {}
     }
-    allMemberUserIds.push('16926299042', '169262990');
 
-    // Deduplicate user IDs
-    const uniqueUserIds = Array.from(new Set(allMemberUserIds.map(id => normalizeUserId(id))));
-
-    // Fetch channels for ALL member user IDs
-    let allTeamChannels: Channel[] = [];
-    uniqueUserIds.forEach(mId => {
-      const memberChs = DB.getChannels(mId);
-      if (Array.isArray(memberChs)) {
-        allTeamChannels = [...allTeamChannels, ...memberChs];
-      }
-    });
-
-    // Also query SQLite directly for channels of any member user ID
-    try {
-      const inClause = uniqueUserIds.map(id => `'${id}'`).join(',');
-      const sqlRes = db.exec(`SELECT * FROM channels WHERE user_id IN (${inClause}) OR user_id IS NULL OR user_id = ''`);
-      if (sqlRes && sqlRes.length > 0 && sqlRes[0].values) {
-        const cols = sqlRes[0].columns;
-        sqlRes[0].values.forEach(row => {
-          const chObj: any = {};
-          cols.forEach((col, i) => chObj[col] = row[i]);
-          if (chObj.username || chObj.name) {
-            allTeamChannels.push({
-              id: String(chObj.id),
-              userId: normalizeUserId(chObj.user_id),
-              name: chObj.name || chObj.username,
-              username: chObj.username || chObj.name,
-              telegramId: chObj.telegram_id || '',
-              subscribersCount: chObj.subscribers_count || 0,
-              isActive: chObj.is_active !== undefined ? Boolean(chObj.is_active) : true,
-              isPremium: true,
-              inviteLink: chObj.invite_link || '',
-              description: chObj.description || '',
-              status: chObj.is_active ? 'connected' : 'disconnected'
-            });
-          }
-        });
-      }
-    } catch (e) {}
-
-    // Deduplicate channels by username or id
+    // Deduplicate channels
     const seen = new Set<string>();
     const deduplicatedChannels: Channel[] = [];
     allTeamChannels.forEach(c => {
@@ -1020,26 +1063,9 @@ apiRouter.get('/teams', async (req: Request, res: Response) => {
       }
     });
 
-    const channelNames = deduplicatedChannels.map(c => c.username).filter(Boolean);
-
-    if (team) {
-      team.channels = channelNames.length > 0 ? channelNames : team.channels;
-    }
-
     res.json({
       success: true,
-      team: team || {
-        id: `team_${userId}`,
-        ownerId: userId,
-        name: 'SMM Команда SAV_AI',
-        inviteCode: `team_${userId}`,
-        members: [
-          { userId: '80926979801', telegramId: 8092697980, handle: '@DigiStaff', name: 'Александр DigiStaff', joinedAt: new Date().toISOString(), status: 'active' },
-          { userId: '16187387221', telegramId: 1618738722, handle: '@renatzakir', name: 'Renat Zakir', joinedAt: new Date().toISOString(), status: 'active' }
-        ],
-        channels: channelNames.length > 0 ? channelNames : ['@botmothercom', '@sav_ai_chat', '@SAV_AI', '@restreamsav'],
-        createdAt: new Date().toISOString()
-      },
+      team,
       dbChannels: deduplicatedChannels
     });
   } catch (err: any) {
@@ -1047,45 +1073,234 @@ apiRouter.get('/teams', async (req: Request, res: Response) => {
   }
 });
 
+// Get all teams in database
+apiRouter.get('/teams/all', async (req: Request, res: Response) => {
+  try {
+    const db = await getSQLiteDB();
+    const teams = getAllTeamsFromDb(db);
+    res.json({ success: true, teams });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка при получении списка команд: ' + err.message });
+  }
+});
+
+// Create new team
+apiRouter.post('/teams', async (req: Request, res: Response) => {
+  try {
+    const { ownerId, name, inviteCode, channels, members } = req.body;
+    const cleanOwnerId = normalizeUserId(ownerId || '16926299042');
+    const db = await getSQLiteDB();
+
+    const newTeam = createTeamInDb(db, {
+      ownerId: cleanOwnerId,
+      name: name || 'Новая SMM Команда',
+      inviteCode: inviteCode || `team_${cleanOwnerId}_${Date.now()}`,
+      channels: Array.isArray(channels) ? channels : [],
+      members: Array.isArray(members) ? members : []
+    });
+
+    saveSQLiteDB();
+    res.status(201).json({ success: true, team: newTeam });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка при создании команды: ' + err.message });
+  }
+});
+
+// Update team details
+apiRouter.put('/teams/:id', async (req: Request, res: Response) => {
+  try {
+    const teamId = req.params.id;
+    const { name, channels, members, ownerId, inviteCode } = req.body;
+    const db = await getSQLiteDB();
+
+    const updated = updateTeamInDb(db, teamId, {
+      name,
+      channels,
+      members,
+      ownerId,
+      inviteCode
+    });
+
+    if (!updated) {
+      res.status(404).json({ error: 'Команда не найдена' });
+      return;
+    }
+
+    saveSQLiteDB();
+    res.json({ success: true, team: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка при обновлении команды: ' + err.message });
+  }
+});
+
+// Delete team from SQLite
+apiRouter.delete('/teams/:id', async (req: Request, res: Response) => {
+  try {
+    const teamId = req.params.id;
+    const db = await getSQLiteDB();
+    const ok = deleteTeamInDb(db, teamId);
+    saveSQLiteDB();
+    res.json({ success: ok, id: teamId });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка при удалении команды: ' + err.message });
+  }
+});
+
+// Update team channels
+apiRouter.put('/teams/:id/channels', async (req: Request, res: Response) => {
+  try {
+    const teamId = req.params.id;
+    const { channels } = req.body;
+    const db = await getSQLiteDB();
+
+    const updated = updateTeamInDb(db, teamId, { channels: Array.isArray(channels) ? channels : [] });
+    saveSQLiteDB();
+    res.json({ success: true, team: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка при обновлении каналов команды: ' + err.message });
+  }
+});
+
+// Add member with strict user database validation & privacy & blacklist check
 apiRouter.post('/teams/members', async (req: Request, res: Response) => {
   try {
-    const { ownerId, username, handle } = req.body;
+    const { ownerId, username, handle, role, teamId } = req.body;
     const db = await getSQLiteDB();
 
     const rawHandle = (username || handle || '').replace(/^@/, '').trim();
     if (!rawHandle) {
-      res.status(400).json({ error: 'Укажите username пользователя' });
+      res.status(400).json({ error: 'Укажите @username или ID пользователя' });
       return;
     }
 
-    const users = DB.getUsers();
-    const matchedUser = users.find(u => 
-      (u.telegramUsername && u.telegramUsername.toLowerCase() === rawHandle.toLowerCase()) ||
-      (u.username && u.username.toLowerCase() === rawHandle.toLowerCase())
-    );
+    // 1. Verify that user exists in SQLite 'users' table
+    const matchedUser = findUserInDb(db, rawHandle);
+    if (!matchedUser) {
+      res.status(404).json({
+        error: `Пользователь @${rawHandle} не найден в базе данных сервиса. Пользователь должен предварительно зарегистрироваться на платформе или запустить бота t.me/IIrkiBot.`
+      });
+      return;
+    }
+
+    // 2. Check if user disabled team invites
+    if (matchedUser.allow_team_invites === 0 || matchedUser.allow_team_invites === false || matchedUser.allow_team_invites === '0') {
+      res.status(403).json({
+        error: `Пользователь @${rawHandle} отключил возможность добавления себя в команды в настройках профиля.`
+      });
+      return;
+    }
+
+    // 3. Check if target user has blacklisted this team or owner
+    let blacklist: string[] = [];
+    try {
+      if (matchedUser.team_blacklist) {
+        blacklist = typeof matchedUser.team_blacklist === 'string' ? JSON.parse(matchedUser.team_blacklist) : matchedUser.team_blacklist;
+      }
+    } catch (e) {}
+
+    const cleanOwnerId = normalizeUserId(ownerId || '16926299042');
+    const cleanTeamId = teamId ? String(teamId) : `team_${cleanOwnerId}`;
+
+    if (blacklist.includes(cleanTeamId) || blacklist.includes(cleanOwnerId)) {
+      res.status(403).json({
+        error: `Пользователь @${rawHandle} добавил эту команду в черный список.`
+      });
+      return;
+    }
 
     const newMember: TeamMember = {
-      userId: matchedUser ? String(matchedUser.id) : `user_${Date.now()}`,
-      telegramId: matchedUser ? matchedUser.telegramId : undefined,
-      handle: `@${rawHandle}`,
-      name: matchedUser ? (matchedUser.firstName || matchedUser.name || `@${rawHandle}`) : `@${rawHandle}`,
+      userId: String(matchedUser.id),
+      telegramId: matchedUser.telegram_id ? Number(matchedUser.telegram_id) : undefined,
+      handle: matchedUser.username ? (matchedUser.username.startsWith('@') ? matchedUser.username : `@${matchedUser.username}`) : `@${rawHandle}`,
+      name: `${matchedUser.first_name || ''} ${matchedUser.last_name || ''}`.trim() || matchedUser.username || `@${rawHandle}`,
       joinedAt: new Date().toISOString(),
-      status: 'active'
+      status: 'active',
+      role: role || 'Участник'
     };
 
-    const updatedTeam = addMemberToTeamInDb(db, ownerId || '16926299042', newMember);
-    saveSQLiteDB();
+    const updatedTeam = addMemberToTeamInDb(db, cleanTeamId, newMember);
+    if (!updatedTeam) {
+      res.status(400).json({ error: 'Не удалось добавить участника в команду' });
+      return;
+    }
 
+    saveSQLiteDB();
     res.json({ success: true, team: updatedTeam, newMember });
   } catch (err: any) {
     res.status(500).json({ error: 'Ошибка при добавлении участника в команду: ' + err.message });
   }
 });
 
+// Join team via invite code / link
+apiRouter.post('/teams/join', async (req: Request, res: Response) => {
+  try {
+    const { inviteCode, userId } = req.body;
+    if (!inviteCode || !userId) {
+      res.status(400).json({ error: 'Не указан инвайт-код или ID пользователя' });
+      return;
+    }
+
+    const cleanCode = String(inviteCode).trim();
+    const cleanUserId = normalizeUserId(userId);
+    const db = await getSQLiteDB();
+
+    // Look up team by invite_code or id
+    const team = getTeamById(db, cleanCode);
+    if (!team) {
+      res.status(404).json({ error: 'Команда по указанному инвайт-коду не найдена' });
+      return;
+    }
+
+    // Verify user in SQLite
+    const user = findUserInDb(db, cleanUserId);
+    if (!user) {
+      res.status(404).json({ error: 'Пользователь не найден в базе данных' });
+      return;
+    }
+
+    // Check privacy
+    if (user.allow_team_invites === 0 || user.allow_team_invites === false || user.allow_team_invites === '0') {
+      res.status(403).json({ error: 'У вас в настройках включен запрет на приглашение в команды' });
+      return;
+    }
+
+    // Check blacklist
+    let blacklist: string[] = [];
+    try {
+      if (user.team_blacklist) {
+        blacklist = typeof user.team_blacklist === 'string' ? JSON.parse(user.team_blacklist) : user.team_blacklist;
+      }
+    } catch (e) {}
+
+    if (blacklist.includes(team.id) || blacklist.includes(team.ownerId)) {
+      res.status(403).json({ error: 'Эта команда находится в вашем черном списке' });
+      return;
+    }
+
+    const newMember: TeamMember = {
+      userId: String(user.id),
+      telegramId: user.telegram_id ? Number(user.telegram_id) : undefined,
+      handle: user.username ? (user.username.startsWith('@') ? user.username : `@${user.username}`) : `@user_${user.id}`,
+      name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || `Пользователь`,
+      joinedAt: new Date().toISOString(),
+      status: 'active',
+      role: 'Участник'
+    };
+
+    const updatedTeam = addMemberToTeamInDb(db, team.id, newMember);
+    saveSQLiteDB();
+
+    res.json({ success: true, message: `Вы успешно присоединились к команде "${team.name}"!`, team: updatedTeam });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка при входе по инвайт-ссылке: ' + err.message });
+  }
+});
+
+// Remove member from team
 apiRouter.delete('/teams/members/:id', async (req: Request, res: Response) => {
   try {
     const memberId = req.params.id;
-    const ownerId = (req.query.ownerId as string) || '16926299042';
+    const ownerId = (req.query.ownerId as string) || (req.query.teamId as string) || '16926299042';
     const db = await getSQLiteDB();
 
     const updatedTeam = removeMemberFromTeamInDb(db, ownerId, memberId);
@@ -1094,6 +1309,188 @@ apiRouter.delete('/teams/members/:id', async (req: Request, res: Response) => {
     res.json({ success: true, team: updatedTeam });
   } catch (err: any) {
     res.status(500).json({ error: 'Ошибка при удалении участника из команды: ' + err.message });
+  }
+});
+
+// User Team Privacy Settings (GET / PUT)
+apiRouter.get('/user/team-privacy', async (req: Request, res: Response) => {
+  try {
+    const rawUserId = req.query.userId ? String(req.query.userId) : '16926299042';
+    const userId = normalizeUserId(rawUserId);
+    const db = await getSQLiteDB();
+
+    const user = findUserInDb(db, userId);
+    if (!user) {
+      res.json({ allowTeamInvites: true, teamBlacklist: [] });
+      return;
+    }
+
+    const allowTeamInvites = user.allow_team_invites !== 0 && user.allow_team_invites !== '0' && user.allow_team_invites !== false;
+    let teamBlacklist: string[] = [];
+    try {
+      if (user.team_blacklist) {
+        teamBlacklist = typeof user.team_blacklist === 'string' ? JSON.parse(user.team_blacklist) : user.team_blacklist;
+      }
+    } catch (e) {}
+
+    res.json({ allowTeamInvites, teamBlacklist });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка получения настроек приватности: ' + err.message });
+  }
+});
+
+apiRouter.put('/user/team-privacy', async (req: Request, res: Response) => {
+  try {
+    const { userId, allowTeamInvites, teamBlacklist } = req.body;
+    const cleanUserId = normalizeUserId(userId || '16926299042');
+    const db = await getSQLiteDB();
+
+    const allowVal = allowTeamInvites === false || allowTeamInvites === 0 ? 0 : 1;
+    const blacklistVal = JSON.stringify(Array.isArray(teamBlacklist) ? teamBlacklist : []);
+
+    db.run(
+      `UPDATE users SET allow_team_invites = ?, team_blacklist = ? WHERE id = ? OR telegram_id = ?`,
+      [allowVal, blacklistVal, cleanUserId, cleanUserId]
+    );
+
+    saveSQLiteDB();
+    res.json({ success: true, allowTeamInvites: allowVal === 1, teamBlacklist: Array.isArray(teamBlacklist) ? teamBlacklist : [] });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка сохранения настроек приватности: ' + err.message });
+  }
+});
+
+// Blacklist team for user
+apiRouter.post('/teams/blacklist', async (req: Request, res: Response) => {
+  try {
+    const { userId, teamId } = req.body;
+    if (!userId || !teamId) {
+      res.status(400).json({ error: 'Не указан userId или teamId' });
+      return;
+    }
+
+    const cleanUserId = normalizeUserId(userId);
+    const db = await getSQLiteDB();
+    const user = findUserInDb(db, cleanUserId);
+    if (!user) {
+      res.status(404).json({ error: 'Пользователь не найден' });
+      return;
+    }
+
+    let blacklist: string[] = [];
+    try {
+      if (user.team_blacklist) {
+        blacklist = typeof user.team_blacklist === 'string' ? JSON.parse(user.team_blacklist) : user.team_blacklist;
+      }
+    } catch (e) {}
+
+    if (!blacklist.includes(teamId)) {
+      blacklist.push(teamId);
+    }
+
+    db.run(
+      `UPDATE users SET team_blacklist = ? WHERE id = ? OR telegram_id = ?`,
+      [JSON.stringify(blacklist), cleanUserId, cleanUserId]
+    );
+
+    // Also remove user from the team
+    removeMemberFromTeamInDb(db, teamId, cleanUserId);
+
+    saveSQLiteDB();
+    res.json({ success: true, message: 'Команда добавлена в черный список', teamBlacklist: blacklist });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка добавления в черный список: ' + err.message });
+  }
+});
+
+apiRouter.delete('/teams/blacklist/:teamId', async (req: Request, res: Response) => {
+  try {
+    const teamId = req.params.teamId;
+    const rawUserId = req.query.userId as string;
+    if (!rawUserId) {
+      res.status(400).json({ error: 'Не указан userId' });
+      return;
+    }
+
+    const cleanUserId = normalizeUserId(rawUserId);
+    const db = await getSQLiteDB();
+    const user = findUserInDb(db, cleanUserId);
+    if (!user) {
+      res.status(404).json({ error: 'Пользователь не найден' });
+      return;
+    }
+
+    let blacklist: string[] = [];
+    try {
+      if (user.team_blacklist) {
+        blacklist = typeof user.team_blacklist === 'string' ? JSON.parse(user.team_blacklist) : user.team_blacklist;
+      }
+    } catch (e) {}
+
+    blacklist = blacklist.filter(id => id !== teamId);
+
+    db.run(
+      `UPDATE users SET team_blacklist = ? WHERE id = ? OR telegram_id = ?`,
+      [JSON.stringify(blacklist), cleanUserId, cleanUserId]
+    );
+
+    saveSQLiteDB();
+    res.json({ success: true, message: 'Команда удалена из черного списка', teamBlacklist: blacklist });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка удаления из черного списка: ' + err.message });
+  }
+});
+
+// Report Team to Admin in Telegram (16926299042)
+apiRouter.post('/teams/report', async (req: Request, res: Response) => {
+  try {
+    const { reporterId, reporterName, teamId, teamName, ownerId, reason, details } = req.body;
+    const db = await getSQLiteDB();
+
+    const reportId = `rep_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const createdAt = new Date().toISOString();
+
+    // 1. Save report in SQLite DB
+    db.run(
+      `INSERT INTO team_reports (id, reporter_id, reporter_name, team_id, team_name, owner_id, reason, details, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        reportId,
+        String(reporterId || 'Unknown'),
+        String(reporterName || 'Пользователь'),
+        String(teamId || 'Unknown'),
+        String(teamName || 'Без названия'),
+        String(ownerId || 'Unknown'),
+        String(reason || 'Жалоба на команду'),
+        String(details || ''),
+        'pending',
+        createdAt
+      ]
+    );
+
+    saveSQLiteDB();
+
+    // 2. Send Telegram notification to service administrator 16926299042
+    const adminTgId = 16926299042;
+    const tgMessage = `🚨 <b>ЖАЛОБА НА КОМАНДУ В СЕРВИСЕ</b> 🚨\n\n` +
+      `👤 <b>Заявитель:</b> ${reporterName || 'Пользователь'} (ID: <code>${reporterId}</code>)\n` +
+      `👥 <b>Команда:</b> ${teamName || 'Без названия'} (ID: <code>${teamId}</code>)\n` +
+      `👑 <b>Владелец команды:</b> <code>${ownerId}</code>\n` +
+      `⚠️ <b>Причина:</b> <b>${reason || 'Не указана'}</b>\n` +
+      `📝 <b>Комментарий:</b> ${details || 'Нет дополнительных деталей'}\n` +
+      `🕒 <b>Дата:</b> ${new Date().toLocaleString('ru-RU')}`;
+
+    try {
+      await sendPrivateTelegramNotification(adminTgId, tgMessage);
+    } catch (tgErr) {
+      console.error('[Teams Report] Error sending Telegram alert to admin:', tgErr);
+    }
+
+    res.json({
+      success: true,
+      message: 'Жалоба успешно зафиксирована и отправлена администратору сервиса в Telegram (16926299042).'
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка отправки жалобы: ' + err.message });
   }
 });
 
@@ -1175,6 +1572,10 @@ apiRouter.post('/auth/register', (req: Request, res: Response) => {
     referred_by: newUser.referredBy,
     created_at: newUser.createdAt
   }).catch(() => null);
+
+  try {
+    getSQLiteDB().then(db => handleAutoJoinTeamInvite(db, newUser, referralCode));
+  } catch (e) {}
 
   // Send welcome email via SMTP
   sendEmail({
@@ -2425,7 +2826,7 @@ apiRouter.post('/import-csv', (req: Request, res: Response) => {
 });
 
 // Balance Top-up
-apiRouter.post('/users/:id/topup', (req: Request, res: Response) => {
+apiRouter.post('/users/:id/topup', async (req: Request, res: Response) => {
   const { id } = req.params;
   const { amount } = req.body;
   
@@ -2435,22 +2836,27 @@ apiRouter.post('/users/:id/topup', (req: Request, res: Response) => {
   }
 
   try {
-    const users = DB.getUsers();
-    const user = users.find(u => u.id === id);
-    if (!user) {
-      res.status(404).json({ error: 'Пользователь не найден' });
-      return;
-    }
+    const cleanUserId = normalizeUserId(id);
+    const db = await getSQLiteDB();
 
     const rubles = Number(amount);
     const coins = rubles; // 1 ruble = 1 AI-coin (ИИрка)
-    const updated = DB.updateUser(id, {
-      balance: (user.balance || 0) + coins
+
+    const result = addTransactionWithBalanceUpdate(db, {
+      userId: cleanUserId,
+      type: 'pay',
+      balanceType: 'pay',
+      amount: coins,
+      description: `Пополнение баланса (+${coins} ИИрок за ${rubles} руб.)`
     });
+
+    saveSQLiteDB();
 
     res.json({
       success: true,
-      balance: updated.balance,
+      balance: result.newBalances.balance,
+      newBalances: result.newBalances,
+      transaction: result.transaction,
       message: `Баланс успешно пополнен на ${coins} ИИрок за ${rubles} руб.`
     });
   } catch (err: any) {
@@ -4072,29 +4478,29 @@ function formatFileSize(bytes?: number): string {
 }
 
 // Tariffs List API
-apiRouter.get('/tariffs', (req: Request, res: Response) => {
+apiRouter.get('/tariffs', async (req: Request, res: Response) => {
   try {
-    const db = DB.getSyncSQLiteDB();
-    if (db) {
-      const resTariffs = db.exec("SELECT * FROM tariffs");
-      if (resTariffs[0]) {
-        const columns = resTariffs[0].columns;
-        const rows = resTariffs[0].values.map((v: any[]) => {
-          const obj: any = {};
-          columns.forEach((col, idx) => obj[col] = v[idx]);
-          return obj;
-        });
-        return res.json({ success: true, tariffs: rows });
-      }
+    const db = await getSQLiteDB();
+    const rows = getAllTariffsFromDb(db);
+    if (rows && rows.length > 0) {
+      return res.json({ 
+        success: true, 
+        tariffs: rows.map(r => ({
+          ...r,
+          features: typeof r.features === 'string' ? JSON.parse(r.features || '[]') : r.features
+        }))
+      });
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('[API /tariffs] Error reading tariffs from DB:', e);
+  }
   res.json({
     success: true,
     tariffs: [
-      { id: 'start', name: 'Старт', code: 'start', icon: '🌱', price: '0 ИИрок', amount_rub: 0 },
-      { id: 'razgon', name: 'Разгон', code: 'razgon', icon: '⚡', price: '990 ИИрок / мес', amount_rub: 990 },
-      { id: 'otryv', name: 'Отрыв', code: 'otryv', icon: '🔥', price: '4,900 ИИрок / мес', amount_rub: 4900 },
-      { id: 'kosmos', name: 'Космос', code: 'kosmos', icon: '👑', price: 'Индивидуально', amount_rub: 15000 }
+      { id: 'start', name: 'Старт', price_iirky: '0 ИИрок', price_rub: 0, sub: 'Старт без вложений', monthly_iirky: 300, features: [] },
+      { id: 'razgon', name: 'Разгон', price_iirky: '990 ИИрок / мес', price_rub: 990, sub: 'Хватит на несколько каналов', monthly_iirky: 990, features: [] },
+      { id: 'otryv', name: 'Отрыв', price_iirky: '4,900 ИИрок / мес', price_rub: 4900, sub: 'Хватит на десяток каналов', monthly_iirky: 4900, features: [] },
+      { id: 'cosmos', name: 'Космос', price_iirky: 'Индивидуально', price_rub: 15000, sub: 'Индивидуальная разработка', monthly_iirky: 15000, features: [] }
     ]
   });
 });
@@ -4713,6 +5119,159 @@ apiRouter.post('/admin/db/backups/restore', async (req: Request, res: Response) 
   } catch (err: any) {
     console.error('Restore Backup error:', err);
     res.status(500).json({ error: err.message || 'Failed to restore backup' });
+  }
+});
+
+// Billing & Transactions SQLite Endpoints
+apiRouter.get('/billing/transactions', async (req: Request, res: Response) => {
+  try {
+    const rawUserId = req.query.userId ? String(req.query.userId) : '16926299042';
+    const userId = normalizeUserId(rawUserId);
+    const db = await getSQLiteDB();
+
+    const list = getUserTransactionsFromDb(db, userId, 100);
+    res.json({ success: true, transactions: list });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка загрузки истории транзакций: ' + err.message });
+  }
+});
+
+apiRouter.post('/billing/transactions', async (req: Request, res: Response) => {
+  try {
+    const { userId, amount, type, description, comment, balanceType } = req.body;
+    const cleanUserId = normalizeUserId(userId || '16926299042');
+    const db = await getSQLiteDB();
+
+    const numAmount = Number(amount) || 0;
+    const txType = (type || 'cost') as any;
+
+    const result = addTransactionWithBalanceUpdate(db, {
+      userId: cleanUserId,
+      type: txType,
+      balanceType: balanceType,
+      amount: numAmount,
+      description: description || 'Транзакция',
+      comment: comment || ''
+    });
+
+    saveSQLiteDB();
+    res.json({ success: true, transaction: result.transaction, newBalances: result.newBalances });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка сохранения транзакции: ' + err.message });
+  }
+});
+
+// Admin Balance Adjust Calculator Endpoint
+apiRouter.post('/admin/user-balance-adjust', async (req: Request, res: Response) => {
+  try {
+    const { userId, amount, balanceType, comment, description } = req.body;
+    if (!userId) {
+      res.status(400).json({ error: 'Не указан пользователь' });
+      return;
+    }
+    const cleanUserId = normalizeUserId(userId);
+    const numAmount = parseInt(String(amount), 10);
+    if (isNaN(numAmount) || numAmount === 0) {
+      res.status(400).json({ error: 'Укажите корректную сумму изменения (не равную 0)' });
+      return;
+    }
+    if (!comment || typeof comment !== 'string' || !comment.trim()) {
+      res.status(400).json({ error: 'Обязательно укажите причину (комментарий) изменения баланса' });
+      return;
+    }
+
+    const db = await getSQLiteDB();
+    const result = addTransactionWithBalanceUpdate(db, {
+      userId: cleanUserId,
+      type: 'admin',
+      balanceType: balanceType || 'admin',
+      amount: numAmount,
+      description: description || `Корректировка администратором: ${numAmount > 0 ? '+' : ''}${numAmount} ИИрок`,
+      comment: comment.trim()
+    });
+
+    saveSQLiteDB();
+    res.json({ 
+      success: true, 
+      transaction: result.transaction, 
+      newBalances: result.newBalances,
+      message: `Баланс пользователя ${cleanUserId} успешно скорректирован на ${numAmount > 0 ? '+' : ''}${numAmount} ИИрок.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка корректировки баланса: ' + err.message });
+  }
+});
+
+// User Notifications Endpoints
+apiRouter.get('/notifications', async (req: Request, res: Response) => {
+  try {
+    const rawUserId = req.query.userId ? String(req.query.userId) : '16926299042';
+    const userId = normalizeUserId(rawUserId);
+    const db = await getSQLiteDB();
+
+    const list = getUserNotificationsFromDb(db, userId, 50);
+    const unreadCount = list.filter(n => !n.is_read).length;
+
+    res.json({ success: true, notifications: list, unreadCount });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка получения уведомлений: ' + err.message });
+  }
+});
+
+apiRouter.post('/notifications/:id/read', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const rawUserId = req.body.userId ? String(req.body.userId) : '16926299042';
+    const userId = normalizeUserId(rawUserId);
+    const db = await getSQLiteDB();
+
+    markNotificationAsReadInDb(db, id, userId);
+    saveSQLiteDB();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка отметки уведомления: ' + err.message });
+  }
+});
+
+apiRouter.post('/notifications/read-all', async (req: Request, res: Response) => {
+  try {
+    const rawUserId = req.body.userId ? String(req.body.userId) : '16926299042';
+    const userId = normalizeUserId(rawUserId);
+    const db = await getSQLiteDB();
+
+    markAllNotificationsAsReadInDb(db, userId);
+    saveSQLiteDB();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка отметки всех уведомлений: ' + err.message });
+  }
+});
+
+apiRouter.post('/billing/exchange', async (req: Request, res: Response) => {
+  try {
+    const { userId, amountRub } = req.body;
+    const cleanUserId = normalizeUserId(userId || '16926299042');
+    const db = await getSQLiteDB();
+
+    const costRub = parseFloat(amountRub) || 0;
+    if (costRub <= 0) {
+      res.status(400).json({ error: 'Укажите корректную сумму в рублях' });
+      return;
+    }
+
+    const iirkyToAdd = Math.round(costRub * 1);
+    const result = addTransactionWithBalanceUpdate(db, {
+      userId: cleanUserId,
+      type: 'pay',
+      balanceType: 'pay',
+      amount: iirkyToAdd,
+      description: `Обмен из рублевого баланса: +${iirkyToAdd} 🪙`
+    });
+
+    saveSQLiteDB();
+    res.json({ success: true, addedIirky: iirkyToAdd, transactionId: result.transaction.id, newBalances: result.newBalances });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка обмена ИИрок: ' + err.message });
   }
 });
 

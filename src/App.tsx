@@ -79,7 +79,7 @@ export default function App() {
       const path = window.location.pathname;
 
       const rawAppPaths = [
-        '/dashboard', '/posts', '/channels', '/calendar', '/gallery', '/history', '/templates', '/scenarios', '/settings',
+        '/dashboard', '/posts', '/channels', '/calendar', '/gallery', '/history', '/templates', '/scenarios', '/crosspost', '/settings',
         '/social', '/market', '/bundles', '/profile', '/tarif', '/partner', '/teams', '/brand', '/api-keys', '/roundtable', '/enterprise', '/admin', '/system-admin', '/reset-password'
       ];
 
@@ -919,7 +919,7 @@ export default function App() {
               onClick={() => changeRoute('/dashboard')}
             >
               <img 
-                src="/file/2/iismmlogo.png" 
+                src="/file/9/iismmlogo.png" 
                 alt="ИИSMM Logo" 
                 className="h-7 w-auto object-contain max-w-[120px]"
               />
@@ -946,7 +946,7 @@ export default function App() {
               title="ИИSMM"
             >
               <img 
-                src="/file/2/iismmlogo.png" 
+                src="/file/9/iismmlogo.png" 
                 alt="ИИSMM Logo" 
                 className="h-7 w-auto object-contain max-w-[120px]"
               />
@@ -998,13 +998,13 @@ export default function App() {
                   { label: '📢 Каналы', path: '/channels', color: 'hover:bg-sky-50 text-slate-800' },
                   { label: '🔮 Соцсеть', path: '/social', color: 'hover:bg-pink-50 text-pink-600 font-extrabold' },
                   { label: '📅 Календарь', path: '/calendar', color: 'hover:bg-orange-50 text-slate-800' },
-                  { label: '🖼️ Галерея', path: '/gallery', color: 'hover:bg-sky-50 text-slate-800' },
-                  { label: '🎬 СценарИИ', path: '/scenarios', color: 'hover:bg-purple-50 text-slate-800' },
                   ...(user.telegramUsername === '@shishkarnem' || user.name.toLowerCase().includes('шишкар') ? [
                     { label: '👑 Админка', path: '/admin', color: 'hover:bg-amber-50 text-amber-700 font-black' }
                   ] : [])
                 ].map((item) => {
-                  const isActive = currentPath.replace('169262990', '').startsWith(item.path);
+                  const cleanP = currentPath.replace('169262990', '');
+                  const isPostsRelated = item.path === '/posts' && (cleanP.startsWith('/posts') || cleanP.startsWith('/scenarios') || cleanP.startsWith('/crosspost'));
+                  const isActive = isPostsRelated || cleanP.startsWith(item.path);
                   return (
                     <button
                       key={item.path}
@@ -1037,7 +1037,7 @@ export default function App() {
               exit={{ opacity: 0, y: -15 }}
               transition={{ duration: 0.18 }}
             >
-              {(currentPath === '/' || currentPath === '' || currentPath.startsWith('/dashboard') || currentPath.startsWith('/main') || currentPath.startsWith('/posts')) && (
+              {(currentPath === '/' || currentPath === '' || currentPath.startsWith('/dashboard') || currentPath.startsWith('/main') || currentPath.startsWith('/posts') || currentPath.startsWith('/scenarios') || currentPath.startsWith('/crosspost')) && (
                 <Posts 
                   dayRequests={dayRequests}
                   channels={channels}
@@ -1052,6 +1052,8 @@ export default function App() {
                   selectedPostId={selectedPostId}
                   onSelectPostId={setSelectedPostId}
                   telegramId={user.telegramId}
+                  currentPath={currentPath}
+                  onNavigate={changeRoute}
                 />
               )}
 
@@ -1093,13 +1095,6 @@ export default function App() {
                     setSelectedPostId(postId);
                     changeRoute('/posts');
                   }}
-                />
-              )}
-
-              {currentPath.startsWith('/scenarios') && (
-                <ScenariosPage 
-                  currentUser={user}
-                  channels={channels}
                 />
               )}
 

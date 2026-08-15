@@ -6,7 +6,7 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { apiRouter } from "./src/server/api";
 import { DB } from "./src/server/db";
-import { fetchAllBlogPostsFromSQLite, fetchBlogPostByIdFromSQLite } from "./src/server/sqlite";
+import { fetchAllBlogPostsFromSQLite, fetchBlogPostByIdFromSQLite, getSQLiteDB } from "./src/server/sqlite";
 
 dotenv.config();
 
@@ -193,7 +193,7 @@ app.get(["/file/:id", "/file/:id/:filename"], async (req, res) => {
       }
     }
 
-    const db = DB.getSyncSQLiteDB();
+    const db = await getSQLiteDB();
     let file: any = null;
 
     if (db) {
@@ -967,6 +967,13 @@ app.get(["/blog/:id", "/blog"], (req, res, next) => {
 
 // Configure Vite or Static production serving
 async function bootstrap() {
+  try {
+    await getSQLiteDB();
+    console.log("[SQLite DB] Initialized and verified on startup.");
+  } catch (err) {
+    console.error("[SQLite DB] Startup initialization error:", err);
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
