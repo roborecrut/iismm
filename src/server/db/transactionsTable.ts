@@ -139,10 +139,9 @@ export function addTransactionWithBalanceUpdate(
       const cost = Math.abs(amount);
       balance_cost += cost;
 
-      // Deduction priority: first balance_free, then balance_pay
-      let freeAvailable = balance_start + balance_ref + balance_tarif;
+      // Deduction priority: first balance_free (tarif -> start -> ref -> admin), then balance_pay
+      let freeAvailable = balance_start + balance_ref + balance_tarif + balance_admin;
       if (freeAvailable >= cost) {
-        // Deduct from free components: first tarif, then start, then ref
         let remainingToDeduct = cost;
         if (balance_tarif >= remainingToDeduct) {
           balance_tarif -= remainingToDeduct;
@@ -156,22 +155,30 @@ export function addTransactionWithBalanceUpdate(
           } else {
             remainingToDeduct -= balance_start;
             balance_start = 0;
-            balance_ref = Math.max(0, balance_ref - remainingToDeduct);
-            remainingToDeduct = 0;
+            if (balance_ref >= remainingToDeduct) {
+              balance_ref -= remainingToDeduct;
+              remainingToDeduct = 0;
+            } else {
+              remainingToDeduct -= balance_ref;
+              balance_ref = 0;
+              balance_admin = Math.max(0, balance_admin - remainingToDeduct);
+              remainingToDeduct = 0;
+            }
           }
         }
       } else {
-        // Not enough free balance -> drain free and deduct remainder from balance_pay
+        // Not enough free balance -> drain all free components and deduct remainder from balance_pay
         const remainder = cost - freeAvailable;
         balance_start = 0;
         balance_ref = 0;
         balance_tarif = 0;
+        balance_admin = 0;
         balance_pay = Math.max(0, balance_pay - remainder);
       }
     }
 
-    const balance_free = Math.max(0, balance_start + balance_ref + balance_tarif);
-    const balance = Math.max(0, balance_pay + balance_admin);
+    const balance_free = Math.max(0, balance_start + balance_ref + balance_tarif + balance_admin);
+    const balance = Math.max(0, balance_pay + balance_free);
 
     db.run(
       `UPDATE users 
@@ -226,8 +233,8 @@ export function addTransactionWithBalanceUpdate(
   return {
     transaction: record,
     newBalances: {
-      balance: Math.max(0, balance_pay + balance_admin),
-      balance_free: Math.max(0, balance_start + balance_ref + balance_tarif),
+      balance: Math.max(0, balance_pay + (balance_start + balance_ref + balance_tarif + balance_admin)),
+      balance_free: Math.max(0, balance_start + balance_ref + balance_tarif + balance_admin),
       balance_pay,
       balance_start,
       balance_ref,

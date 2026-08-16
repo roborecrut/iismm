@@ -11,6 +11,10 @@ export interface TariffRecord {
   features: string; // JSON string of [{ title: string, desc: string }]
   is_active: number;
   sort_order: number;
+  duration_days?: number;
+  duration_text?: string;
+  target_user_id?: string;
+  is_custom?: number;
   created_at: string;
   updated_at: string;
 }
@@ -60,6 +64,8 @@ export const DEFAULT_TARIFFS: TariffRecord[] = [
     ]),
     is_active: 1,
     sort_order: 1,
+    duration_days: 30,
+    duration_text: '30 дней',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -95,6 +101,8 @@ export const DEFAULT_TARIFFS: TariffRecord[] = [
     ]),
     is_active: 1,
     sort_order: 2,
+    duration_days: 30,
+    duration_text: '30 дней',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -138,6 +146,8 @@ export const DEFAULT_TARIFFS: TariffRecord[] = [
     ]),
     is_active: 1,
     sort_order: 3,
+    duration_days: 30,
+    duration_text: '30 дней',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -145,10 +155,10 @@ export const DEFAULT_TARIFFS: TariffRecord[] = [
     id: 'cosmos',
     name: 'Космос',
     price_iirky: 'Индивидуально',
-    price_rub: 15000,
-    sub: 'Индивидуальная разработка под ключ',
+    price_rub: 0,
+    sub: 'Индивидуальная разработка под ключ и персональные лимиты',
     continuation: 'Все возможности тарифа Отрыв, плюс:',
-    monthly_iirky: 15000,
+    monthly_iirky: 0,
     features: JSON.stringify([
       {
         title: 'Любой объем ИИрок под задачи',
@@ -173,6 +183,8 @@ export const DEFAULT_TARIFFS: TariffRecord[] = [
     ]),
     is_active: 1,
     sort_order: 4,
+    duration_days: 30,
+    duration_text: 'Индивидуально',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   }
@@ -191,12 +203,28 @@ export function initTariffsTable(db: Database) {
       features TEXT,
       is_active INTEGER DEFAULT 1,
       sort_order INTEGER DEFAULT 0,
+      duration_days INTEGER DEFAULT 30,
+      duration_text TEXT DEFAULT '30 дней',
+      target_user_id TEXT,
+      is_custom INTEGER DEFAULT 0,
       created_at TEXT,
       updated_at TEXT
     );
   `);
 
+  // Migrations for new columns
+  try { db.run("ALTER TABLE tarifs ADD COLUMN duration_days INTEGER DEFAULT 30;"); } catch (e) {}
+  try { db.run("ALTER TABLE tarifs ADD COLUMN duration_text TEXT DEFAULT '30 дней';"); } catch (e) {}
+  try { db.run("ALTER TABLE tarifs ADD COLUMN target_user_id TEXT;"); } catch (e) {}
+  try { db.run("ALTER TABLE tarifs ADD COLUMN is_custom INTEGER DEFAULT 0;"); } catch (e) {}
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_tarifs_sort ON tarifs(sort_order);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_tarifs_target_user ON tarifs(target_user_id);`);
+
+  // Update cosmos tariff if exists to be individual
+  try {
+    db.run("UPDATE tarifs SET price_iirky = 'Индивидуально', sub = 'Индивидуальная разработка под ключ и персональные лимиты' WHERE id = 'cosmos' AND price_iirky != 'Индивидуально';");
+  } catch (e) {}
 
   // Seed default tariffs if table is empty
   try {
@@ -210,9 +238,9 @@ export function initTariffsTable(db: Database) {
     if (count === 0) {
       for (const t of DEFAULT_TARIFFS) {
         db.run(
-          `INSERT INTO tarifs (id, name, price_iirky, price_rub, sub, continuation, monthly_iirky, features, is_active, sort_order, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [t.id, t.name, t.price_iirky, t.price_rub, t.sub, t.continuation || '', t.monthly_iirky, t.features, t.is_active, t.sort_order, t.created_at, t.updated_at]
+          `INSERT INTO tarifs (id, name, price_iirky, price_rub, sub, continuation, monthly_iirky, features, is_active, sort_order, duration_days, duration_text, is_custom, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [t.id, t.name, t.price_iirky, t.price_rub, t.sub, t.continuation || '', t.monthly_iirky, t.features, t.is_active, t.sort_order, t.duration_days || 30, t.duration_text || '30 дней', 0, t.created_at, t.updated_at]
         );
       }
       console.log(`[TariffsTable] Seeded ${DEFAULT_TARIFFS.length} default tariffs.`);
@@ -222,9 +250,18 @@ export function initTariffsTable(db: Database) {
   }
 }
 
-export function getAllTariffsFromDb(db: Database): TariffRecord[] {
+export function getAllTariffsFromDb(db: Database, targetUserId?: string): TariffRecord[] {
   try {
-    const stmt = db.prepare("SELECT * FROM tarifs ORDER BY sort_order ASC");
+    let sql = "SELECT * FROM tarifs WHERE is_active = 1 AND (target_user_id IS NULL OR target_user_id = ''";
+    if (targetUserId) {
+      sql += " OR target_user_id = ?";
+    }
+    sql += ") ORDER BY sort_order ASC, created_at ASC";
+    
+    const stmt = db.prepare(sql);
+    if (targetUserId) {
+      stmt.bind([targetUserId]);
+    }
     const list: TariffRecord[] = [];
     while (stmt.step()) {
       list.push(stmt.getAsObject() as any);
@@ -233,6 +270,21 @@ export function getAllTariffsFromDb(db: Database): TariffRecord[] {
     return list;
   } catch (e) {
     console.error('[TariffsTable] Error getting tariffs:', e);
+    return [];
+  }
+}
+
+export function getAllTariffsAdminFromDb(db: Database): TariffRecord[] {
+  try {
+    const stmt = db.prepare("SELECT * FROM tarifs ORDER BY sort_order ASC, created_at DESC");
+    const list: TariffRecord[] = [];
+    while (stmt.step()) {
+      list.push(stmt.getAsObject() as any);
+    }
+    stmt.free();
+    return list;
+  } catch (e) {
+    console.error('[TariffsTable] Error getting admin tariffs:', e);
     return [];
   }
 }
@@ -250,5 +302,63 @@ export function getTariffById(db: Database, id: string): TariffRecord | null {
     return null;
   } catch (e) {
     return null;
+  }
+}
+
+export function createOrUpdateTariffInDb(
+  db: Database,
+  tariff: Partial<TariffRecord> & { name: string }
+): TariffRecord {
+  const now = new Date().toISOString();
+  const id = tariff.id || `custom_tariff_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const name = tariff.name.trim();
+  const price_rub = Number(tariff.price_rub) || 0;
+  const price_iirky = tariff.price_iirky || (price_rub > 0 ? `${price_rub.toLocaleString('ru-RU')} ИИрок / мес` : 'Индивидуально');
+  const sub = tariff.sub || 'Индивидуальный тариф';
+  const continuation = tariff.continuation || '';
+  const monthly_iirky = Number(tariff.monthly_iirky) || 0;
+  const features = typeof tariff.features === 'string' ? tariff.features : JSON.stringify(tariff.features || []);
+  const is_active = tariff.is_active !== undefined ? Number(tariff.is_active) : 1;
+  const sort_order = Number(tariff.sort_order) || 10;
+  const duration_days = Number(tariff.duration_days) || 30;
+  const duration_text = tariff.duration_text || `${duration_days} дней`;
+  const target_user_id = tariff.target_user_id || null;
+  const is_custom = 1;
+
+  db.run(
+    `INSERT OR REPLACE INTO tarifs (
+      id, name, price_iirky, price_rub, sub, continuation, monthly_iirky, features, is_active, sort_order, duration_days, duration_text, target_user_id, is_custom, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM tarifs WHERE id = ?), ?), ?)`,
+    [
+      id, name, price_iirky, price_rub, sub, continuation, monthly_iirky, features, is_active, sort_order, duration_days, duration_text, target_user_id, is_custom, id, now, now
+    ]
+  );
+
+  return {
+    id,
+    name,
+    price_iirky,
+    price_rub,
+    sub,
+    continuation,
+    monthly_iirky,
+    features,
+    is_active,
+    sort_order,
+    duration_days,
+    duration_text,
+    target_user_id: target_user_id || undefined,
+    is_custom,
+    created_at: now,
+    updated_at: now
+  };
+}
+
+export function deleteTariffFromDb(db: Database, id: string): boolean {
+  try {
+    db.run("DELETE FROM tarifs WHERE id = ?", [id]);
+    return true;
+  } catch (e) {
+    return false;
   }
 }

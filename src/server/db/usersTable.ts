@@ -33,9 +33,14 @@ export interface UserRecord {
   balance_admin?: number;
   balance_cost?: number;
   balance_time?: string;
+  referral_reward_balance?: number;
+  [key: string]: any;
   status: 'Активный' | 'Блок' | 'Удален';
   user_avatar?: string;
   tariff?: string;
+  tariff_expires_at?: string;
+  tariff_assigned_at?: string;
+  tariff_duration_days?: number;
   timezone?: string;
   created_at?: string;
   last_login?: string;
@@ -76,6 +81,9 @@ export function initUsersTable(db: Database) {
       balance_time TEXT,
       status TEXT DEFAULT 'Активный',
       tariff TEXT DEFAULT 'Старт',
+      tariff_expires_at TEXT,
+      tariff_assigned_at TEXT,
+      tariff_duration_days INTEGER DEFAULT 30,
       user_avatar TEXT,
       timezone TEXT DEFAULT 'Europe/Moscow',
       created_at TEXT,
@@ -94,21 +102,26 @@ export function initUsersTable(db: Database) {
   try { db.run("ALTER TABLE users ADD COLUMN balance_time TEXT;"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'Активный';"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN tariff TEXT DEFAULT 'Старт';"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN tariff_expires_at TEXT;"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN tariff_assigned_at TEXT;"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN tariff_duration_days INTEGER DEFAULT 30;"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN user_avatar TEXT;"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT 'Europe/Moscow';"); } catch (e) {}
 
-  // Recalculate and migrate legacy balances for existing users
+  // Recalculate and migrate legacy balances for existing users: balance_admin contributes to balance_free
   try {
     db.run(`
       UPDATE users 
       SET 
         balance_start = CASE WHEN balance_start IS NULL OR balance_start = 0 THEN 300 ELSE balance_start END,
-        balance_free = CASE WHEN balance_free IS NULL OR balance_free = 0 THEN (COALESCE(balance_start, 300) + COALESCE(balance_ref, 0) + COALESCE(balance_tarif, 0)) ELSE balance_free END,
         balance_pay = CASE WHEN balance_pay IS NULL THEN 0 ELSE balance_pay END,
+        balance_ref = CASE WHEN balance_ref IS NULL THEN 0 ELSE balance_ref END,
+        balance_tarif = CASE WHEN balance_tarif IS NULL THEN 0 ELSE balance_tarif END,
         balance_admin = CASE WHEN balance_admin IS NULL THEN 0 ELSE balance_admin END,
-        balance = CASE WHEN balance IS NULL OR balance = 0 THEN (COALESCE(balance_pay, 0) + COALESCE(balance_admin, 0)) ELSE balance END,
+        balance_free = (COALESCE(balance_start, 300) + COALESCE(balance_ref, 0) + COALESCE(balance_tarif, 0) + COALESCE(balance_admin, 0)),
+        balance = (COALESCE(balance_pay, 0) + (COALESCE(balance_start, 300) + COALESCE(balance_ref, 0) + COALESCE(balance_tarif, 0) + COALESCE(balance_admin, 0))),
         balance_cost = CASE WHEN balance_cost IS NULL THEN 0 ELSE balance_cost END
-      WHERE balance_free IS NULL OR balance_free = 0 OR balance IS NULL;
+      WHERE 1=1;
     `);
   } catch (e) {}
 
@@ -149,6 +162,77 @@ export function initUsersTable(db: Database) {
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);`);
+
+  // Run referral trigger to backfill and guarantee missing referral transactions exist
+  try {
+    checkAndSyncReferralTransactions(db);
+  } catch (e) {
+    console.error('[UsersTable] Error checking referral transactions on init:', e);
+  }
+}
+
+export function checkAndSyncReferralTransactions(db: Database): { syncedCount: number; details: string[] } {
+  const details: string[] = [];
+  let syncedCount = 0;
+  try {
+    const stmt = db.prepare("SELECT id, telegram_id, first_name, username, referred_by, created_at FROM users WHERE referred_by IS NOT NULL AND referred_by != 0");
+    const referrals: any[] = [];
+    while (stmt.step()) {
+      referrals.push(stmt.getAsObject());
+    }
+    stmt.free();
+
+    for (const ref of referrals) {
+      const refTg = Number(ref.referred_by);
+      if (!refTg) continue;
+
+      const referrerStmt = db.prepare("SELECT id, telegram_id, first_name, username FROM users WHERE telegram_id = ? OR id = ? LIMIT 1");
+      referrerStmt.bind([refTg, String(refTg)]);
+      let referrer: any = null;
+      if (referrerStmt.step()) {
+        referrer = referrerStmt.getAsObject();
+      }
+      referrerStmt.free();
+
+      if (!referrer) continue;
+
+      const refIdStr = `%${ref.id}%`;
+      const refTgStr = ref.telegram_id ? `%${ref.telegram_id}%` : refIdStr;
+      const txCheckStmt = db.prepare(`
+        SELECT id FROM transactions 
+        WHERE user_id = ? AND type = 'ref' AND (
+          comment LIKE ? OR description LIKE ? OR comment LIKE ? OR description LIKE ?
+        ) LIMIT 1
+      `);
+      txCheckStmt.bind([referrer.id, refIdStr, refIdStr, refTgStr, refTgStr]);
+      let txExists = false;
+      if (txCheckStmt.step()) {
+        txExists = true;
+      }
+      txCheckStmt.free();
+
+      if (!txExists) {
+        const refName = ref.first_name || (ref.username ? `@${ref.username}` : `TG:${ref.telegram_id}`) || ref.id;
+        const createdAt = ref.created_at || new Date().toISOString();
+        addTransactionWithBalanceUpdate(db, {
+          userId: referrer.id,
+          type: 'ref',
+          balanceType: 'ref',
+          amount: 300,
+          description: `Партнерское вознаграждение за приглашение ${refName} (+300 ИИрок)`,
+          comment: `Реферал: ${ref.id} (TG: ${ref.telegram_id || '-'})`,
+          status: 'Завершено',
+          createdAt
+        });
+        syncedCount++;
+        details.push(`Начислен реферальный бонус для ${referrer.id} от реферала ${ref.id} (${refName})`);
+        console.log(`[Referral Trigger] Backfilled referral transaction for user ${referrer.id} from referral ${ref.id}`);
+      }
+    }
+  } catch (e) {
+    console.error('[Referral Trigger] Error in checkAndSyncReferralTransactions:', e);
+  }
+  return { syncedCount, details };
 }
 
 export function format11DigitUserId(idOrTg: string | number, telegramId?: number): string {
@@ -178,18 +262,26 @@ export function getAllUsersFromDb(db: Database): UserRecord[] {
     const users: UserRecord[] = [];
     while (stmt.step()) {
       const row = stmt.getAsObject() as any;
+      const bStart = Number(row.balance_start ?? 300);
+      const bRef = Number(row.balance_ref ?? 0);
+      const bTarif = Number(row.balance_tarif ?? 0);
+      const bAdmin = Number(row.balance_admin ?? 0);
+      const bPay = Number(row.balance_pay ?? 0);
+      const bFree = bStart + bRef + bTarif + bAdmin;
+      const bTotal = bPay + bFree;
+
       users.push({
         ...row,
         telegram_id: Number(row.telegram_id || 0),
         is_premium: Number(row.is_premium || 0),
         allows_write_to_pm: Number(row.allows_write_to_pm || 0),
-        balance: Number(row.balance || 0),
-        balance_free: Number(row.balance_free || 300),
-        balance_pay: Number(row.balance_pay || 0),
-        balance_start: Number(row.balance_start || 300),
-        balance_ref: Number(row.balance_ref || 0),
-        balance_tarif: Number(row.balance_tarif || 0),
-        balance_admin: Number(row.balance_admin || 0),
+        balance: bTotal,
+        balance_free: bFree,
+        balance_pay: bPay,
+        balance_start: bStart,
+        balance_ref: bRef,
+        balance_tarif: bTarif,
+        balance_admin: bAdmin,
         balance_cost: Number(row.balance_cost || 0),
         status: (row.status as any) || 'Активный'
       });
@@ -208,17 +300,25 @@ export function getUserByTelegramIdFromDb(db: Database, telegramId: number): Use
     stmt.bind([telegramId]);
     if (stmt.step()) {
       const row = stmt.getAsObject() as any;
+      const bStart = Number(row.balance_start ?? 300);
+      const bRef = Number(row.balance_ref ?? 0);
+      const bTarif = Number(row.balance_tarif ?? 0);
+      const bAdmin = Number(row.balance_admin ?? 0);
+      const bPay = Number(row.balance_pay ?? 0);
+      const bFree = bStart + bRef + bTarif + bAdmin;
+      const bTotal = bPay + bFree;
+
       stmt.free();
       return {
         ...row,
         telegram_id: Number(row.telegram_id || 0),
-        balance: Number(row.balance || 0),
-        balance_free: Number(row.balance_free || 300),
-        balance_pay: Number(row.balance_pay || 0),
-        balance_start: Number(row.balance_start || 300),
-        balance_ref: Number(row.balance_ref || 0),
-        balance_tarif: Number(row.balance_tarif || 0),
-        balance_admin: Number(row.balance_admin || 0),
+        balance: bTotal,
+        balance_free: bFree,
+        balance_pay: bPay,
+        balance_start: bStart,
+        balance_ref: bRef,
+        balance_tarif: bTarif,
+        balance_admin: bAdmin,
         balance_cost: Number(row.balance_cost || 0),
         status: (row.status as any) || 'Активный'
       };
@@ -238,17 +338,25 @@ export function getUserByIdFromDb(db: Database, userId: string): UserRecord | nu
     stmt.bind([finalId, tgId]);
     if (stmt.step()) {
       const row = stmt.getAsObject() as any;
+      const bStart = Number(row.balance_start ?? 300);
+      const bRef = Number(row.balance_ref ?? 0);
+      const bTarif = Number(row.balance_tarif ?? 0);
+      const bAdmin = Number(row.balance_admin ?? 0);
+      const bPay = Number(row.balance_pay ?? 0);
+      const bFree = bStart + bRef + bTarif + bAdmin;
+      const bTotal = bPay + bFree;
+
       stmt.free();
       return {
         ...row,
         telegram_id: Number(row.telegram_id || 0),
-        balance: Number(row.balance || 0),
-        balance_free: Number(row.balance_free || 300),
-        balance_pay: Number(row.balance_pay || 0),
-        balance_start: Number(row.balance_start || 300),
-        balance_ref: Number(row.balance_ref || 0),
-        balance_tarif: Number(row.balance_tarif || 0),
-        balance_admin: Number(row.balance_admin || 0),
+        balance: bTotal,
+        balance_free: bFree,
+        balance_pay: bPay,
+        balance_start: bStart,
+        balance_ref: bRef,
+        balance_tarif: bTarif,
+        balance_admin: bAdmin,
         balance_cost: Number(row.balance_cost || 0),
         status: (row.status as any) || 'Активный'
       };
@@ -354,7 +462,7 @@ export function insertDefaultUserInDb(db: Database, user: UserRecord) {
 export function insertOrUpdateUserInDb(db: Database, user: UserRecord) {
   try {
     const finalId = format11DigitUserId(user.id, user.telegram_id);
-    const stmt = db.prepare("SELECT id, photo_url, balance, balance_free, balance_pay, balance_start, balance_ref, balance_tarif, balance_admin, balance_cost, balance_time FROM users WHERE id = ? OR (telegram_id = ? AND telegram_id != 0) LIMIT 1");
+    const stmt = db.prepare("SELECT id, photo_url, balance, balance_free, balance_pay, balance_start, balance_ref, balance_tarif, balance_admin, balance_cost, balance_time, tariff, tariff_expires_at, tariff_assigned_at, tariff_duration_days FROM users WHERE id = ? OR (telegram_id = ? AND telegram_id != 0) LIMIT 1");
     stmt.bind([finalId, user.telegram_id]);
     let exists = false;
     let existingPhoto = '';
@@ -377,10 +485,10 @@ export function insertOrUpdateUserInDb(db: Database, user: UserRecord) {
     const balance_start = user.balance_start !== undefined ? user.balance_start : (existingUser.balance_start !== undefined ? existingUser.balance_start : startBalance);
     const balance_ref = user.balance_ref !== undefined ? user.balance_ref : (existingUser.balance_ref || 0);
     const balance_tarif = user.balance_tarif !== undefined ? user.balance_tarif : (existingUser.balance_tarif || 0);
-    const balance_free = user.balance_free !== undefined ? user.balance_free : (balance_start + balance_ref + balance_tarif);
-    const balance_pay = user.balance_pay !== undefined ? user.balance_pay : (existingUser.balance_pay || 0);
     const balance_admin = user.balance_admin !== undefined ? user.balance_admin : (existingUser.balance_admin || 0);
-    const balance = user.balance !== undefined ? user.balance : (balance_pay + balance_admin);
+    const balance_free = user.balance_free !== undefined ? user.balance_free : (balance_start + balance_ref + balance_tarif + balance_admin);
+    const balance_pay = user.balance_pay !== undefined ? user.balance_pay : (existingUser.balance_pay || 0);
+    const balance = user.balance !== undefined ? user.balance : (balance_pay + balance_free);
     const balance_cost = user.balance_cost !== undefined ? user.balance_cost : (existingUser.balance_cost || 0);
     const balance_time = user.balance_time || existingUser.balance_time || null;
 
@@ -390,8 +498,8 @@ export function insertOrUpdateUserInDb(db: Database, user: UserRecord) {
         photo_url, profile_link, bio, is_premium, language_code, phone, allows_write_to_pm,
         latitude, longitude, referred_by, utm_source, utm_medium, utm_campaign,
         balance, balance_free, balance_pay, balance_start, balance_ref, balance_tarif, balance_admin, balance_cost, balance_time,
-        status, tariff, created_at, last_login
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        status, tariff, tariff_expires_at, tariff_assigned_at, tariff_duration_days, created_at, last_login
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         finalId,
         user.email || '',
@@ -424,7 +532,10 @@ export function insertOrUpdateUserInDb(db: Database, user: UserRecord) {
         balance_cost,
         balance_time,
         user.status || 'Активный',
-        user.tariff || 'Старт',
+        user.tariff || existingUser.tariff || 'Старт',
+        user.tariff_expires_at || existingUser.tariff_expires_at || null,
+        user.tariff_assigned_at || existingUser.tariff_assigned_at || null,
+        user.tariff_duration_days || existingUser.tariff_duration_days || 30,
         createdAt,
         user.last_login || new Date().toISOString()
       ]
@@ -442,6 +553,13 @@ export function insertOrUpdateUserInDb(db: Database, user: UserRecord) {
     }
 
     ensureDefaultFoldersForUser(db, finalId);
+
+    // If user has referrer, run referral transaction sync trigger
+    if (user.referred_by) {
+      try {
+        checkAndSyncReferralTransactions(db);
+      } catch (e) {}
+    }
   } catch (e) {
     console.error('[UsersTable] Error inserting/updating user:', e);
   }

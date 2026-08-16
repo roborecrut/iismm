@@ -152,6 +152,7 @@ export interface UserAccount {
   balance_admin?: number;
   balance_cost?: number;
   balance_time?: string;
+  referralRewardBalance?: number;
   status?: 'Активный' | 'Блок' | 'Удален';
   timezone?: string;
   balanceRub: number;
@@ -159,6 +160,7 @@ export interface UserAccount {
   premiumUntil?: string;
   lastLogin?: string;
   createdAt?: string;
+  [key: string]: any;
 }
 
 export interface User {
@@ -196,10 +198,12 @@ export interface User {
   balance_admin?: number;
   balance_cost?: number;
   balance_time?: string;
+  referral_reward_balance?: number;
   status?: 'Активный' | 'Блок' | 'Удален';
   tariff?: string;
   timezone?: string;
   lastLogin?: string;
+  [key: string]: any;
 }
 
 export type TransactionType = 'start' | 'pay' | 'tarif' | 'ref' | 'admin' | 'cost';
@@ -247,6 +251,15 @@ export interface NotificationRecord {
   created_at: string;
 }
 
+export interface Stats {
+  postsCount: number;
+  channelsCount: number;
+  subscribersCount?: number;
+  earningsRub?: number;
+  viewsCount?: number;
+  clicksCount?: number;
+}
+
 export interface Prompt {
   id: string;
   title: string;
@@ -260,6 +273,8 @@ export interface Prompt {
   signature?: string;
   attachmentType?: 'none' | 'photo' | 'document' | 'video' | 'audio' | 'album' | 'video_note';
   attachmentUrl?: string;
+  attachmentUrls?: string[];
+  [key: string]: any;
 }
 
 export interface Publication {
@@ -274,6 +289,7 @@ export interface Publication {
   status: boolean;
   publishedAt: string;
   response?: string;
+  [key: string]: any;
 }
 
 export interface DayRequest {
@@ -281,12 +297,28 @@ export interface DayRequest {
   userId?: string;
   dayOfWeek?: string;
   category?: string;
-  promptText: string;
+  promptText?: string;
   postTitle?: string;
+  title?: string;
   published?: boolean;
+  status?: any;
   scheduledTime?: string;
   targetChannel?: string;
   attachmentUrl?: string;
+  attachmentUrls?: string[];
+  attachmentType?: string;
+  signature?: string;
+  requestTemplate?: string;
+  imagePrompt?: string;
+  postText?: string;
+  messageFormat?: string;
+  uppercaseHeader?: boolean;
+  uniquenessMemoryCount?: number;
+  channels?: string[];
+  channel?: string;
+  inlineButtons?: InlineButton[];
+  triggerSchedule?: any;
+  [key: string]: any;
 }
 
 export interface PublicationLog {
@@ -357,6 +389,8 @@ export interface ScenarioStep {
     postTime?: string;
     signature?: string;
     inlineButtons?: InlineButton[];
+    autoPublish?: boolean;
+    [key: string]: any;
   };
 }
 
@@ -375,6 +409,14 @@ export interface Scenario {
   lastStatus?: 'success' | 'failed' | 'running';
   lastError?: string;
   createdAt: string;
+  generatedTopic?: string;
+  topicCategory?: string;
+  generatedText?: string;
+  generatedImagePrompt?: string;
+  generatedImageUrls?: string[];
+  formattedPreview?: string;
+  autoPublish?: boolean;
+  [key: string]: any;
 }
 
 export interface ScenarioLog {

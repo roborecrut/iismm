@@ -1,22 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Info, Sparkles, Check } from 'lucide-react';
+import { Info, Sparkles, Check, X, ShieldCheck } from 'lucide-react';
+import { TariffRecord } from '../types';
 
 export interface TariffPlan {
+  id?: string;
   name: string;
   price: string;
   sub: string;
   continuation?: string;
   amountRub: number;
+  monthlyIirky?: number;
   features: { title: string; desc: string }[];
 }
 
-export const TARIFF_PLANS: TariffPlan[] = [
+export const DEFAULT_TARIFF_PLANS: TariffPlan[] = [
   {
-    name: "СТАРТ",
+    id: 'start',
+    name: "Старт",
     price: "0 ИИрок",
     sub: "Старт без вложений",
     amountRub: 0,
+    monthlyIirky: 300,
     features: [
       {
         title: "Безлимитно постов и каналов без ИИ",
@@ -43,8 +48,8 @@ export const TARIFF_PLANS: TariffPlan[] = [
         desc: "Визуальный редактор Telegram-постов со спойлерами, форматированием текста, ссылками и красивыми цветными inline-кнопками."
       },
       {
-        title: "Облачная медиагалерея & Хостинг",
-        desc: "Загрузка и бесплатное хранение фото, GIF-анимаций и видеофайлов с сохранением оригинального качества."
+        title: "Облачная медиагалерея и хостинг",
+        desc: "Загрузка и бесплатное хранение фото, анимаций и видеофайлов с сохранением оригинального качества."
       },
       {
         title: "Интерактивный календарь постов",
@@ -53,18 +58,20 @@ export const TARIFF_PLANS: TariffPlan[] = [
     ]
   },
   {
-    name: "РАЗГОН",
+    id: 'razgon',
+    name: "Разгон",
     price: "990 ИИрок / мес",
     sub: "Хватит на несколько каналов или несколько ежедневных постов",
-    continuation: "Все возможности тарифа СТАРТ, плюс:",
+    continuation: "Все возможности тарифа Старт, плюс:",
     amountRub: 990,
+    monthlyIirky: 990,
     features: [
       {
         title: "990 ИИрок на баланс каждый месяц",
         desc: "Пакет 990 ИИрок в месяц (1 ₽ = 1 ИИрка) — хватит на несколько каналов или несколько ежедневных ИИ-постов и нейро-обложек."
       },
       {
-        title: "Нейро-копирайтер & Рерайт с ИИ стилем",
+        title: "Нейро-копирайтер и рерайт с ИИ стилем",
         desc: "Мгновенный рерайт постов конкурентов и генерация уникального контента в фирменном стиле вашего бренда."
       },
       {
@@ -73,20 +80,22 @@ export const TARIFF_PLANS: TariffPlan[] = [
       },
       {
         title: "20+ ИИ-Ассистентов",
-        desc: "Персональные агенты (AIDA Копирайтер, Редактор офферов, SMM Стратег) для написания постов под любые ниши."
+        desc: "Персональные агенты (AIDA копирайтер, редактор офферов, SMM стратег) для написания постов под любые ниши."
       },
       {
-        title: "Значок Радужного Сердца ❤️ в профиле",
-        desc: "Выделенная SVG иконка радужного сердечка над аватаром профиля для всех пользователей тарифов выше Старта."
+        title: "Значок радужного сердца в профиле",
+        desc: "Выделенная иконка радужного сердечка над аватаром профиля для всех пользователей тарифов выше Старта."
       }
     ]
   },
   {
-    name: "ОТРЫВ",
+    id: 'otryv',
+    name: "Отрыв",
     price: "4,900 ИИрок / мес",
     sub: "Хватит на десяток каналов",
-    continuation: "Все возможности тарифа РАЗГОН, плюс:",
+    continuation: "Все возможности тарифа Разгон, плюс:",
     amountRub: 4900,
+    monthlyIirky: 4900,
     features: [
       {
         title: "4,900 ИИрок на баланс каждый месяц",
@@ -110,20 +119,22 @@ export const TARIFF_PLANS: TariffPlan[] = [
       },
       {
         title: "ProTalk API: ИИ-Автоответчик постов",
-        desc: "Автоматические умные ответы и автокомментирование публикаций в каналах через интеграцию с ProTalk API (эксклюзивно для тарифа Отрыв)."
+        desc: "Автоматические умные ответы и автокомментирование публикаций в каналах через интеграцию с ProTalk API."
       },
       {
         title: "Продвижение постов в соцсети ИИрки",
-        desc: "Приоритетное размещение и вывод публикаций в топ Ленты социальной сети платформы."
+        desc: "Приоритетное размещение и вывод публикаций в топ ленты социальной сети платформы."
       }
     ]
   },
   {
-    name: "КОСМОС",
+    id: 'cosmos',
+    name: "Космос",
     price: "Индивидуально",
     sub: "Индивидуальная разработка под ключ",
-    continuation: "Все возможности тарифа ОТРЫВ, плюс:",
+    continuation: "Все возможности тарифа Отрыв, плюс:",
     amountRub: 15000,
+    monthlyIirky: 15000,
     features: [
       {
         title: "Любой объем ИИрок под задачи",
@@ -156,11 +167,36 @@ interface TariffCardsProps {
 }
 
 export default function TariffCards({ onAction, buttonText = "Подключить", userTariff }: TariffCardsProps) {
+  const [plans, setPlans] = useState<TariffPlan[]>(DEFAULT_TARIFF_PLANS);
   const [selectedFeature, setSelectedFeature] = useState<{ title: string; desc: string; planName: string } | null>(null);
   const [activeCardIdx, setActiveCardIdx] = useState(0);
   const [currentFeatureLimit, setCurrentFeatureLimit] = useState(0);
   const [hasStarted, setHasStarted] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Load dynamic tariffs from SQLite API
+  useEffect(() => {
+    fetch('/api/tariffs')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.tariffs) && data.tariffs.length > 0) {
+          const formatted = data.tariffs.map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            price: t.price_iirky || (t.price_rub > 0 ? `${t.price_rub.toLocaleString('ru-RU')} ИИрок / мес` : '0 ИИрок'),
+            sub: t.sub || '',
+            continuation: t.continuation || (t.id === 'razgon' ? 'Все возможности тарифа Старт, плюс:' : t.id === 'otryv' ? 'Все возможности тарифа Разгон, плюс:' : t.id === 'cosmos' ? 'Все возможности тарифа Отрыв, плюс:' : undefined),
+            amountRub: Number(t.price_rub) || 0,
+            monthlyIirky: Number(t.monthly_iirky) || Number(t.price_rub) || 0,
+            features: Array.isArray(t.features) ? t.features : typeof t.features === 'string' ? JSON.parse(t.features || '[]') : []
+          }));
+          if (formatted.length > 0) {
+            setPlans(formatted);
+          }
+        }
+      })
+      .catch(e => console.warn('Использование базовых тарифов:', e));
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => {
@@ -183,70 +219,77 @@ export default function TariffCards({ onAction, buttonText = "Подключит
     let timer: NodeJS.Timeout;
     
     const step = () => {
-      const currentCard = TARIFF_PLANS[activeCardIdx];
+      const currentCard = plans[activeCardIdx];
       if (!currentCard) return;
 
       if (currentFeatureLimit < currentCard.features.length) {
         setCurrentFeatureLimit(prev => prev + 1);
       } else {
-        if (activeCardIdx < TARIFF_PLANS.length - 1) {
+        if (activeCardIdx < plans.length - 1) {
           setActiveCardIdx(prev => prev + 1);
           setCurrentFeatureLimit(0);
         }
       }
     };
 
-    timer = setTimeout(step, 100);
+    timer = setTimeout(step, 80);
     return () => clearTimeout(timer);
-  }, [activeCardIdx, currentFeatureLimit, hasStarted]);
+  }, [activeCardIdx, currentFeatureLimit, hasStarted, plans]);
+
+  const cleanUserTariff = (userTariff || '').toLowerCase();
 
   return (
-    <div ref={containerRef} className="space-y-5 w-full relative text-left">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto items-stretch px-4 min-h-[500px]">
-        {TARIFF_PLANS.map((plan, idx) => {
+    <div ref={containerRef} className="space-y-6 w-full relative text-left">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto items-stretch px-2 sm:px-4 min-h-[500px]">
+        {plans.map((plan, idx) => {
           const isCardVisible = idx <= activeCardIdx;
           if (!isCardVisible) return null;
 
           const visibleFeaturesCount = idx < activeCardIdx ? plan.features.length : currentFeatureLimit;
-          const isCurrentPlanActive = userTariff === (plan.name === 'СТАРТ' ? 'free' : plan.name === 'РАЗГОН' ? 'pro' : plan.name === 'ОТРЫВ' ? 'vip' : 'none');
+          const planNameLower = plan.name.toLowerCase();
+          const isCurrentPlanActive = 
+            (planNameLower.includes('старт') && (cleanUserTariff === 'free' || cleanUserTariff === 'старт' || !cleanUserTariff)) ||
+            (planNameLower.includes('разгон') && (cleanUserTariff === 'pro' || cleanUserTariff === 'разгон')) ||
+            (planNameLower.includes('отрыв') && (cleanUserTariff === 'vip' || cleanUserTariff === 'отрыв')) ||
+            (planNameLower.includes('космос') && (cleanUserTariff === 'cosmos' || cleanUserTariff === 'космос'));
 
           return (
             <motion.div 
-              key={idx} 
+              key={plan.id || idx} 
               initial={{ opacity: 0, y: 20, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.4, ease: "easeOut" }}
-              className={`apple-liquid-glass rounded-3xl p-6 border flex flex-col justify-between space-y-5 relative transition-all duration-300 hover:scale-102 shadow-sm ${
+              className={`bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 backdrop-blur-md rounded-3xl p-5 sm:p-6 border flex flex-col justify-between space-y-5 relative transition-all duration-300 hover:scale-102 shadow-md ${
                 isCurrentPlanActive 
-                  ? 'border-orange-500 ring-2 ring-orange-400/30 bg-orange-50/20' 
-                  : 'border-slate-200/60 bg-white/40'
+                  ? 'border-pink-500 ring-2 ring-pink-400/40' 
+                  : 'border-pink-300'
               }`}
             >
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between items-center">
-                    <h3 className="text-base sm:text-lg font-black tracking-tight text-slate-800 uppercase">
+                    <h3 className="text-base sm:text-lg font-bold text-slate-900">
                       {plan.name}
                     </h3>
                     {isCurrentPlanActive && (
-                      <span className="px-2 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-full uppercase">
+                      <span className="px-2.5 py-0.5 bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 text-white text-xs font-bold rounded-full shadow-xs">
                         Текущий
                       </span>
                     )}
                   </div>
-                  <div className="text-xl sm:text-2xl font-black text-multicolor-gradient mt-1">
+                  <div className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent mt-1">
                     {plan.price}
                   </div>
-                  <p className="text-[10.5px] text-slate-500 font-medium mt-1 leading-snug">{plan.sub}</p>
+                  <p className="text-sm text-slate-700 font-medium mt-1 leading-snug">{plan.sub}</p>
                 </div>
 
                 {plan.continuation && (
-                  <div className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-multicolor-gradient bg-transparent py-0.5 text-left">
-                    ✨ {plan.continuation}
+                  <div className="text-sm font-bold text-pink-700 bg-white/50 px-3 py-1 rounded-xl border border-pink-200 text-left">
+                    {plan.continuation}
                   </div>
                 )}
 
-                <ul className="space-y-1.5 text-[10.5px] text-slate-600 font-semibold pt-2 border-t border-slate-200/55">
+                <ul className="space-y-2 text-sm text-slate-800 font-medium pt-2 border-t border-pink-200/80">
                   {plan.features.slice(0, visibleFeaturesCount).map((feat, fIdx) => (
                     <motion.li 
                       key={fIdx} 
@@ -254,14 +297,14 @@ export default function TariffCards({ onAction, buttonText = "Подключит
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ type: "spring", stiffness: 350, damping: 25 }}
                       onClick={() => setSelectedFeature({ title: feat.title, desc: feat.desc, planName: plan.name })}
-                      className="flex items-start justify-between gap-1.5 leading-normal cursor-pointer p-1.5 rounded-xl hover:bg-white/80 hover:shadow-xs transition-all group"
+                      className="flex items-start justify-between gap-2 leading-normal cursor-pointer p-2 rounded-xl hover:bg-white/90 hover:shadow-xs transition-all group border border-transparent hover:border-pink-200"
                       title="Нажмите для просмотра подробностей"
                     >
-                      <div className="flex items-start gap-1.5">
-                        <span className="text-sky-500 shrink-0 select-none mt-0.5">✦</span>
-                        <span className="text-slate-700 font-medium group-hover:text-pink-600 transition-colors text-left">{feat.title}</span>
+                      <div className="flex items-start gap-2 min-w-0">
+                        <span className="text-pink-500 shrink-0 select-none mt-0.5">✦</span>
+                        <span className="text-slate-800 font-medium group-hover:text-pink-700 transition-colors text-left break-words">{feat.title}</span>
                       </div>
-                      <Info className="w-3.5 h-3.5 text-slate-400 group-hover:text-pink-500 shrink-0 mt-0.5 opacity-70 group-hover:opacity-100 transition-opacity" />
+                      <Info className="w-4 h-4 text-slate-400 group-hover:text-pink-500 shrink-0 mt-0.5 opacity-70 group-hover:opacity-100 transition-opacity" />
                     </motion.li>
                   ))}
                 </ul>
@@ -270,10 +313,10 @@ export default function TariffCards({ onAction, buttonText = "Подключит
               {/* Action Button */}
               <button 
                 onClick={() => onAction && onAction(plan.name, plan.price, plan.amountRub)} 
-                className="w-full py-3.5 text-white font-black text-[11px] uppercase rounded-xl tracking-wider shadow-md transition-all duration-200 hover:-translate-y-0.5 cursor-pointer active:translate-y-0 mt-4 flex items-center justify-center gap-1.5 bg-multicolor-gradient hover:opacity-95"
+                className="w-full py-3 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white font-bold text-sm rounded-2xl shadow-md transition-all duration-200 hover:opacity-95 cursor-pointer active:scale-98 mt-4 flex items-center justify-center gap-2"
               >
-                <span>{plan.name === 'СТАРТ' ? 'Бесплатно' : buttonText}</span>
-                <Sparkles className="w-3.5 h-3.5 text-white" />
+                <span>{plan.amountRub === 0 ? 'Подключить бесплатно' : buttonText}</span>
+                <Sparkles className="w-4 h-4 text-white" />
               </button>
             </motion.div>
           );
@@ -283,29 +326,30 @@ export default function TariffCards({ onAction, buttonText = "Подключит
       {/* Feature details modal */}
       <AnimatePresence>
         {selectedFeature && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-sky-900/20 backdrop-blur-md">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-200 shadow-2xl space-y-3 text-left"
+              className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 rounded-3xl p-6 max-w-md w-full border border-pink-300 shadow-2xl space-y-4 text-left"
             >
-              <div className="flex justify-between items-center border-b pb-2">
-                <span className="text-[10px] font-black uppercase text-orange-500 tracking-wider">
+              <div className="flex justify-between items-center border-b border-pink-200 pb-2.5">
+                <span className="text-sm font-bold text-pink-700">
                   Тариф {selectedFeature.planName}
                 </span>
                 <button 
                   onClick={() => setSelectedFeature(null)} 
-                  className="text-slate-400 hover:text-slate-700 font-bold p-1 cursor-pointer"
+                  className="text-slate-500 hover:text-slate-800 p-1.5 rounded-full bg-white/80 border border-pink-200 cursor-pointer"
+                  title="Закрыть"
                 >
-                  ✕
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-              <h4 className="font-extrabold text-sm text-slate-800 leading-snug">{selectedFeature.title}</h4>
-              <p className="text-xs text-slate-600 font-medium leading-relaxed">{selectedFeature.desc}</p>
+              <h4 className="font-bold text-base text-slate-900 leading-snug">{selectedFeature.title}</h4>
+              <p className="text-sm text-slate-800 font-medium leading-relaxed bg-white/70 p-3.5 rounded-2xl border border-pink-200">{selectedFeature.desc}</p>
               <button 
                 onClick={() => setSelectedFeature(null)}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl mt-2 cursor-pointer"
+                className="w-full py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold text-sm rounded-2xl shadow-md cursor-pointer transition-all"
               >
                 Понятно
               </button>

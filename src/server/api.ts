@@ -13,7 +13,8 @@ import {
   deleteBlogPostFromSQLite, incrementBlogPostViewsInSQLite, incrementBlogPostLikesInSQLite, getBotTokenFromSQLite, getBotDetailsFromSQLite,
   getSQLiteDB, fetchAllUsersFromSQLite, saveSQLiteDB, normalizeUserId
 } from './sqlite';
-import { getAllTariffsFromDb, getTariffById } from './db/tariffsTable';
+import { getAllTariffsFromDb, getTariffById, createOrUpdateTariffInDb, deleteTariffFromDb } from './db/tariffsTable';
+import { getUserByIdFromDb, getUserByTelegramIdFromDb, insertOrUpdateUserInDb, checkAndSyncReferralTransactions } from './db/usersTable';
 import { getUserNotificationsFromDb, markNotificationAsReadInDb, markAllNotificationsAsReadInDb, createNotificationInDb } from './db/notificationsTable';
 import { addTransactionWithBalanceUpdate, getUserTransactionsFromDb, getAllTransactionsFromDb } from './db/transactionsTable';
 import { 
@@ -4478,17 +4479,30 @@ function formatFileSize(bytes?: number): string {
 }
 
 // Tariffs List API
-apiRouter.get('/tariffs', async (req: Request, res: Response) => {
+apiRouter.get(['/tariffs', '/admin/tariffs'], async (req: Request, res: Response) => {
   try {
     const db = await getSQLiteDB();
+    const reqUserId = (req.query.userId as string) || (req.headers['x-user-id'] as string) || '';
+    const cleanUserId = reqUserId ? normalizeUserId(reqUserId) : '';
+    const isAdmin = req.path.includes('/admin/') || req.query.admin === 'true';
+
     const rows = getAllTariffsFromDb(db);
     if (rows && rows.length > 0) {
+      const parsed = rows.map(r => ({
+        ...r,
+        is_custom: Number(r.is_custom || 0),
+        duration_days: Number(r.duration_days || 30),
+        features: typeof r.features === 'string' ? JSON.parse(r.features || '[]') : r.features
+      }));
+
+      // Filter: if user is not admin, show standard tariffs + custom tariffs assigned to this user
+      const filtered = isAdmin 
+        ? parsed 
+        : parsed.filter(t => !t.is_custom || !t.target_user_id || t.target_user_id === cleanUserId);
+
       return res.json({ 
         success: true, 
-        tariffs: rows.map(r => ({
-          ...r,
-          features: typeof r.features === 'string' ? JSON.parse(r.features || '[]') : r.features
-        }))
+        tariffs: filtered
       });
     }
   } catch (e) {
@@ -4497,12 +4511,155 @@ apiRouter.get('/tariffs', async (req: Request, res: Response) => {
   res.json({
     success: true,
     tariffs: [
-      { id: 'start', name: 'Старт', price_iirky: '0 ИИрок', price_rub: 0, sub: 'Старт без вложений', monthly_iirky: 300, features: [] },
-      { id: 'razgon', name: 'Разгон', price_iirky: '990 ИИрок / мес', price_rub: 990, sub: 'Хватит на несколько каналов', monthly_iirky: 990, features: [] },
-      { id: 'otryv', name: 'Отрыв', price_iirky: '4,900 ИИрок / мес', price_rub: 4900, sub: 'Хватит на десяток каналов', monthly_iirky: 4900, features: [] },
-      { id: 'cosmos', name: 'Космос', price_iirky: 'Индивидуально', price_rub: 15000, sub: 'Индивидуальная разработка', monthly_iirky: 15000, features: [] }
+      { id: 'start', name: 'Старт', price_iirky: '0 ИИрок', price_rub: 0, sub: 'Старт без вложений', monthly_iirky: 300, features: [], is_custom: 0, duration_days: 30, duration_text: '30 дней' },
+      { id: 'razgon', name: 'Разгон', price_iirky: '990 ИИрок / мес', price_rub: 990, sub: 'Хватит на несколько каналов', monthly_iirky: 990, features: [], is_custom: 0, duration_days: 30, duration_text: '30 дней' },
+      { id: 'otryv', name: 'Отрыв', price_iirky: '4,900 ИИрок / мес', price_rub: 4900, sub: 'Хватит на десяток каналов', monthly_iirky: 4900, features: [], is_custom: 0, duration_days: 30, duration_text: '30 дней' },
+      { id: 'cosmos', name: 'Космос', price_iirky: 'Индивидуально', price_rub: 15000, sub: 'Индивидуальная разработка', monthly_iirky: 15000, features: [], is_custom: 0, duration_days: 30, duration_text: 'Индивидуально' }
     ]
   });
+});
+
+// Create or update tariff (standard or custom)
+apiRouter.post(['/tariffs', '/admin/tariffs'], async (req: Request, res: Response) => {
+  try {
+    const { id, name, price_iirky, price_rub, sub, monthly_iirky, features, duration_days, duration_text, target_user_id, is_custom } = req.body;
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Название тарифа обязательно' });
+    }
+
+    const db = await getSQLiteDB();
+    const tariffId = id || `custom_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+    const saved = createOrUpdateTariffInDb(db, {
+      id: tariffId,
+      name: String(name),
+      price_iirky: price_iirky !== undefined ? String(price_iirky) : `${monthly_iirky || 0} ИИрок`,
+      price_rub: Number(price_rub || 0),
+      sub: sub ? String(sub) : 'Индивидуальный тариф',
+      monthly_iirky: Number(monthly_iirky || 0),
+      features: features || [],
+      duration_days: Number(duration_days || 30),
+      duration_text: duration_text ? String(duration_text) : `${duration_days || 30} дней`,
+      target_user_id: target_user_id ? normalizeUserId(String(target_user_id)) : null,
+      is_custom: is_custom !== undefined ? (is_custom ? 1 : 0) : 1
+    });
+
+    // If target_user_id is provided, automatically assign tariff to that user
+    if (target_user_id) {
+      const cleanTargetId = normalizeUserId(String(target_user_id));
+      const targetUser = findUserInDb(db, cleanTargetId);
+      if (targetUser) {
+        const duration = Number(duration_days || 30);
+        const assignedAt = new Date().toISOString();
+        const expiresAt = new Date(Date.now() + duration * 24 * 60 * 60 * 1000).toISOString();
+
+        db.run(
+          `UPDATE users SET tariff = ?, tariff_assigned_at = ?, tariff_expires_at = ?, tariff_duration_days = ? WHERE id = ? OR telegram_id = ?`,
+          [name, assignedAt, expiresAt, duration, targetUser.id, targetUser.telegram_id]
+        );
+
+        // If tariff gives monthly iirky, add transaction and update balance_tarif + balance_free
+        if (Number(monthly_iirky || 0) > 0) {
+          addTransactionWithBalanceUpdate(db, {
+            userId: targetUser.id,
+            type: 'tarif',
+            balanceType: 'tarif',
+            amount: Number(monthly_iirky),
+            description: `Начисление по индивидуальному тарифу "${name}" (${duration} дней)`,
+            createdAt: assignedAt
+          });
+        }
+      }
+    }
+
+    saveSQLiteDB();
+    res.json({ success: true, tariff: saved });
+  } catch (err: any) {
+    console.error('[API /tariffs POST] Error saving tariff:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete custom tariff
+apiRouter.delete(['/tariffs/:id', '/admin/tariffs/:id'], async (req: Request, res: Response) => {
+  try {
+    const tariffId = req.params.id;
+    const db = await getSQLiteDB();
+    const deleted = deleteTariffFromDb(db, tariffId);
+    if (deleted) {
+      saveSQLiteDB();
+      res.json({ success: true, message: 'Тариф успешно удален' });
+    } else {
+      res.status(404).json({ success: false, error: 'Тариф не найден' });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Assign tariff to user with custom duration
+apiRouter.post('/admin/users/assign-tariff', async (req: Request, res: Response) => {
+  try {
+    const { userId, tariffName, durationDays, addMonthlyIirky } = req.body;
+    if (!userId || !tariffName) {
+      return res.status(400).json({ success: false, error: 'userId и tariffName обязательны' });
+    }
+
+    const db = await getSQLiteDB();
+    const cleanUserId = normalizeUserId(String(userId));
+    const targetUser = findUserInDb(db, cleanUserId);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, error: 'Пользователь не найден' });
+    }
+
+    const duration = Number(durationDays || 30);
+    const assignedAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + duration * 24 * 60 * 60 * 1000).toISOString();
+
+    db.run(
+      `UPDATE users SET tariff = ?, tariff_assigned_at = ?, tariff_expires_at = ?, tariff_duration_days = ? WHERE id = ? OR telegram_id = ?`,
+      [tariffName, assignedAt, expiresAt, duration, targetUser.id, targetUser.telegram_id]
+    );
+
+    // If addMonthlyIirky requested, find tariff info or credit specified amount
+    let iirkyAmount = Number(addMonthlyIirky || 0);
+    if (iirkyAmount === 0) {
+      const allTariffs = getAllTariffsFromDb(db);
+      const matched = allTariffs.find(t => t.name.toLowerCase() === tariffName.toLowerCase() || t.id.toLowerCase() === tariffName.toLowerCase());
+      if (matched && matched.monthly_iirky > 0) {
+        iirkyAmount = matched.monthly_iirky;
+      }
+    }
+
+    if (iirkyAmount > 0) {
+      addTransactionWithBalanceUpdate(db, {
+        userId: targetUser.id,
+        type: 'tarif',
+        balanceType: 'tarif',
+        amount: iirkyAmount,
+        description: `Начисление по тарифу "${tariffName}" на срок ${duration} дн.`,
+        createdAt: assignedAt
+      });
+    }
+
+    saveSQLiteDB();
+    const updatedUser = getUserByIdFromDb(db, targetUser.id);
+    res.json({ success: true, user: updatedUser });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Trigger referral check and backfill
+apiRouter.post('/admin/sync-referrals', async (req: Request, res: Response) => {
+  try {
+    const db = await getSQLiteDB();
+    const addedCount = checkAndSyncReferralTransactions(db);
+    saveSQLiteDB();
+    res.json({ success: true, addedCount, message: `Синхронизировано ${addedCount} реферальных начислений` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // ==========================================

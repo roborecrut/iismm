@@ -16,17 +16,25 @@ import {
   Download,
   Upload,
   ShieldCheck,
-  Archive,
-  HardDrive
+  HardDrive,
+  Calculator,
+  CreditCard,
+  History,
+  Info,
+  Sparkles,
+  UserCheck,
+  Users
 } from 'lucide-react';
 
 const TABLES = [
   'users',
+  'tarifs',
+  'transactions',
+  'notifications',
   'posts',
   'teams',
   'team_reports',
   'sceneries',
-  'transactions',
   'telegram_bot',
   'protalk_settings',
   'prompts',
@@ -38,6 +46,18 @@ const TABLES = [
   'file_folders',
   'file_folder_relations',
   'chat_messages'
+];
+
+const BALANCE_COLUMNS = [
+  'balance',
+  'balance_free',
+  'balance_pay',
+  'balance_start',
+  'balance_ref',
+  'balance_tarif',
+  'balance_admin',
+  'balance_cost',
+  'balance_time'
 ];
 
 interface SqliteTableManagerProps {
@@ -76,6 +96,140 @@ export default function SqliteTableManager({
   const [editingRow, setEditingRow] = useState<any>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  // Admin Balance Adjust Calculator Modal States
+  const [isBalanceModalOpen, setIsBalanceModalOpen] = useState(false);
+  const [balanceUser, setBalanceUser] = useState<any>(null);
+  const [balanceAdjustAmount, setBalanceAdjustAmount] = useState<string>('100');
+  const [balanceAdjustType, setBalanceAdjustType] = useState<string>('admin');
+  const [balanceAdjustComment, setBalanceAdjustComment] = useState<string>('');
+  const [balanceAdjustSubmitting, setBalanceAdjustSubmitting] = useState(false);
+
+  // Custom Tariff Modal States
+  const [isCustomTariffModalOpen, setIsCustomTariffModalOpen] = useState(false);
+  const [customTariffForm, setCustomTariffForm] = useState({
+    name: 'Космос Индивидуальный',
+    price_rub: 15000,
+    monthly_iirky: 15000,
+    duration_days: 30,
+    duration_text: '30 дней',
+    sub: 'Индивидуальная разработка под ключ',
+    target_user_id: '',
+    featuresText: 'Любой объем ИИрок под задачи\nРазработка брендбука и SMM-стратегии\nИндивидуальный контент-план под ключ\nКастомная ИИ-разработка'
+  });
+  const [customTariffSubmitting, setCustomTariffSubmitting] = useState(false);
+
+  // Assign Tariff to User Modal States
+  const [isAssignTariffModalOpen, setIsAssignTariffModalOpen] = useState(false);
+  const [assignTariffUser, setAssignTariffUser] = useState<any>(null);
+  const [assignTariffForm, setAssignTariffForm] = useState({
+    tariffName: 'Космос',
+    durationDays: 30,
+    addMonthlyIirky: 0
+  });
+  const [assignTariffSubmitting, setAssignTariffSubmitting] = useState(false);
+
+  // Referral Sync State
+  const [isSyncingReferrals, setIsSyncingReferrals] = useState(false);
+
+  // Handle Sync Referrals
+  const handleSyncReferrals = async () => {
+    setIsSyncingReferrals(true);
+    try {
+      const res = await fetch('/api/admin/sync-referrals', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast('success', data.message || `Синхронизировано ${data.addedCount} реферальных начислений!`);
+        fetchTableRows(selectedTable);
+        fetchTablesInfo();
+      } else {
+        triggerToast('error', data.error || 'Ошибка синхронизации рефералов');
+      }
+    } catch (e: any) {
+      triggerToast('error', 'Сетевая ошибка при синхронизации: ' + e.message);
+    } finally {
+      setIsSyncingReferrals(false);
+    }
+  };
+
+  // Handle Save Custom Tariff
+  const handleSaveCustomTariff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customTariffForm.name.trim()) {
+      triggerToast('error', 'Название тарифа обязательно');
+      return;
+    }
+    setCustomTariffSubmitting(true);
+    try {
+      const featuresArray = customTariffForm.featuresText
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean)
+        .map(title => ({ title, desc: '' }));
+
+      const res = await fetch('/api/admin/tariffs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: customTariffForm.name.trim(),
+          price_rub: Number(customTariffForm.price_rub) || 0,
+          monthly_iirky: Number(customTariffForm.monthly_iirky) || 0,
+          duration_days: Number(customTariffForm.duration_days) || 30,
+          duration_text: customTariffForm.duration_text.trim() || `${customTariffForm.duration_days} дней`,
+          sub: customTariffForm.sub.trim() || 'Индивидуальный тариф',
+          target_user_id: customTariffForm.target_user_id.trim() || null,
+          features: featuresArray,
+          is_custom: 1
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast('success', `Индивидуальный тариф «${customTariffForm.name}» успешно сохранен!`);
+        setIsCustomTariffModalOpen(false);
+        fetchTableRows(selectedTable);
+        fetchTablesInfo();
+      } else {
+        triggerToast('error', data.error || 'Ошибка создания тарифа');
+      }
+    } catch (e: any) {
+      triggerToast('error', 'Сетевая ошибка: ' + e.message);
+    } finally {
+      setCustomTariffSubmitting(false);
+    }
+  };
+
+  // Handle Assign Tariff to User
+  const handleAssignTariffToUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignTariffUser) return;
+    setAssignTariffSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/users/assign-tariff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: assignTariffUser.id,
+          tariffName: assignTariffForm.tariffName.trim(),
+          durationDays: Number(assignTariffForm.durationDays) || 30,
+          addMonthlyIirky: Number(assignTariffForm.addMonthlyIirky) || 0
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast('success', `Тариф «${assignTariffForm.tariffName}» успешно назначен пользователю #${assignTariffUser.id}!`);
+        setIsAssignTariffModalOpen(false);
+        fetchTableRows('users');
+        fetchTablesInfo();
+      } else {
+        triggerToast('error', data.error || 'Ошибка назначения тарифа');
+      }
+    } catch (e: any) {
+      triggerToast('error', 'Сетевая ошибка: ' + e.message);
+    } finally {
+      setAssignTariffSubmitting(false);
+    }
+  };
 
   // Import JSON States
   const [isImportingJson, setIsImportingJson] = useState(false);
@@ -152,284 +306,279 @@ export default function SqliteTableManager({
   useEffect(() => {
     fetchTablesInfo();
     fetchTableRows(selectedTable);
-    setSqlQuery(`SELECT * FROM ${selectedTable}`);
+    setSqlQuery(`SELECT * FROM ${selectedTable} LIMIT 20`);
   }, [selectedTable]);
 
   // Execute raw SQL
-  const handleExecuteSql = async (queryToRun?: string) => {
-    const finalQuery = queryToRun || sqlQuery;
-    if (!finalQuery.trim()) return;
-
+  const handleExecuteSql = async () => {
+    if (!sqlQuery.trim()) return;
     setQueryLoading(true);
     setQueryError(null);
     setQueryResult(null);
-
     try {
       const res = await fetch('/api/db/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: finalQuery })
+        body: JSON.stringify({ query: sqlQuery })
       });
       const data = await res.json();
-      if (res.ok) {
-        setQueryResult(data.result);
+      if (res.ok && data.success) {
+        setQueryResult(data);
         triggerToast('success', 'Запрос успешно выполнен!');
         fetchTablesInfo();
         fetchTableRows(selectedTable);
       } else {
-        setQueryError(data.error || 'Ошибка исполнения SQL');
+        setQueryError(data.error || 'Ошибка выполнения SQL');
+        triggerToast('error', data.error || 'Ошибка выполнения SQL');
       }
-    } catch (e: any) {
-      setQueryError('Ошибка сети: ' + e.message);
+    } catch (err: any) {
+      setQueryError('Сетевая ошибка выполнения запроса');
+      triggerToast('error', 'Сетевая ошибка');
     } finally {
       setQueryLoading(false);
     }
   };
 
-  // Delete Row modal trigger
-  const confirmDeleteRow = (rowId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setDeletingRowId(rowId);
-  };
-
-  const handleExecuteDeleteRow = async () => {
-    if (!deletingRowId) return;
-    const rowId = deletingRowId;
-    setSubmitting(true);
-
+  // Delete row
+  const handleDeleteRow = async (id: string) => {
+    if (!window.confirm(`Вы уверены, что хотите удалить запись #${id} из таблицы «${selectedTable}»?`)) return;
+    setDeletingRowId(id);
     try {
-      const res = await fetch(`/api/db/table/${selectedTable}/${encodeURIComponent(rowId)}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        triggerToast('success', `Запись "${rowId}" удалена из таблицы "${selectedTable}"`);
-        setDeletingRowId(null);
-        fetchTableRows(selectedTable);
+      const res = await fetch(`/api/db/table/${selectedTable}/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast('success', `Запись #${id} успешно удалена`);
         fetchTablesInfo();
+        fetchTableRows(selectedTable);
       } else {
-        const err = await res.json();
-        triggerToast('error', err.error || 'Ошибка при удалении строки');
+        triggerToast('error', data.error || 'Ошибка удаления записи');
       }
     } catch (e) {
-      triggerToast('error', 'Ошибка сети при удалении');
+      triggerToast('error', 'Сетевая ошибка при удалении');
     } finally {
-      setSubmitting(false);
+      setDeletingRowId(null);
     }
   };
 
-  // Open Add Modal
-  const handleOpenAddModal = () => {
-    const initialForm: Record<string, any> = {};
-    tableData.columns.forEach(col => {
-      if (selectedTable === 'users') {
-        if (col === 'role') initialForm[col] = 'user';
-        else if (col === 'balance') initialForm[col] = 1000;
-        else if (col === 'tariff') initialForm[col] = 'Космос';
-        else if (col === 'created_at') initialForm[col] = new Date().toISOString();
-        else initialForm[col] = '';
-      } else {
-        if (col === 'id') initialForm[col] = `${selectedTable.slice(0, 3)}_${Date.now()}`;
-        else if (col === 'created_at') initialForm[col] = new Date().toISOString();
-        else initialForm[col] = '';
-      }
-    });
-    setFormData(initialForm);
-    setIsAddModalOpen(true);
-  };
-
-  // Submit Add Row
-  const handleSaveAddRow = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      const payload = { ...formData };
-      if (selectedTable === 'users') {
-        const tgIdStr = payload.telegram_id ? String(payload.telegram_id).trim() : (payload.id ? String(payload.id).trim() : '');
-        if (tgIdStr) {
-          payload.id = tgIdStr;
-          const parsedTgId = parseInt(tgIdStr, 10);
-          if (!isNaN(parsedTgId)) {
-            payload.telegram_id = parsedTgId;
-          }
-        }
-      }
-      const res = await fetch(`/api/db/table/${selectedTable}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        triggerToast('success', `Запись добавлена в таблицу ${selectedTable}`);
-        setIsAddModalOpen(false);
-        fetchTableRows(selectedTable);
-        fetchTablesInfo();
-      } else {
-        const err = await res.json();
-        triggerToast('error', err.error || 'Ошибка добавления строки');
-      }
-    } catch (e) {
-      triggerToast('error', 'Ошибка сети при сохранении');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Open Edit Modal on row or field click
+  // Open Edit Modal
   const handleOpenEditModal = (row: any) => {
     setEditingRow(row);
     setFormData({ ...row });
     setIsEditModalOpen(true);
   };
 
-  // Submit Edit Row
+  // Open Add Modal
+  const handleOpenAddModal = () => {
+    const emptyRow: Record<string, any> = {};
+    tableData.columns.forEach(col => {
+      if (col === 'id') {
+        if (selectedTable === 'tarifs') {
+          emptyRow[col] = `tarif_${Date.now()}`;
+        } else {
+          emptyRow[col] = `${selectedTable.slice(0, 3)}_${Date.now()}`;
+        }
+      } else if (col === 'created_at' || col === 'createdAt') {
+        emptyRow[col] = new Date().toISOString();
+      } else if (col === 'role') {
+        emptyRow[col] = 'user';
+      } else if (col === 'tariff') {
+        emptyRow[col] = 'Старт';
+      } else if (col === 'status') {
+        emptyRow[col] = 'Активный';
+      } else if (col.startsWith('balance')) {
+        emptyRow[col] = 0;
+      } else {
+        emptyRow[col] = '';
+      }
+    });
+    setFormData(emptyRow);
+    setIsAddModalOpen(true);
+  };
+
+  // Open Balance Adjust Modal for a user
+  const handleOpenBalanceModal = (userRow: any) => {
+    setBalanceUser(userRow);
+    setBalanceAdjustAmount('100');
+    setBalanceAdjustType('admin');
+    setBalanceAdjustComment('');
+    setIsBalanceModalOpen(true);
+  };
+
+  // Submit Admin Balance Adjust
+  const handleSaveBalanceAdjust = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!balanceUser) return;
+    const num = parseInt(balanceAdjustAmount, 10);
+    if (isNaN(num) || num === 0) {
+      triggerToast('error', 'Укажите корректную сумму изменения (не 0)');
+      return;
+    }
+    if (!balanceAdjustComment.trim()) {
+      triggerToast('error', 'Обязательно укажите причину корректировки баланса');
+      return;
+    }
+
+    setBalanceAdjustSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/user-balance-adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: balanceUser.id,
+          amount: num,
+          balanceType: balanceAdjustType,
+          comment: balanceAdjustComment.trim(),
+          description: `Корректировка администратором: ${num > 0 ? '+' : ''}${num} ИИрок (${balanceAdjustComment.trim()})`
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast('success', data.message || 'Баланс успешно скорректирован!');
+        setIsBalanceModalOpen(false);
+        fetchTableRows('users');
+        fetchTablesInfo();
+      } else {
+        triggerToast('error', data.error || 'Ошибка корректировки баланса');
+      }
+    } catch (err: any) {
+      triggerToast('error', 'Сетевая ошибка при изменении баланса: ' + err.message);
+    } finally {
+      setBalanceAdjustSubmitting(false);
+    }
+  };
+
+  // Save Edit Row
   const handleSaveEditRow = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingRow || !editingRow.id) return;
     setSubmitting(true);
     try {
-      const payload = { ...formData };
+      const cleanData = { ...formData };
+      
+      // If editing user table, prevent direct manual overwrite of balance columns
       if (selectedTable === 'users') {
-        const tgIdStr = payload.telegram_id ? String(payload.telegram_id).trim() : (payload.id ? String(payload.id).trim() : '');
-        if (tgIdStr) {
-          payload.id = tgIdStr;
-          const parsedTgId = parseInt(tgIdStr, 10);
-          if (!isNaN(parsedTgId)) {
-            payload.telegram_id = parsedTgId;
+        BALANCE_COLUMNS.forEach(col => {
+          if (editingRow[col] !== undefined) {
+            cleanData[col] = editingRow[col];
           }
-        }
+        });
       }
-      const res = await fetch(`/api/db/table/${selectedTable}/${encodeURIComponent(editingRow.id)}`, {
+
+      const res = await fetch(`/api/db/table/${selectedTable}/${editingRow.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(cleanData)
       });
-      if (res.ok) {
-        triggerToast('success', `Запись ${editingRow.id} обновлена!`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast('success', `Запись #${editingRow.id} успешно обновлена`);
         setIsEditModalOpen(false);
         fetchTableRows(selectedTable);
       } else {
-        const err = await res.json();
-        triggerToast('error', err.error || 'Ошибка обновления строки');
+        triggerToast('error', data.error || 'Ошибка сохранения изменений');
       }
-    } catch (e) {
-      triggerToast('error', 'Ошибка сети при редактировании');
+    } catch (err: any) {
+      triggerToast('error', 'Сетевая ошибка при сохранении');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Export CSV
-  const handleExportCSV = () => {
-    if (!tableData.rows || tableData.rows.length === 0) return;
-    let csv = '';
-    const headers = tableData.columns;
-    csv += headers.join(',') + '\n';
-    tableData.rows.forEach(r => {
-      csv += headers.map(h => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(',') + '\n';
-    });
-    const encoded = encodeURI('data:text/csv;charset=utf-8,' + csv);
-    const link = document.createElement('a');
-    link.setAttribute('href', encoded);
-    link.setAttribute('download', `${selectedTable}_sqlite_export.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Save Add Row
+  const handleSaveAddRow = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/db/table/${selectedTable}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast('success', `Новая строка добавлена в таблицу «${selectedTable}»`);
+        setIsAddModalOpen(false);
+        fetchTablesInfo();
+        fetchTableRows(selectedTable);
+      } else {
+        triggerToast('error', data.error || 'Ошибка добавления строки');
+      }
+    } catch (err: any) {
+      triggerToast('error', 'Сетевая ошибка при добавлении');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // Parse CSV text helper
+  // CSV Parsing
   const parseCsvData = (text: string) => {
-    if (!text || !text.trim()) {
-      setCsvParsedPreview(null);
-      return;
-    }
     try {
-      const lines = text.trim().split(/\r?\n/);
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       if (lines.length === 0) {
         setCsvParsedPreview(null);
         return;
       }
-      
-      // Determine delimiter (comma, semicolon, tab)
-      const firstLine = lines[0];
-      let delimiter = ',';
-      if ((firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length) {
-        delimiter = ';';
-      } else if ((firstLine.match(/\t/g) || []).length > (firstLine.match(/,/g) || []).length) {
-        delimiter = '\t';
-      }
-
-      const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
-      const parsedRows: Record<string, any>[] = [];
+      const delimiter = lines[0].includes(';') ? ';' : ',';
+      const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
+      const rows: Record<string, any>[] = [];
 
       for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const values = line.split(delimiter).map(v => {
-          let val = v.trim();
-          if (val.startsWith('"') && val.endsWith('"')) {
-            val = val.slice(1, -1).replace(/""/g, '"');
-          }
-          return val;
-        });
-
-        const rowObj: Record<string, any> = {};
-        headers.forEach((h, idx) => {
-          if (h) rowObj[h] = values[idx] !== undefined ? values[idx] : '';
-        });
-        parsedRows.push(rowObj);
+        const parts = lines[i].split(delimiter).map(p => p.trim().replace(/^["']|["']$/g, ''));
+        if (parts.length > 0 && (parts.length > 1 || parts[0] !== '')) {
+          const rowObj: Record<string, any> = {};
+          headers.forEach((h, idx) => {
+            rowObj[h] = parts[idx] !== undefined ? parts[idx] : '';
+          });
+          rows.push(rowObj);
+        }
       }
-
-      setCsvParsedPreview({ headers, rows: parsedRows });
-    } catch (e) {
-      console.error('Error parsing CSV preview:', e);
+      setCsvParsedPreview({ headers, rows });
+    } catch (err) {
       setCsvParsedPreview(null);
     }
   };
 
-  // Handle CSV file selection
-  const handleCsvFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCsvFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      const text = await file.text();
-      setCsvImportText(text);
-      parseCsvData(text);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setCsvImportText(content);
+      parseCsvData(content);
       setIsCsvImportModalOpen(true);
-    } catch (err: any) {
-      triggerToast('error', 'Ошибка чтения CSV файла: ' + err.message);
-    } finally {
-      if (e.target) e.target.value = '';
-    }
+    };
+    reader.readAsText(file);
+    if (e.target) e.target.value = '';
   };
 
-  // Submit CSV Import to Server
   const handleExecuteCsvImport = async () => {
     if (!csvParsedPreview || csvParsedPreview.rows.length === 0) {
-      triggerToast('error', 'Нет валидных строк для импорта');
+      triggerToast('error', 'Нет распознанных данных для импорта');
       return;
     }
 
     setIsImportingCsv(true);
     try {
-      const res = await fetch(`/api/db/table/${selectedTable}/import-csv`, {
+      const res = await fetch('/api/admin/db/import/csv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tableName: selectedTable,
           rows: csvParsedPreview.rows
         })
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        triggerToast('success', `Успешно импортировано ${data.importedCount || csvParsedPreview.rows.length} строк в таблицу ${selectedTable}!`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        triggerToast('success', `Успешно импортировано ${data.importedCount || csvParsedPreview.rows.length} строк в таблицу «${selectedTable}»!`);
         setIsCsvImportModalOpen(false);
         setCsvImportText('');
         setCsvParsedPreview(null);
         fetchTablesInfo();
         fetchTableRows(selectedTable);
       } else {
-        const err = await res.json();
-        triggerToast('error', err.error || 'Ошибка при импорте CSV');
+        triggerToast('error', data.error || 'Ошибка импорта CSV данных');
       }
     } catch (err: any) {
       triggerToast('error', 'Сетевая ошибка при импорте CSV: ' + err.message);
@@ -438,17 +587,20 @@ export default function SqliteTableManager({
     }
   };
 
+  // Filter rows
   const filteredRows = tableData.rows.filter(row => {
-    if (!searchTerm) return true;
+    if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
-    return Object.values(row).some(v => String(v ?? '').toLowerCase().includes(term));
+    return Object.values(row).some(val => 
+      String(val ?? '').toLowerCase().includes(term)
+    );
   });
 
-  const photoUrlValue = formData.photo_url || formData.photoUrl || formData.photo || '';
+  const photoUrlValue = formData['photo_url'] || formData['photoUrl'] || formData['photo'] || formData['avatar_url'] || formData['avatarUrl'];
 
   return (
-    <div className="space-y-6">
-      {/* Hidden File Input for JSON Import */}
+    <div className="space-y-6 text-left">
+      {/* Hidden File Inputs */}
       <input
         type="file"
         ref={jsonFileInputRef}
@@ -456,8 +608,6 @@ export default function SqliteTableManager({
         accept=".json"
         className="hidden"
       />
-
-      {/* Hidden File Input for CSV Import */}
       <input
         type="file"
         ref={csvFileInputRef}
@@ -467,17 +617,17 @@ export default function SqliteTableManager({
       />
 
       {/* Database Export & Import Management Block */}
-      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-300 rounded-3xl p-6 shadow-sm space-y-4">
+      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-300 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 rounded-2xl text-white shadow-sm">
+            <div className="p-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 rounded-2xl text-white shadow-md">
               <ShieldCheck size={22} />
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
                 <span>Резервное копирование и экспорт базы данных</span>
-                <span className="text-sm bg-white/90 text-pink-800 border border-pink-300 px-2.5 py-0.5 rounded-full font-bold">
-                  СУБД
+                <span className="text-sm bg-white/90 text-pink-700 border border-pink-300 px-2.5 py-0.5 rounded-full font-bold">
+                  SQLite
                 </span>
               </h3>
               <p className="text-sm text-slate-700 mt-0.5">Экспорт таблиц в JSON/SQLite и прямой импорт данных</p>
@@ -486,12 +636,31 @@ export default function SqliteTableManager({
 
           {/* Quick Actions */}
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleSyncReferrals}
+              disabled={isSyncingReferrals}
+              className="bg-white/90 hover:bg-white text-slate-800 border border-pink-300 text-sm font-bold px-3.5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs"
+              title="Проверить рефералов и начислить недостающие транзакции"
+            >
+              <Users size={16} className={isSyncingReferrals ? "animate-spin text-pink-500" : "text-pink-500"} />
+              <span>{isSyncingReferrals ? 'Синхронизация...' : 'Синхронизация рефералов'}</span>
+            </button>
+
+            <button
+              onClick={() => setIsCustomTariffModalOpen(true)}
+              className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-sm font-bold px-3.5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-md"
+              title="Создать или настроить индивидуальный тариф для пользователя"
+            >
+              <Sparkles size={16} />
+              <span>+ Индив. тариф</span>
+            </button>
+
             <a
               href="/api/admin/db/export/json"
               download
               className="bg-white/90 hover:bg-white text-slate-800 border border-pink-300 text-sm font-bold px-3.5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-xs"
             >
-              <Download size={15} className="text-pink-500" />
+              <Download size={16} className="text-pink-500" />
               <span>Скачать JSON</span>
             </a>
 
@@ -500,7 +669,7 @@ export default function SqliteTableManager({
               download
               className="bg-white/90 hover:bg-white text-slate-800 border border-pink-300 text-sm font-bold px-3.5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-xs"
             >
-              <HardDrive size={15} className="text-sky-500" />
+              <HardDrive size={16} className="text-sky-500" />
               <span>Скачать app.sqlite</span>
             </a>
 
@@ -509,7 +678,7 @@ export default function SqliteTableManager({
               disabled={isImportingJson}
               className="bg-white/90 hover:bg-white text-slate-800 border border-pink-300 text-sm font-bold px-3.5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs"
             >
-              <Upload size={15} className="text-orange-500" />
+              <Upload size={16} className="text-orange-500" />
               <span>{isImportingJson ? 'Импорт...' : 'Импорт JSON'}</span>
             </button>
           </div>
@@ -517,36 +686,36 @@ export default function SqliteTableManager({
       </div>
 
       {/* Top Banner: SQLite Tables Selector */}
-      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-200/80 rounded-3xl p-6 shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-pink-200/60 pb-4">
+      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-300 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-pink-200/80 pb-4">
           <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 rounded-2xl text-white shadow-sm">
+            <div className="p-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 rounded-2xl text-white shadow-md">
               <Database size={22} />
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
-                <span>Менеджер таблиц СУБД SQLite</span>
+                <span>Менеджер таблиц SQLite</span>
                 <span className="text-sm bg-white/90 text-sky-800 border border-sky-300 px-2.5 py-0.5 rounded-full font-mono font-bold">
                   {TABLES.length} таблиц
                 </span>
               </h3>
-              <p className="text-sm text-slate-700 mt-0.5">Визуальное редактирование, добавление и удаление записей базы данных</p>
+              <p className="text-sm text-slate-700 mt-0.5">Визуальное редактирование, просмотр и аудит данных платформы</p>
             </div>
           </div>
 
           <div className="flex items-center space-x-2 shrink-0">
             <button
               onClick={() => { fetchTablesInfo(); fetchTableRows(selectedTable); }}
-              className="bg-white/80 hover:bg-white text-slate-800 border border-pink-200 text-sm font-bold px-3.5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs"
+              className="bg-white/90 hover:bg-white text-slate-800 border border-pink-200 text-sm font-bold px-3.5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin text-pink-500' : 'text-sky-500'} />
               <span>Обновить</span>
             </button>
             <button
               onClick={handleOpenAddModal}
-              className="bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white text-sm font-bold px-4 py-2 rounded-2xl flex items-center space-x-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+              className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-sm font-bold px-4 py-2 rounded-2xl flex items-center space-x-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
             >
-              <Plus size={15} />
+              <Plus size={16} />
               <span>Создать строку</span>
             </button>
           </div>
@@ -563,8 +732,8 @@ export default function SqliteTableManager({
                 onClick={() => setSelectedTable(tableName)}
                 className={`flex flex-col p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-gradient-to-r from-sky-200 via-pink-200 to-orange-200 border-pink-400 text-slate-900 shadow-sm font-bold'
-                    : 'bg-white/70 border-pink-100/80 text-slate-700 hover:bg-white/95 hover:border-pink-300'
+                    ? 'bg-gradient-to-r from-sky-200 via-pink-200 to-orange-200 border-pink-400 text-slate-900 shadow-sm font-bold ring-1 ring-pink-400/40'
+                    : 'bg-white/80 border-pink-200 text-slate-700 hover:bg-white hover:border-pink-300'
                 }`}
               >
                 <div className="flex justify-between items-center w-full">
@@ -581,8 +750,8 @@ export default function SqliteTableManager({
       </div>
 
       {/* Main Table Viewer Card */}
-      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-200/80 rounded-3xl p-6 shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-pink-200/60 pb-4">
+      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-300 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-pink-200/80 pb-4">
           <div className="flex items-center space-x-2">
             <TableIcon className="text-pink-600" size={18} />
             <span className="text-sm font-bold text-slate-900 font-mono">Таблица: {selectedTable}</span>
@@ -592,7 +761,7 @@ export default function SqliteTableManager({
           <div className="flex items-center gap-3">
             {/* Search Input */}
             <div className="relative w-full sm:w-64">
-              <Search size={15} className="absolute left-3 top-2.5 text-pink-400" />
+              <Search size={16} className="absolute left-3 top-2.5 text-pink-400" />
               <input
                 type="text"
                 value={searchTerm}
@@ -602,102 +771,98 @@ export default function SqliteTableManager({
               />
             </div>
 
-            {/* CSV Import */}
+            {/* CSV Import Button */}
             <button
-              onClick={() => {
-                setCsvImportText('');
-                setCsvParsedPreview(null);
-                setIsCsvImportModalOpen(true);
-              }}
-              className="bg-white/90 hover:bg-white border border-pink-200 text-slate-800 text-sm font-bold px-3 py-1.5 rounded-2xl flex items-center space-x-1.5 shrink-0 transition-all cursor-pointer shadow-xs"
+              onClick={() => setIsCsvImportModalOpen(true)}
+              className="bg-white/90 hover:bg-white text-slate-800 border border-pink-300 text-sm font-bold px-3.5 py-1.5 rounded-2xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs shrink-0"
             >
-              <Upload size={14} className="text-pink-500" />
-              <span>CSV импорт</span>
-            </button>
-
-            {/* CSV Export */}
-            <button
-              onClick={handleExportCSV}
-              disabled={tableData.rows.length === 0}
-              className="bg-white/90 hover:bg-white border border-pink-200 text-slate-800 text-sm font-bold px-3 py-1.5 rounded-2xl flex items-center space-x-1.5 shrink-0 transition-all disabled:opacity-40 cursor-pointer shadow-xs"
-            >
-              <FileSpreadsheet size={14} className="text-orange-500" />
-              <span>CSV экспорт</span>
+              <FileSpreadsheet size={15} className="text-orange-500" />
+              <span>CSV</span>
             </button>
           </div>
         </div>
 
-        {/* Table Data Grid */}
-        <div className="bg-white/80 border border-pink-200/80 rounded-2xl overflow-x-auto overflow-y-auto max-h-[550px] w-full relative">
+        {/* Table Rows Display */}
+        <div className="overflow-x-auto border border-pink-200 rounded-2xl bg-white/80 max-h-[500px]">
           {loading ? (
-            <div className="py-12 text-center text-slate-600 text-sm font-bold flex items-center justify-center space-x-2">
-              <RefreshCw className="animate-spin text-pink-500" size={16} />
-              <span>Загрузка данных таблицы {selectedTable}...</span>
+            <div className="py-12 text-center text-slate-700 text-sm font-bold flex items-center justify-center space-x-2">
+              <RefreshCw className="animate-spin text-pink-500" size={18} />
+              <span>Загрузка данных...</span>
             </div>
           ) : filteredRows.length > 0 ? (
-            <div className="min-w-full inline-block align-middle">
-              <table className="min-w-full text-left text-sm border-collapse font-mono whitespace-nowrap">
-                <thead className="bg-gradient-to-r from-sky-100 via-pink-100 to-orange-100 sticky top-0 border-b border-pink-200 text-slate-800 font-bold z-10">
-                  <tr>
-                    <th className="p-3 w-20 text-center border-b border-pink-200 bg-sky-100/90 sticky left-0 z-20">Действия</th>
-                    {tableData.columns.map((col, i) => (
-                      <th key={i} className="p-3 whitespace-nowrap border-b border-pink-200 text-slate-900 min-w-[120px]">{col}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-pink-100/60 text-slate-800">
-                  {filteredRows.map((row, idx) => (
-                    <tr 
-                      key={row.id || idx} 
-                      onClick={() => handleOpenEditModal(row)}
-                      className="hover:bg-pink-50/80 transition-colors bg-white/90 cursor-pointer"
-                      title="Кликните на любую ячейку, чтобы открыть редактор записи"
-                    >
-                      <td className="p-3 text-center whitespace-nowrap flex items-center justify-center space-x-1 bg-white/95 sticky left-0 z-10 border-r border-pink-100">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleOpenEditModal(row); }}
-                          className="p-1.5 hover:bg-sky-100 rounded-lg text-sky-600 transition-all cursor-pointer"
-                          title="Редактировать строку"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => confirmDeleteRow(row.id, e)}
-                          className="p-1.5 hover:bg-pink-100 rounded-lg text-orange-600 transition-all cursor-pointer"
-                          title="Удалить строку"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
-                      {tableData.columns.map((col, cIdx) => {
-                        const val = row[col];
-                        const isPhoto = (col === 'photo_url' || col === 'photoUrl' || col === 'photo' || col === 'avatar_url') && val && String(val).startsWith('http');
-                        return (
-                          <td key={cIdx} className="p-3 max-w-sm truncate whitespace-nowrap text-sm" title={String(val ?? '')}>
-                            {val === null || val === undefined ? (
-                              <span className="text-slate-400 italic">null</span>
-                            ) : isPhoto ? (
-                              <div className="flex items-center gap-2">
-                                <img src={String(val)} alt="User" className="w-7 h-7 rounded-full object-cover border border-pink-300 shrink-0" />
-                                <span className="text-sm text-slate-600 truncate">{String(val)}</span>
-                              </div>
-                            ) : typeof val === 'object' ? (
-                              <span className="text-purple-700 font-semibold">{JSON.stringify(val)}</span>
-                            ) : (
-                              String(val)
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
+            <table className="w-full text-left text-sm border-collapse">
+              <thead className="bg-sky-100/80 text-slate-800 font-bold sticky top-0 border-b border-pink-200 z-10">
+                <tr>
+                  <th className="p-3 border-r border-pink-200 font-mono text-center w-24">Действия</th>
+                  {tableData.columns.map(col => (
+                    <th key={col} className="p-3 border-r border-pink-200 font-mono whitespace-nowrap">
+                      {col}
+                    </th>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-pink-100">
+                {filteredRows.map((row, rIdx) => {
+                  const rowId = row.id !== undefined ? String(row.id) : `row_${rIdx}`;
+                  return (
+                    <tr key={rowId} className="hover:bg-pink-50/60 transition-colors">
+                      <td className="p-2.5 border-r border-pink-200 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center space-x-1">
+                          {selectedTable === 'users' && (
+                            <>
+                              <button
+                                onClick={() => handleOpenBalanceModal(row)}
+                                className="p-1.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-90 text-white rounded-xl shadow-xs transition-all cursor-pointer"
+                                title="Калькулятор корректировки баланса"
+                              >
+                                <Calculator size={15} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setAssignTariffUser(row);
+                                  setAssignTariffForm({
+                                    tariffName: row.tariff || 'Космос',
+                                    durationDays: 30,
+                                    addMonthlyIirky: 0
+                                  });
+                                  setIsAssignTariffModalOpen(true);
+                                }}
+                                className="p-1.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-90 text-white rounded-xl shadow-xs transition-all cursor-pointer"
+                                title="Назначить тариф и индивидуальные условия"
+                              >
+                                <Sparkles size={15} />
+                              </button>
+                            </>
+                          )}
+                          <button
+                            onClick={() => handleOpenEditModal(row)}
+                            className="p-1.5 bg-white hover:bg-pink-50 text-slate-700 hover:text-pink-600 border border-pink-200 rounded-xl shadow-xs transition-all cursor-pointer"
+                            title="Редактировать запись"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteRow(rowId)}
+                            disabled={deletingRowId === rowId}
+                            className="p-1.5 bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-600 border border-pink-200 rounded-xl shadow-xs transition-all cursor-pointer"
+                            title="Удалить запись"
+                          >
+                            {deletingRowId === rowId ? <RefreshCw className="animate-spin" size={15} /> : <Trash2 size={15} />}
+                          </button>
+                        </div>
+                      </td>
+                      {tableData.columns.map(col => (
+                        <td key={col} className="p-2.5 border-r border-pink-100 font-mono text-slate-800 max-w-xs truncate">
+                          {String(row[col] ?? '')}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           ) : (
-            <div className="py-12 text-center text-slate-600 text-sm font-mono font-bold">
+            <div className="py-12 text-center text-slate-600 text-sm font-bold">
               В таблице «{selectedTable}» нет доступных записей (0 строк).
             </div>
           )}
@@ -705,13 +870,13 @@ export default function SqliteTableManager({
       </div>
 
       {/* SQL Raw Terminal Console */}
-      <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-200/80 rounded-3xl p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-pink-200/60 pb-3">
+      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-300 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
+        <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
           <div className="flex items-center space-x-2">
             <Code className="text-pink-600" size={18} />
-            <span className="text-xs font-mono font-extrabold text-slate-900 uppercase tracking-wider">SQL Консоль Прямого Доступа</span>
+            <span className="text-sm font-bold text-slate-900">SQL Консоль прямого доступа</span>
           </div>
-          <span className="text-[10px] text-slate-600 font-mono font-bold">SELECT, INSERT, UPDATE, DELETE</span>
+          <span className="text-sm text-slate-600 font-mono font-bold">SELECT, INSERT, UPDATE, DELETE</span>
         </div>
 
         <div className="relative">
@@ -719,38 +884,38 @@ export default function SqliteTableManager({
             value={sqlQuery}
             onChange={(e) => setSqlQuery(e.target.value)}
             rows={3}
-            className="w-full bg-white/90 border border-pink-200 rounded-2xl p-3.5 font-mono text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-pink-400"
+            className="w-full bg-white/90 border border-pink-200 rounded-2xl p-3.5 font-mono text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-pink-400"
             placeholder="SELECT * FROM users WHERE role = 'admin'"
           />
           <button
             onClick={() => handleExecuteSql()}
             disabled={queryLoading}
-            className="absolute bottom-3.5 right-3.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold text-xs px-4 py-1.5 rounded-xl flex items-center space-x-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+            className="absolute bottom-3.5 right-3.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold text-sm px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
           >
-            {queryLoading ? <RefreshCw className="animate-spin" size={12} /> : <Code size={12} />}
+            {queryLoading ? <RefreshCw className="animate-spin" size={14} /> : <Code size={14} />}
             <span>Выполнить SQL</span>
           </button>
         </div>
 
         {queryError && (
-          <div className="bg-orange-50 border border-orange-200 p-3 rounded-2xl font-mono text-xs text-orange-800 flex items-start space-x-2">
-            <X size={14} className="shrink-0 mt-0.5 text-orange-600" />
+          <div className="bg-orange-50 border border-orange-200 p-3 rounded-2xl font-mono text-sm text-orange-800 flex items-start space-x-2">
+            <X size={16} className="shrink-0 mt-0.5 text-orange-600" />
             <span>{queryError}</span>
           </div>
         )}
 
         {queryResult && (
-          <div className="space-y-2 bg-white/80 border border-pink-200 p-4 rounded-2xl font-mono text-xs">
+          <div className="space-y-2 bg-white/90 border border-pink-200 p-4 rounded-2xl font-mono text-sm">
             <div className="flex justify-between items-center text-slate-900 font-bold mb-2">
               <span className="flex items-center space-x-1">
-                <Check size={14} className="text-pink-500" />
+                <Check size={16} className="text-pink-500" />
                 <span>Результат выполнения SQL запроса:</span>
               </span>
             </div>
             {queryResult.rows ? (
               <div className="overflow-x-auto max-h-60 bg-white border border-pink-200 rounded-xl">
-                <table className="w-full text-left text-[11px] border-collapse">
-                  <thead className="bg-sky-50 text-slate-800 uppercase font-bold">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead className="bg-sky-50 text-slate-800 font-bold">
                     <tr>
                       {queryResult.columns?.map((col: string, idx: number) => (
                         <th key={idx} className="p-2 border-b border-pink-200">{col}</th>
@@ -775,12 +940,113 @@ export default function SqliteTableManager({
         )}
       </div>
 
+      {/* Modal: ADMIN BALANCE ADJUST CALCULATOR */}
+      {isBalanceModalOpen && balanceUser && (
+        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-300 rounded-3xl w-full max-w-lg shadow-2xl space-y-4 p-5 sm:p-6 text-left">
+            <div className="flex items-center justify-between border-b border-pink-200 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white rounded-xl shadow-sm">
+                  <Calculator size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Калькулятор изменения баланса</h3>
+                  <p className="text-sm text-slate-600">
+                    Пользователь: <strong className="text-slate-900">{balanceUser.name || balanceUser.firstName || balanceUser.username || balanceUser.id}</strong> (ID: {balanceUser.id})
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setIsBalanceModalOpen(false)} className="text-slate-500 hover:text-slate-800 p-1 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Current Balances Overview */}
+            <div className="grid grid-cols-2 gap-2.5 p-3.5 bg-white/80 rounded-2xl border border-pink-200">
+              <div className="text-center p-2 rounded-xl bg-pink-50/70 border border-pink-100">
+                <span className="text-sm text-slate-600 block">Баланс (ИИрки)</span>
+                <span className="text-base font-bold text-pink-600 font-mono">{(balanceUser.balance ?? 0).toLocaleString()}</span>
+              </div>
+              <div className="text-center p-2 rounded-xl bg-sky-50/70 border border-sky-100">
+                <span className="text-sm text-slate-600 block">Баланс Free</span>
+                <span className="text-base font-bold text-sky-700 font-mono">{(balanceUser.balance_free ?? 0).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveBalanceAdjust} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">
+                  Сумма изменения (+ для начисления, - для списания):
+                </label>
+                <input
+                  type="number"
+                  required
+                  value={balanceAdjustAmount}
+                  onChange={(e) => setBalanceAdjustAmount(e.target.value)}
+                  placeholder="+500 или -200"
+                  className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-base font-mono font-bold text-slate-900 focus:outline-none focus:border-pink-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">
+                  Тип баланса:
+                </label>
+                <select
+                  value={balanceAdjustType}
+                  onChange={(e) => setBalanceAdjustType(e.target.value)}
+                  className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-sm font-bold text-slate-900 focus:outline-none focus:border-pink-500 cursor-pointer"
+                >
+                  <option value="admin">Корректировка администратором (balance_admin)</option>
+                  <option value="pay">Пополнение / Оплата (balance_pay)</option>
+                  <option value="start">Стартовый бонус (balance_start)</option>
+                  <option value="ref">Партнерские реферальные (balance_ref)</option>
+                  <option value="tarif">Тарифное начисление (balance_tarif)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">
+                  Причина изменения (обязательный комментарий для истории транзакций):
+                </label>
+                <textarea
+                  required
+                  rows={2}
+                  value={balanceAdjustComment}
+                  onChange={(e) => setBalanceAdjustComment(e.target.value)}
+                  placeholder="Например: Бонус за участие в тестировании или компенсация..."
+                  className="w-full bg-white border border-pink-300 rounded-xl p-3 text-sm text-slate-900 focus:outline-none focus:border-pink-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-pink-200">
+                <button
+                  type="button"
+                  onClick={() => setIsBalanceModalOpen(false)}
+                  className="bg-white hover:bg-slate-100 text-slate-800 text-sm font-bold px-4 py-2 rounded-2xl border border-pink-200 transition-all cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={balanceAdjustSubmitting}
+                  className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-sm font-bold px-5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
+                >
+                  {balanceAdjustSubmitting ? <RefreshCw className="animate-spin" size={16} /> : <Check size={16} />}
+                  <span>Применить корректировку</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal: ADD ROW */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-6 max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-300 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-5 sm:p-6 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-pink-200/80 pb-3 shrink-0">
-              <h3 className="text-sm font-black text-slate-900 flex items-center space-x-2">
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
                 <Plus size={18} className="text-pink-600" />
                 <span>Добавить новую строку в «{selectedTable}»</span>
               </h3>
@@ -793,14 +1059,14 @@ export default function SqliteTableManager({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {tableData.columns.map(col => (
                   <div key={col}>
-                    <label className="block text-[10px] font-mono font-black text-slate-700 uppercase mb-1">
+                    <label className="block text-sm font-mono font-bold text-slate-700 mb-1">
                       {col}
                     </label>
                     <input
                       type="text"
                       value={formData[col] ?? ''}
                       onChange={(e) => setFormData({ ...formData, [col]: e.target.value })}
-                      className="w-full bg-white/90 border border-pink-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:border-pink-400"
+                      className="w-full bg-white/90 border border-pink-200 rounded-xl px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:border-pink-400"
                     />
                   </div>
                 ))}
@@ -810,16 +1076,16 @@ export default function SqliteTableManager({
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="bg-white/80 hover:bg-white text-slate-800 text-xs font-bold px-4 py-2 rounded-2xl border border-pink-200 transition-all cursor-pointer"
+                  className="bg-white/80 hover:bg-white text-slate-800 text-sm font-bold px-4 py-2 rounded-2xl border border-pink-200 transition-all cursor-pointer"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-xs font-black px-5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
+                  className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-sm font-bold px-5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
                 >
-                  {submitting ? <RefreshCw className="animate-spin" size={13} /> : <Check size={13} />}
+                  {submitting ? <RefreshCw className="animate-spin" size={15} /> : <Check size={15} />}
                   <span>Сохранить строку</span>
                 </button>
               </div>
@@ -830,8 +1096,8 @@ export default function SqliteTableManager({
 
       {/* Modal: EDIT ROW */}
       {isEditModalOpen && (
-        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-4 sm:p-6 max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-300 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-4 sm:p-6 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-pink-200/80 pb-3 shrink-0 gap-2">
               <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 overflow-hidden">
                 {photoUrlValue ? (
@@ -846,10 +1112,10 @@ export default function SqliteTableManager({
                   </div>
                 )}
                 <div className="min-w-0">
-                  <h3 className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                     {selectedTable === 'users' ? `Редактирование пользователя` : `Редактор записи #${editingRow?.id}`}
                   </h3>
-                  <p className="text-[10px] font-bold text-pink-700 truncate hidden sm:block">
+                  <p className="text-sm font-bold text-pink-700 truncate hidden sm:block">
                     {selectedTable === 'users' ? `ID: ${editingRow?.id || ''} • TG: ${editingRow?.telegram_id || editingRow?.username || '—'}` : `Таблица «${selectedTable}»`}
                   </p>
                 </div>
@@ -864,7 +1130,6 @@ export default function SqliteTableManager({
             </div>
 
             <form onSubmit={handleSaveEditRow} className="space-y-4 overflow-y-auto pr-1 flex-1">
-              {/* Photo preview block if present */}
               {photoUrlValue && (
                 <div className="p-3 bg-white/80 rounded-2xl border border-pink-200 flex items-center space-x-4">
                   <img 
@@ -872,9 +1137,9 @@ export default function SqliteTableManager({
                     alt="User Avatar" 
                     className="w-14 h-14 rounded-full object-cover border-2 border-pink-400 shadow-md shrink-0" 
                   />
-                  <div className="space-y-1 text-xs min-w-0">
+                  <div className="space-y-1 text-sm min-w-0">
                     <div className="font-bold text-slate-800">Аватар / Фотография:</div>
-                    <div className="text-[10px] text-slate-500 font-mono break-all line-clamp-2">{photoUrlValue}</div>
+                    <div className="text-sm text-slate-500 font-mono break-all line-clamp-2">{photoUrlValue}</div>
                   </div>
                 </div>
               )}
@@ -885,28 +1150,30 @@ export default function SqliteTableManager({
                   const isTariff = col === 'tariff';
                   const isRole = col === 'role';
                   const isStatus = col === 'status';
+                  const isBalanceField = selectedTable === 'users' && BALANCE_COLUMNS.includes(col);
 
                   return (
                     <div key={col} className={isPhotoCol ? 'sm:col-span-2' : ''}>
-                      <label className="block text-[10px] font-mono font-black text-slate-700 uppercase mb-1">
+                      <label className="block text-sm font-mono font-bold text-slate-700 mb-1">
                         {col} {col === 'id' && '(PRIMARY KEY)'}
+                        {isBalanceField && <span className="text-pink-600 font-bold ml-1">(через калькулятор)</span>}
                       </label>
                       {isTariff ? (
                         <select
                           value={formData[col] ?? 'Старт'}
                           onChange={(e) => setFormData({ ...formData, [col]: e.target.value })}
-                          className="w-full bg-white/90 border border-pink-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-pink-400 cursor-pointer"
+                          className="w-full bg-white/90 border border-pink-200 rounded-xl px-3 py-2 text-sm text-slate-900 font-bold focus:outline-none focus:border-pink-400 cursor-pointer"
                         >
-                          <option value="Старт">🚀 Старт</option>
-                          <option value="Про">⚡ Про</option>
-                          <option value="Бизнес">💼 Бизнес</option>
-                          <option value="Космос">🌌 Космос</option>
+                          <option value="Старт">Старт</option>
+                          <option value="Разгон">Разгон</option>
+                          <option value="Отрыв">Отрыв</option>
+                          <option value="Космос">Космос</option>
                         </select>
                       ) : isRole ? (
                         <select
                           value={formData[col] ?? 'user'}
                           onChange={(e) => setFormData({ ...formData, [col]: e.target.value })}
-                          className="w-full bg-white/90 border border-pink-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-pink-400 cursor-pointer"
+                          className="w-full bg-white/90 border border-pink-200 rounded-xl px-3 py-2 text-sm text-slate-900 font-bold focus:outline-none focus:border-pink-400 cursor-pointer"
                         >
                           <option value="user">User</option>
                           <option value="editor">Editor</option>
@@ -916,20 +1183,20 @@ export default function SqliteTableManager({
                         <select
                           value={formData[col] ?? 'Активный'}
                           onChange={(e) => setFormData({ ...formData, [col]: e.target.value })}
-                          className="w-full bg-white/90 border border-pink-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-pink-400 cursor-pointer"
+                          className="w-full bg-white/90 border border-pink-200 rounded-xl px-3 py-2 text-sm text-slate-900 font-bold focus:outline-none focus:border-pink-400 cursor-pointer"
                         >
-                          <option value="Активный">🟢 Активный</option>
-                          <option value="Заблокирован">🔴 Заблокирован</option>
-                          <option value="Ожидает">🟡 Ожидает</option>
+                          <option value="Активный">Активный</option>
+                          <option value="Заблокирован">Заблокирован</option>
+                          <option value="Ожидает">Ожидает</option>
                         </select>
                       ) : (
                         <input
                           type="text"
-                          disabled={col === 'id'}
+                          disabled={col === 'id' || isBalanceField}
                           value={formData[col] ?? ''}
                           onChange={(e) => setFormData({ ...formData, [col]: e.target.value })}
-                          className={`w-full bg-white/90 border border-pink-200 rounded-xl px-3 py-1.5 text-xs font-mono focus:outline-none ${
-                            col === 'id' ? 'text-slate-400 cursor-not-allowed bg-slate-100/80' : 'text-slate-900 focus:border-pink-400'
+                          className={`w-full bg-white/90 border border-pink-200 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none ${
+                            col === 'id' || isBalanceField ? 'text-slate-500 cursor-not-allowed bg-slate-100/80' : 'text-slate-900 focus:border-pink-400'
                           }`}
                         />
                       )}
@@ -942,16 +1209,16 @@ export default function SqliteTableManager({
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  className="bg-white/80 hover:bg-white text-slate-800 text-xs font-bold px-4 py-2 rounded-2xl border border-pink-200 transition-all cursor-pointer"
+                  className="bg-white/80 hover:bg-white text-slate-800 text-sm font-bold px-4 py-2 rounded-2xl border border-pink-200 transition-all cursor-pointer"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-xs font-black px-5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
+                  className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-sm font-bold px-5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
                 >
-                  {submitting ? <RefreshCw className="animate-spin" size={13} /> : <Check size={13} />}
+                  {submitting ? <RefreshCw className="animate-spin" size={15} /> : <Check size={15} />}
                   <span>Сохранить изменения</span>
                 </button>
               </div>
@@ -962,16 +1229,16 @@ export default function SqliteTableManager({
 
       {/* Modal: CSV IMPORT */}
       {isCsvImportModalOpen && (
-        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-6 text-left max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-300 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-4 p-5 sm:p-6 text-left max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center border-b border-pink-200/80 pb-3 shrink-0">
               <div className="flex items-center space-x-2.5">
                 <div className="p-2 bg-white/90 rounded-xl border border-pink-200 text-pink-600 shadow-xs">
                   <FileSpreadsheet size={20} className="text-orange-500" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900">Импорт данных из CSV</h3>
-                  <p className="text-xs text-slate-600">
+                  <h3 className="text-base font-bold text-slate-900">Импорт данных из CSV</h3>
+                  <p className="text-sm text-slate-600">
                     Целевая таблица: <span className="font-mono font-bold text-pink-700">{selectedTable}</span>
                   </p>
                 </div>
@@ -985,29 +1252,27 @@ export default function SqliteTableManager({
             </div>
 
             <div className="space-y-4 overflow-y-auto pr-1 flex-1">
-              {/* File Upload Button & Drag Area */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white/80 border border-pink-200 rounded-2xl p-3.5">
                 <div className="flex items-center space-x-3">
                   <Upload size={18} className="text-pink-500 shrink-0" />
-                  <div className="text-xs text-slate-700">
+                  <div className="text-sm text-slate-700">
                     <p className="font-bold text-slate-900">Загрузить готовый .CSV файл</p>
-                    <p className="text-[11px] text-slate-500">Автоматически определит разделители и заголовки</p>
+                    <p className="text-sm text-slate-500">Автоматически определит разделители и заголовки</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => csvFileInputRef.current?.click()}
-                  className="bg-white hover:bg-pink-50 border border-pink-300 text-slate-800 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-xs transition-all shrink-0 cursor-pointer"
+                  className="bg-white hover:bg-pink-50 border border-pink-300 text-slate-800 text-sm font-bold px-3.5 py-2 rounded-xl flex items-center space-x-1.5 shadow-xs transition-all shrink-0 cursor-pointer"
                 >
-                  <Upload size={13} className="text-orange-500" />
+                  <Upload size={15} className="text-orange-500" />
                   <span>Выбрать .CSV файл</span>
                 </button>
               </div>
 
-              {/* CSV Text Input Area */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Или вставьте CSV текст напрямую (первая строка — заголовки столбцов):
+                <label className="block text-sm font-bold text-slate-700 mb-1">
+                  Или вставьте CSV текст напрямую:
                 </label>
                 <textarea
                   rows={5}
@@ -1016,60 +1281,30 @@ export default function SqliteTableManager({
                     setCsvImportText(e.target.value);
                     parseCsvData(e.target.value);
                   }}
-                  placeholder={`id,name,role,status\nuser_1,Иван Иванов,admin,active\nuser_2,Петр Смирнов,editor,active`}
-                  className="w-full bg-white/95 border border-pink-200 rounded-xl p-3 text-xs font-mono text-slate-800 focus:outline-none focus:border-pink-400 placeholder-slate-400"
+                  placeholder={`id,name,role,status\nuser_1,Иван Иванов,admin,active`}
+                  className="w-full bg-white/95 border border-pink-200 rounded-xl p-3 text-sm font-mono text-slate-800 focus:outline-none focus:border-pink-400 placeholder-slate-400"
                 />
               </div>
 
-              {/* Parsed Preview */}
               {csvParsedPreview && (
                 <div className="bg-white/90 border border-pink-200 rounded-2xl p-4 space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-black text-slate-900">
+                    <span className="text-sm font-bold text-slate-900">
                       Распознано строк: <strong className="text-pink-600">{csvParsedPreview.rows.length}</strong>
                     </span>
-                    <span className="text-[11px] font-mono text-slate-600">
+                    <span className="text-sm font-mono text-slate-600">
                       Столбцов: {csvParsedPreview.headers.length} ({csvParsedPreview.headers.join(', ')})
                     </span>
                   </div>
-
-                  {csvParsedPreview.rows.length > 0 && (
-                    <div className="border border-pink-100 rounded-xl overflow-x-auto max-h-[140px] text-[11px] font-mono bg-white">
-                      <table className="min-w-full divide-y divide-pink-100">
-                        <thead className="bg-pink-50/70 text-slate-800 font-bold sticky top-0">
-                          <tr>
-                            {csvParsedPreview.headers.map((h, i) => (
-                              <th key={i} className="p-2 text-left whitespace-nowrap">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 text-slate-700">
-                          {csvParsedPreview.rows.slice(0, 3).map((r, rIdx) => (
-                            <tr key={rIdx}>
-                              {csvParsedPreview.headers.map((h, cIdx) => (
-                                <td key={cIdx} className="p-2 whitespace-nowrap">{String(r[h] ?? '')}</td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  {csvParsedPreview.rows.length > 3 && (
-                    <p className="text-[10px] text-slate-500 text-right font-mono">
-                      ...и ещё {csvParsedPreview.rows.length - 3} строк
-                    </p>
-                  )}
                 </div>
               )}
             </div>
 
-            {/* Modal Actions */}
             <div className="flex justify-end space-x-2 pt-3 border-t border-pink-200 shrink-0">
               <button
                 type="button"
                 onClick={() => setIsCsvImportModalOpen(false)}
-                className="bg-white/80 hover:bg-white text-slate-800 text-xs font-bold px-4 py-2 rounded-2xl border border-pink-200 transition-all cursor-pointer"
+                className="bg-white/80 hover:bg-white text-slate-800 text-sm font-bold px-4 py-2 rounded-2xl border border-pink-200 transition-all cursor-pointer"
               >
                 Отмена
               </button>
@@ -1077,52 +1312,243 @@ export default function SqliteTableManager({
                 type="button"
                 onClick={handleExecuteCsvImport}
                 disabled={isImportingCsv || !csvParsedPreview || csvParsedPreview.rows.length === 0}
-                className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-xs font-black px-5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-md disabled:opacity-40 cursor-pointer"
+                className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-sm font-bold px-5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
               >
-                {isImportingCsv ? <RefreshCw className="animate-spin" size={13} /> : <Check size={13} />}
-                <span>Импортировать {csvParsedPreview?.rows.length || 0} строк</span>
+                {isImportingCsv ? <RefreshCw className="animate-spin" size={15} /> : <Check size={15} />}
+                <span>Импортировать в базу</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: DELETE CONFIRMATION */}
-      {deletingRowId && (
-        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl space-y-4 p-6">
-            <div className="flex items-center space-x-3 text-pink-600">
-              <div className="p-3 bg-white/90 rounded-2xl border border-pink-200">
-                <Trash2 size={24} className="text-orange-500" />
-              </div>
+      {/* Modal: CREATE CUSTOM TARIFF */}
+      {isCustomTariffModalOpen && (
+        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-300 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl space-y-4 p-5 sm:p-6 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-pink-200/80 pb-3 shrink-0">
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Sparkles size={18} className="text-pink-600" />
+                <span>Создание индивидуального тарифа</span>
+              </h3>
+              <button 
+                onClick={() => setIsCustomTariffModalOpen(false)} 
+                className="text-slate-500 hover:text-slate-800 p-1 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCustomTariff} className="space-y-4 overflow-y-auto pr-1 flex-1">
               <div>
-                <h3 className="text-sm font-black text-slate-900">Подтверждение удаления</h3>
-                <p className="text-xs text-slate-600">Таблица: <span className="font-mono font-bold text-slate-800">{selectedTable}</span></p>
+                <label className="block text-sm font-bold text-slate-800 mb-1">
+                  Название тарифа:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={customTariffForm.name}
+                  onChange={(e) => setCustomTariffForm({ ...customTariffForm, name: e.target.value })}
+                  placeholder="Например: Космос VIP, Индивидуальный Корпоративный"
+                  className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-sm font-bold text-slate-900 focus:outline-none focus:border-pink-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-1">
+                    Стоимость (руб):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={customTariffForm.price_rub}
+                    onChange={(e) => setCustomTariffForm({ ...customTariffForm, price_rub: Number(e.target.value) || 0 })}
+                    className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-pink-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-1">
+                    ИИрок в месяц:
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={customTariffForm.monthly_iirky}
+                    onChange={(e) => setCustomTariffForm({ ...customTariffForm, monthly_iirky: Number(e.target.value) || 0 })}
+                    className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-pink-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-1">
+                    Срок действия (дней):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={customTariffForm.duration_days}
+                    onChange={(e) => {
+                      const days = Number(e.target.value) || 30;
+                      setCustomTariffForm({ 
+                        ...customTariffForm, 
+                        duration_days: days,
+                        duration_text: `${days} дней`
+                      });
+                    }}
+                    className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-pink-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-1">
+                    Привязка к ID пользователя (необязательно):
+                  </label>
+                  <input
+                    type="text"
+                    value={customTariffForm.target_user_id}
+                    onChange={(e) => setCustomTariffForm({ ...customTariffForm, target_user_id: e.target.value })}
+                    placeholder="Например: 169262990 (или пусто для всех)"
+                    className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-sm font-mono text-slate-900 focus:outline-none focus:border-pink-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">
+                  Краткое описание / подзаголовок:
+                </label>
+                <input
+                  type="text"
+                  value={customTariffForm.sub}
+                  onChange={(e) => setCustomTariffForm({ ...customTariffForm, sub: e.target.value })}
+                  placeholder="Индивидуальная разработка под ключ"
+                  className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-pink-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">
+                  Возможности тарифа (каждая с новой строки):
+                </label>
+                <textarea
+                  rows={4}
+                  value={customTariffForm.featuresText}
+                  onChange={(e) => setCustomTariffForm({ ...customTariffForm, featuresText: e.target.value })}
+                  className="w-full bg-white border border-pink-300 rounded-xl p-3 text-sm text-slate-900 focus:outline-none focus:border-pink-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-pink-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsCustomTariffModalOpen(false)}
+                  className="bg-white/80 hover:bg-white text-slate-800 text-sm font-bold px-4 py-2 rounded-2xl border border-pink-200 transition-all cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={customTariffSubmitting}
+                  className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-sm font-bold px-5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
+                >
+                  {customTariffSubmitting ? <RefreshCw className="animate-spin" size={16} /> : <Check size={16} />}
+                  <span>Сохранить тариф в базу</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: ASSIGN TARIFF TO USER */}
+      {isAssignTariffModalOpen && assignTariffUser && (
+        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-300 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl space-y-4 p-5 sm:p-6">
+            <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Sparkles size={18} className="text-pink-600" />
+                <span>Назначение тарифа</span>
+              </h3>
+              <button 
+                onClick={() => setIsAssignTariffModalOpen(false)} 
+                className="text-slate-500 hover:text-slate-800 p-1 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3 bg-white/80 rounded-2xl border border-pink-200 space-y-1">
+              <div className="text-sm font-bold text-slate-800">
+                Пользователь: <span className="text-pink-600">{assignTariffUser.name || assignTariffUser.username || `#${assignTariffUser.id}`}</span>
+              </div>
+              <div className="text-sm text-slate-600">
+                Текущий тариф: <strong className="text-slate-800">{assignTariffUser.tariff || 'Старт'}</strong> (до {assignTariffUser.tariff_until ? new Date(assignTariffUser.tariff_until).toLocaleDateString('ru-RU') : 'бессрочно'})
               </div>
             </div>
 
-            <p className="text-xs text-slate-700 leading-relaxed font-semibold bg-white/80 p-3.5 rounded-2xl border border-pink-200">
-              Вы действительно хотите безвозвратно удалить запись <strong className="font-mono text-pink-700">"{deletingRowId}"</strong> из базы данных SQLite?
-            </p>
+            <form onSubmit={handleAssignTariffToUser} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">
+                  Выберите тариф:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={assignTariffForm.tariffName}
+                  onChange={(e) => setAssignTariffForm({ ...assignTariffForm, tariffName: e.target.value })}
+                  placeholder="Старт, Разгон, Отрыв, Космос или название кастомного тарифа"
+                  className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-sm font-bold text-slate-900 focus:outline-none focus:border-pink-500"
+                />
+              </div>
 
-            <div className="flex justify-end space-x-2 pt-2 border-t border-pink-200">
-              <button
-                type="button"
-                onClick={() => setDeletingRowId(null)}
-                className="bg-white/80 hover:bg-white text-slate-800 text-xs font-bold px-4 py-2 rounded-2xl border border-pink-200 transition-all cursor-pointer"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                onClick={handleExecuteDeleteRow}
-                disabled={submitting}
-                className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-xs font-black px-5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
-              >
-                {submitting ? <RefreshCw className="animate-spin" size={13} /> : <Trash2 size={13} />}
-                <span>Да, удалить</span>
-              </button>
-            </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">
+                  Срок действия (в днях):
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={assignTariffForm.durationDays}
+                  onChange={(e) => setAssignTariffForm({ ...assignTariffForm, durationDays: Number(e.target.value) || 30 })}
+                  className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-pink-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">
+                  Начислить ИИрок сразу (balance_tarif):
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={assignTariffForm.addMonthlyIirky}
+                  onChange={(e) => setAssignTariffForm({ ...assignTariffForm, addMonthlyIirky: Number(e.target.value) || 0 })}
+                  placeholder="0 (или количество бонусных ИИрок)"
+                  className="w-full bg-white border border-pink-300 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-pink-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-pink-200">
+                <button
+                  type="button"
+                  onClick={() => setIsAssignTariffModalOpen(false)}
+                  className="bg-white/80 hover:bg-white text-slate-800 text-sm font-bold px-4 py-2 rounded-2xl border border-pink-200 transition-all cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={assignTariffSubmitting}
+                  className="bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-sm font-bold px-5 py-2 rounded-2xl flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
+                >
+                  {assignTariffSubmitting ? <RefreshCw className="animate-spin" size={16} /> : <Check size={16} />}
+                  <span>Применить тариф</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
