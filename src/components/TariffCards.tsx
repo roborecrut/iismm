@@ -14,6 +14,42 @@ export interface TariffPlan {
   features: { title: string; desc: string }[];
 }
 
+export function formatExpiryDate(val: string | number | Date | undefined | null): string {
+  if (!val) return '';
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (trimmed.toLowerCase() === 'invalid date' || trimmed.toLowerCase() === 'бессрочно') {
+      return '';
+    }
+    // If already in DD.MM.YYYY format
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
+      return trimmed;
+    }
+    // Try standard date parsing
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+    // Fallback: check if DD/MM/YYYY or DD-MM-YYYY
+    const parts = trimmed.split(/[./-]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+        return `${parts[0]}.${parts[1]}.${parts[2]}`;
+      }
+    }
+  }
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    return val.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+  if (typeof val === 'number') {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+  }
+  return '';
+}
+
 export const DEFAULT_TARIFF_PLANS: TariffPlan[] = [
   {
     id: 'start',
@@ -358,9 +394,16 @@ export default function TariffCards({ onAction, buttonText = "Подключит
                       {plan.name}
                     </h3>
                     {isCurrentPlanActive && (
-                      <span className="px-2.5 py-0.5 bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 text-white text-xs font-bold rounded-full shadow-xs">
-                        {userTariffExpiresAt ? `Текущий (до ${new Date(userTariffExpiresAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })})` : 'Текущий'}
-                      </span>
+                      <div className="flex flex-col items-end shrink-0">
+                        <span className="px-2.5 py-0.5 bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 text-white text-xs font-bold rounded-full shadow-xs">
+                          Текущий
+                        </span>
+                        {formatExpiryDate(userTariffExpiresAt) ? (
+                          <span className="text-[11px] font-bold text-pink-700 mt-0.5">
+                            до {formatExpiryDate(userTariffExpiresAt)}
+                          </span>
+                        ) : null}
+                      </div>
                     )}
                   </div>
 

@@ -13,6 +13,9 @@ export interface TariffRecord {
   sort_order: number;
   duration_days?: number;
   duration_text?: string;
+  discount_3m?: number;
+  discount_6m?: number;
+  discount_12m?: number;
   target_user_id?: string;
   is_custom?: number;
   created_at: string;
@@ -66,6 +69,9 @@ export const DEFAULT_TARIFFS: TariffRecord[] = [
     sort_order: 1,
     duration_days: 30,
     duration_text: '30 дней',
+    discount_3m: 5,
+    discount_6m: 10,
+    discount_12m: 15,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -103,6 +109,9 @@ export const DEFAULT_TARIFFS: TariffRecord[] = [
     sort_order: 2,
     duration_days: 30,
     duration_text: '30 дней',
+    discount_3m: 5,
+    discount_6m: 10,
+    discount_12m: 15,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -148,6 +157,9 @@ export const DEFAULT_TARIFFS: TariffRecord[] = [
     sort_order: 3,
     duration_days: 30,
     duration_text: '30 дней',
+    discount_3m: 5,
+    discount_6m: 10,
+    discount_12m: 15,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   },
@@ -185,6 +197,9 @@ export const DEFAULT_TARIFFS: TariffRecord[] = [
     sort_order: 4,
     duration_days: 30,
     duration_text: 'Индивидуально',
+    discount_3m: 0,
+    discount_6m: 0,
+    discount_12m: 0,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   }
@@ -205,6 +220,9 @@ export function initTariffsTable(db: Database) {
       sort_order INTEGER DEFAULT 0,
       duration_days INTEGER DEFAULT 30,
       duration_text TEXT DEFAULT '30 дней',
+      discount_3m INTEGER DEFAULT 5,
+      discount_6m INTEGER DEFAULT 10,
+      discount_12m INTEGER DEFAULT 15,
       target_user_id TEXT,
       is_custom INTEGER DEFAULT 0,
       created_at TEXT,
@@ -215,6 +233,9 @@ export function initTariffsTable(db: Database) {
   // Migrations for new columns
   try { db.run("ALTER TABLE tarifs ADD COLUMN duration_days INTEGER DEFAULT 30;"); } catch (e) {}
   try { db.run("ALTER TABLE tarifs ADD COLUMN duration_text TEXT DEFAULT '30 дней';"); } catch (e) {}
+  try { db.run("ALTER TABLE tarifs ADD COLUMN discount_3m INTEGER DEFAULT 5;"); } catch (e) {}
+  try { db.run("ALTER TABLE tarifs ADD COLUMN discount_6m INTEGER DEFAULT 10;"); } catch (e) {}
+  try { db.run("ALTER TABLE tarifs ADD COLUMN discount_12m INTEGER DEFAULT 15;"); } catch (e) {}
   try { db.run("ALTER TABLE tarifs ADD COLUMN target_user_id TEXT;"); } catch (e) {}
   try { db.run("ALTER TABLE tarifs ADD COLUMN is_custom INTEGER DEFAULT 0;"); } catch (e) {}
 
@@ -322,15 +343,18 @@ export function createOrUpdateTariffInDb(
   const sort_order = Number(tariff.sort_order) || 10;
   const duration_days = Number(tariff.duration_days) || 30;
   const duration_text = tariff.duration_text || `${duration_days} дней`;
+  const discount_3m = tariff.discount_3m !== undefined ? Number(tariff.discount_3m) : 5;
+  const discount_6m = tariff.discount_6m !== undefined ? Number(tariff.discount_6m) : 10;
+  const discount_12m = tariff.discount_12m !== undefined ? Number(tariff.discount_12m) : 15;
   const target_user_id = tariff.target_user_id || null;
   const is_custom = 1;
 
   db.run(
     `INSERT OR REPLACE INTO tarifs (
-      id, name, price_iirky, price_rub, sub, continuation, monthly_iirky, features, is_active, sort_order, duration_days, duration_text, target_user_id, is_custom, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM tarifs WHERE id = ?), ?), ?)`,
+      id, name, price_iirky, price_rub, sub, continuation, monthly_iirky, features, is_active, sort_order, duration_days, duration_text, discount_3m, discount_6m, discount_12m, target_user_id, is_custom, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM tarifs WHERE id = ?), ?), ?)`,
     [
-      id, name, price_iirky, price_rub, sub, continuation, monthly_iirky, features, is_active, sort_order, duration_days, duration_text, target_user_id, is_custom, id, now, now
+      id, name, price_iirky, price_rub, sub, continuation, monthly_iirky, features, is_active, sort_order, duration_days, duration_text, discount_3m, discount_6m, discount_12m, target_user_id, is_custom, id, now, now
     ]
   );
 
@@ -347,6 +371,9 @@ export function createOrUpdateTariffInDb(
     sort_order,
     duration_days,
     duration_text,
+    discount_3m,
+    discount_6m,
+    discount_12m,
     target_user_id: target_user_id || undefined,
     is_custom,
     created_at: now,

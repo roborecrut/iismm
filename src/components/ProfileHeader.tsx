@@ -12,6 +12,7 @@ interface ProfileHeaderProps {
   onLogout?: () => void;
   onBindEmail?: () => void;
   onNavigateToSocial?: () => void;
+  onNavigate?: (path: string) => void;
   className?: string;
   isSocialPage?: boolean;
   isOwnProfile?: boolean;
@@ -25,6 +26,7 @@ export default function ProfileHeader({
   onLogout,
   onBindEmail,
   onNavigateToSocial,
+  onNavigate,
   className = '',
   isSocialPage = false,
   isOwnProfile = true
@@ -290,6 +292,7 @@ export default function ProfileHeader({
         onClose={() => setIsNotificationsOpen(false)}
         userId={dbId}
         onUnreadCountChange={setUnreadCount}
+        onNavigate={onNavigate}
       />
     </>
   );

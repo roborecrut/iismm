@@ -81,6 +81,7 @@ export function initUsersTable(db: Database) {
       balance_time TEXT,
       status TEXT DEFAULT 'Активный',
       tariff TEXT DEFAULT 'Старт',
+      tarif_date TEXT,
       tariff_expires_at TEXT,
       tariff_assigned_at TEXT,
       tariff_duration_days INTEGER DEFAULT 30,
@@ -102,11 +103,89 @@ export function initUsersTable(db: Database) {
   try { db.run("ALTER TABLE users ADD COLUMN balance_time TEXT;"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'Активный';"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN tariff TEXT DEFAULT 'Старт';"); } catch (e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN tarif_date TEXT;"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN tariff_expires_at TEXT;"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN tariff_assigned_at TEXT;"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN tariff_duration_days INTEGER DEFAULT 30;"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN user_avatar TEXT;"); } catch (e) {}
   try { db.run("ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT 'Europe/Moscow';"); } catch (e) {}
+
+  // Recalculate and migrate legacy balances and tariff dates for existing users
+  try {
+    db.run(`
+      UPDATE users 
+      SET 
+        tarif_date = CASE 
+          WHEN tarif_date IS NULL OR tarif_date = '' OR tarif_date LIKE '%Invalid%' 
+          THEN COALESCE(tariff_assigned_at, created_at, datetime('now')) 
+          ELSE tarif_date 
+        END,
+        tariff_assigned_at = CASE 
+          WHEN tariff_assigned_at IS NULL OR tariff_assigned_at = '' OR tariff_assigned_at LIKE '%Invalid%' 
+          THEN COALESCE(tarif_date, created_at, datetime('now')) 
+          ELSE tariff_assigned_at 
+        END,
+        tariff_duration_days = CASE 
+          WHEN tariff_duration_days IS NULL OR tariff_duration_days <= 0 
+          THEN 30 
+          ELSE tariff_duration_days 
+        END,
+        tariff_expires_at = CASE 
+          WHEN tariff_expires_at IS NULL OR tariff_expires_at = '' OR tariff_expires_at LIKE '%Invalid%' 
+          THEN datetime(COALESCE(tariff_assigned_at, tarif_date, created_at, datetime('now')), '+' || COALESCE(tariff_duration_days, 30) || ' days') 
+          ELSE tariff_expires_at 
+        END,
+        balance_time = CASE 
+          WHEN balance_time IS NULL OR balance_time = '' OR balance_time LIKE '%Invalid%' 
+          THEN datetime(COALESCE(tariff_assigned_at, tarif_date, created_at, datetime('now')), '+' || COALESCE(tariff_duration_days, 30) || ' days') 
+          ELSE balance_time 
+        END
+      WHERE 1=1;
+    `);
+  } catch (e) {}
+
+  // Triggers to automatically track tariff changes and keep expiration dates in sync
+  try {
+    db.run(`
+      CREATE TRIGGER IF NOT EXISTS trg_users_insert_tarif_date
+      AFTER INSERT ON users
+      FOR EACH ROW
+      BEGIN
+        UPDATE users
+        SET 
+          tarif_date = COALESCE(NEW.tarif_date, NEW.tariff_assigned_at, NEW.created_at, datetime('now')),
+          tariff_assigned_at = COALESCE(NEW.tariff_assigned_at, NEW.tarif_date, NEW.created_at, datetime('now')),
+          tariff_duration_days = COALESCE(NEW.tariff_duration_days, 30),
+          tariff_expires_at = COALESCE(NEW.tariff_expires_at, datetime(COALESCE(NEW.tarif_date, NEW.created_at, datetime('now')), '+' || COALESCE(NEW.tariff_duration_days, 30) || ' days')),
+          balance_time = COALESCE(NEW.balance_time, datetime(COALESCE(NEW.tarif_date, NEW.created_at, datetime('now')), '+' || COALESCE(NEW.tariff_duration_days, 30) || ' days'))
+        WHERE id = NEW.id;
+      END;
+    `);
+  } catch (e) {}
+
+  try {
+    db.run(`
+      CREATE TRIGGER IF NOT EXISTS trg_users_update_tariff
+      AFTER UPDATE OF tariff, tarif_date, tariff_duration_days ON users
+      FOR EACH ROW
+      WHEN (NEW.tariff != OLD.tariff OR NEW.tarif_date != OLD.tarif_date OR NEW.tariff_duration_days != OLD.tariff_duration_days)
+      BEGIN
+        UPDATE users
+        SET 
+          tarif_date = CASE WHEN NEW.tariff != OLD.tariff AND (NEW.tarif_date = OLD.tarif_date OR NEW.tarif_date IS NULL) THEN datetime('now') ELSE COALESCE(NEW.tarif_date, datetime('now')) END,
+          tariff_assigned_at = CASE WHEN NEW.tariff != OLD.tariff AND (NEW.tariff_assigned_at = OLD.tariff_assigned_at OR NEW.tariff_assigned_at IS NULL) THEN datetime('now') ELSE COALESCE(NEW.tariff_assigned_at, datetime('now')) END,
+          tariff_expires_at = datetime(
+            CASE WHEN NEW.tariff != OLD.tariff AND (NEW.tarif_date = OLD.tarif_date OR NEW.tarif_date IS NULL) THEN datetime('now') ELSE COALESCE(NEW.tarif_date, datetime('now')) END,
+            '+' || COALESCE(NEW.tariff_duration_days, 30) || ' days'
+          ),
+          balance_time = datetime(
+            CASE WHEN NEW.tariff != OLD.tariff AND (NEW.tarif_date = OLD.tarif_date OR NEW.tarif_date IS NULL) THEN datetime('now') ELSE COALESCE(NEW.tarif_date, datetime('now')) END,
+            '+' || COALESCE(NEW.tariff_duration_days, 30) || ' days'
+          )
+        WHERE id = NEW.id;
+      END;
+    `);
+  } catch (e) {}
 
   // Recalculate and migrate legacy balances for existing users: balance_admin contributes to balance_free
   try {
@@ -212,59 +291,86 @@ export function reconcileAllUserBalancesFromTransactions(db: Database): { update
       // Check start transactions (start, start_tma, start_email)
       const hasTg = Number(u.telegram_id || 0) > 0;
       const hasEm = Boolean(u.email && String(u.email).trim() !== '' && u.password_hash);
-      const targetStartType = hasTg ? 'start_tma' : (hasEm ? 'start_email' : 'start_tma');
-      const targetDesc = hasTg ? 'Стартовый баланс Telegram Mini App (300 ИИрок)' : 'Стартовый баланс при регистрации через Email (300 ИИрок)';
 
       // Auto-migrate legacy 'start' type to start_tma or start_email
       for (const t of txs) {
         if (t.type === 'start') {
-          db.run("UPDATE transactions SET type = ?, description = ? WHERE id = ?", [targetStartType, targetDesc, t.id]);
-          t.type = targetStartType;
-          t.description = targetDesc;
-          details.push(`Обновлен тип стартовой транзакции ${t.id} на ${targetStartType} для ${canonicalId}`);
+          const newType = hasTg ? 'start_tma' : 'start_email';
+          const newDesc = hasTg ? 'Стартовый баланс Telegram Mini App (300 ИИрок)' : 'Стартовый баланс при регистрации через Email (300 ИИрок)';
+          db.run("UPDATE transactions SET type = ?, description = ? WHERE id = ?", [newType, newDesc, t.id]);
+          t.type = newType;
+          t.description = newDesc;
+          details.push(`Обновлен тип стартовой транзакции ${t.id} на ${newType} для ${canonicalId}`);
         }
       }
 
-      const startTxs = txs.filter(t => t.type === 'start' || t.type === 'start_tma' || t.type === 'start_email');
-      if (startTxs.length === 0) {
-        // User has no start transaction - add standard 300 start transaction
+      // Check and grant start_tma if user has Telegram and lacks start_tma
+      const hasStartTma = txs.some(t => t.type === 'start_tma');
+      if (hasTg && !hasStartTma) {
         const regTime = u.created_at || new Date().toISOString();
-        const startTxId = `tx_start_${canonicalId}_${Date.now()}`;
+        const startTxId = `tx_start_tma_${canonicalId}_${Date.now()}`;
+        const targetDesc = 'Стартовый баланс Telegram Mini App (300 ИИрок)';
         db.run(
           `INSERT INTO transactions (id, user_id, type, balance_type, amount, description, comment, status, created_at)
-           VALUES (?, ?, ?, 'start', 300, ?, 'Стартовый баланс', 'Завершено', ?)`,
-          [startTxId, canonicalId, targetStartType, targetDesc, regTime]
+           VALUES (?, ?, 'start_tma', 'start', 300, ?, 'Регистрация через Telegram', 'Завершено', ?)`,
+          [startTxId, canonicalId, targetDesc, regTime]
         );
         txs.push({
           id: startTxId,
-          type: targetStartType,
+          type: 'start_tma',
           balance_type: 'start',
           amount: 300,
           description: targetDesc,
-          comment: 'Стартовый баланс',
+          comment: 'Регистрация через Telegram',
           status: 'Завершено',
           created_at: regTime
         });
-        details.push(`Добавлен стартовый бонус (${targetStartType}) 300 ИИрок для пользователя ${canonicalId}`);
-      } else if (startTxs.length > 1) {
-        // If there are duplicate identical start transactions for same registration, clean up duplicates
-        const seenDescriptions = new Set<string>();
-        let keptStartCount = 0;
-        for (const st of startTxs) {
-          const key = (st.type || 'start').trim().toLowerCase();
-          if (seenDescriptions.has(key) && startTxs.length > 1 && keptStartCount >= 1) {
-            // Delete duplicate start transaction
-            try {
-              db.run("DELETE FROM transactions WHERE id = ?", [st.id]);
-              const idx = txs.findIndex(t => t.id === st.id);
-              if (idx !== -1) txs.splice(idx, 1);
-              details.push(`Удалена дублирующаяся транзакция старта ${st.id} для пользователя ${canonicalId}`);
-            } catch (e) {}
+        details.push(`Добавлен стартовый бонус (start_tma) 300 ИИрок для ${canonicalId}`);
+      }
+
+      // Check and grant start_email if user has Email+Password and lacks start_email
+      const hasStartEmail = txs.some(t => t.type === 'start_email');
+      if (hasEm && !hasStartEmail) {
+        const regTime = u.created_at || new Date().toISOString();
+        const startTxId = `tx_start_email_${canonicalId}_${Date.now()}`;
+        const targetDesc = 'Стартовый баланс при регистрации через Email (300 ИИрок)';
+        db.run(
+          `INSERT INTO transactions (id, user_id, type, balance_type, amount, description, comment, status, created_at)
+           VALUES (?, ?, 'start_email', 'start', 300, ?, 'Регистрация через Email', 'Завершено', ?)`,
+          [startTxId, canonicalId, targetDesc, regTime]
+        );
+        txs.push({
+          id: startTxId,
+          type: 'start_email',
+          balance_type: 'start',
+          amount: 300,
+          description: targetDesc,
+          comment: 'Регистрация через Email',
+          status: 'Завершено',
+          created_at: regTime
+        });
+        details.push(`Добавлен стартовый бонус (start_email) 300 ИИрок для ${canonicalId}`);
+      }
+
+      // Deduplicate identical start transactions of the SAME specific type
+      const seenStartKeys = new Set<string>();
+      const toDeleteTxIds: string[] = [];
+      for (const t of txs) {
+        if (t.type === 'start_tma' || t.type === 'start_email') {
+          if (seenStartKeys.has(t.type)) {
+            toDeleteTxIds.push(t.id);
           } else {
-            seenDescriptions.add(key);
-            keptStartCount++;
+            seenStartKeys.add(t.type);
           }
         }
+      }
+      for (const delId of toDeleteTxIds) {
+        try {
+          db.run("DELETE FROM transactions WHERE id = ?", [delId]);
+          const idx = txs.findIndex(t => t.id === delId);
+          if (idx !== -1) txs.splice(idx, 1);
+          details.push(`Удалена дублирующая транзакция ${delId} для ${canonicalId}`);
+        } catch (e) {}
       }
 
       // Calculate sums from cleaned transactions list
@@ -482,8 +588,9 @@ export function checkAndApplyStartRegistrationBonus(
     }
 
     const regTime = u.created_at || new Date().toISOString();
+    let anyApplied = false;
 
-    // 1. If user has telegram_id and no start_tma transaction:
+    // 1. If user has telegram_id (or telegram auth) and no start_tma transaction:
     if (hasTelegram && !hasStartTma) {
       addTransactionWithBalanceUpdate(db, {
         userId: canonicalId,
@@ -494,11 +601,12 @@ export function checkAndApplyStartRegistrationBonus(
         comment: 'Регистрация через Telegram',
         createdAt: regTime
       });
-      return { applied: true, type: 'start_tma', message: 'Начислен стартовый баланс Telegram Mini App (300 ИИрок)' };
+      hasStartTma = true;
+      anyApplied = true;
     }
 
-    // 2. If user has email + password and no start_email transaction (and no start_tma):
-    if (hasEmail && !hasStartEmail && !hasStartTma) {
+    // 2. If user has email + password (or email auth) and no start_email transaction:
+    if (hasEmail && !hasStartEmail) {
       addTransactionWithBalanceUpdate(db, {
         userId: canonicalId,
         type: 'start_email',
@@ -508,7 +616,12 @@ export function checkAndApplyStartRegistrationBonus(
         comment: 'Регистрация через E-mail',
         createdAt: regTime
       });
-      return { applied: true, type: 'start_email', message: 'Начислен стартовый баланс Email (300 ИИрок)' };
+      hasStartEmail = true;
+      anyApplied = true;
+    }
+
+    if (anyApplied) {
+      return { applied: true, message: 'Стартовые балансы успешно начислены и синхронизированы' };
     }
 
     return { applied: false };

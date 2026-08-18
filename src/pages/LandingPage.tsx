@@ -2647,6 +2647,22 @@ export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, 
                 info@arenda-ropa.com
               </a>
             </div>
+            <div className="pt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs border-t border-pink-100/80">
+              <a 
+                href="/oferta" 
+                onClick={(e) => { e.preventDefault(); onNavigate('/oferta'); }}
+                className="text-pink-600 hover:text-pink-700 font-bold underline cursor-pointer"
+              >
+                📄 Публичная оферта и регламент ИИрок
+              </a>
+              <a 
+                href="/tarif/pay" 
+                onClick={(e) => { e.preventDefault(); onNavigate('/tarif/pay'); }}
+                className="text-orange-600 hover:text-orange-700 font-bold underline cursor-pointer"
+              >
+                🪙 Тарифы и оплата ИИрок
+              </a>
+            </div>
           </div>
 
           {/* Action Links & Buttons */}

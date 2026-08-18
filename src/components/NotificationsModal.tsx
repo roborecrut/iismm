@@ -8,17 +8,45 @@ interface NotificationsModalProps {
   onClose: () => void;
   userId: string;
   onUnreadCountChange?: (count: number) => void;
+  onNavigate?: (path: string) => void;
 }
 
 export default function NotificationsModal({
   isOpen,
   onClose,
   userId,
-  onUnreadCountChange
+  onUnreadCountChange,
+  onNavigate
 }: NotificationsModalProps) {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread'>('all');
+
+  const handleNotificationClick = (item: NotificationRecord) => {
+    if (!item.is_read) {
+      handleMarkAsRead(item.id);
+    }
+    onClose();
+
+    let targetPath = '/tarif';
+    const typeLower = (item.type || '').toLowerCase();
+    const titleLower = (item.title || '').toLowerCase();
+    const msgLower = (item.message || '').toLowerCase();
+
+    if (item.link && item.link.startsWith('/')) {
+      targetPath = item.link;
+    } else if (typeLower === 'social' || titleLower.includes('соцсет') || msgLower.includes('соцсет') || titleLower.includes('канал') || typeLower === 'channel') {
+      targetPath = '/social';
+    } else if (typeLower === 'publish' || typeLower === 'post' || titleLower.includes('пост') || msgLower.includes('опубликован') || msgLower.includes('ошибк') || titleLower.includes('автопостинг')) {
+      targetPath = '/history';
+    } else if (typeLower === 'balance' || typeLower === 'transaction' || typeLower === 'tarif' || titleLower.includes('транзакц') || titleLower.includes('баланс') || titleLower.includes('тариф') || titleLower.includes('иирк')) {
+      targetPath = '/tarif';
+    }
+
+    if (onNavigate) {
+      onNavigate(targetPath);
+    }
+  };
 
   const fetchNotifications = async () => {
     try {
@@ -187,10 +215,11 @@ export default function NotificationsModal({
               filtered.map((item) => (
                 <div
                   key={item.id}
-                  className={`p-4 rounded-2xl border transition-all space-y-2 text-left ${
+                  onClick={() => handleNotificationClick(item)}
+                  className={`p-4 rounded-2xl border transition-all space-y-2 text-left cursor-pointer hover:scale-[1.01] ${
                     item.is_read
-                      ? 'bg-white/70 border-pink-200/70 opacity-90'
-                      : 'bg-white/95 border-pink-300 shadow-md ring-1 ring-pink-300/40'
+                      ? 'bg-white/70 hover:bg-white/90 border-pink-200/70 opacity-90'
+                      : 'bg-white/95 hover:bg-white border-pink-300 shadow-md ring-1 ring-pink-300/40'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -219,34 +248,31 @@ export default function NotificationsModal({
                       </div>
                     </div>
 
-                    {!item.is_read && (
-                      <button
-                        onClick={() => handleMarkAsRead(item.id)}
-                        className="px-2.5 py-1 rounded-xl text-sm font-bold bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 flex items-center gap-1 shrink-0 transition-all cursor-pointer"
-                        title="Отметить прочитанным"
-                      >
-                        <Check className="w-3.5 h-3.5 text-pink-500" />
-                        <span>Прочитано</span>
-                      </button>
-                    )}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {!item.is_read && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMarkAsRead(item.id);
+                          }}
+                          className="px-2.5 py-1 rounded-xl text-sm font-bold bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 flex items-center gap-1 shrink-0 transition-all cursor-pointer"
+                          title="Отметить прочитанным"
+                        >
+                          <Check className="w-3.5 h-3.5 text-pink-500" />
+                          <span>Прочитано</span>
+                        </button>
+                      )}
+                      <span className="text-xs font-bold text-pink-500 bg-pink-50/80 px-2 py-1 rounded-xl border border-pink-200 flex items-center gap-1">
+                        <span>Перейти</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </span>
+                    </div>
                   </div>
 
                   <p className="text-sm text-slate-800 font-medium leading-relaxed whitespace-pre-wrap pl-11">
                     {item.message}
                   </p>
-
-                  {item.link && (
-                    <div className="pl-11 pt-1">
-                      <a
-                        href={item.link}
-                        onClick={() => onClose()}
-                        className="inline-flex items-center gap-1 text-sm font-bold text-pink-600 hover:text-pink-700 hover:underline"
-                      >
-                        <span>Перейти к разделу</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-                  )}
                 </div>
               ))
             )}

@@ -317,6 +317,13 @@ export default function FreeCrosspostingView({ channels = [], currentUser }: Fre
                 <p className="text-xs text-slate-700 leading-relaxed font-medium">
                   Официальный сервис автопостинга для профессиональной деловой социальной сети «Сетка» (Setka). Позволяет авторам Telegram транслировать экспертные мысли, кейсы и статьи на новую технологическую аудиторию.
                 </p>
+                <div className="p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-900 font-medium flex items-start gap-2">
+                  <span className="text-amber-600 shrink-0 text-sm">⚠️</span>
+                  <div className="leading-snug">
+                    <span className="font-bold">Ограничения: </span>
+                    только до 4000 символов текста в формате маркдаун v2 и только картинки и альбомы, остальные форматы пока недоступны у официального бота сетки.
+                  </div>
+                </div>
               </div>
 
               {/* Key Features */}

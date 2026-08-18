@@ -451,6 +451,14 @@ apiRouter.post('/auth/telegram', async (req: Request, res: Response) => {
       role: updated.role
     }).catch(() => null);
 
+    // Trigger registration bonus check for Telegram login
+    getSQLiteDB().then(db => {
+      const resCheck = checkAndApplyStartRegistrationBonus(db, user.id, 'telegram');
+      if (resCheck.applied) {
+        saveSQLiteDB();
+      }
+    }).catch(() => null);
+
     res.json({
       success: true,
       user: {
@@ -671,6 +679,14 @@ apiRouter.post('/auth/telegram-twa', async (req: Request, res: Response) => {
       longitude: updatedUser.longitude,
       last_login: nowStr,
       role
+    }).catch(() => null);
+
+    // Trigger registration bonus check for TWA login
+    getSQLiteDB().then(db => {
+      const resCheck = checkAndApplyStartRegistrationBonus(db, existingUser.id, 'telegram');
+      if (resCheck.applied) {
+        saveSQLiteDB();
+      }
     }).catch(() => null);
 
     res.json({
@@ -4614,7 +4630,6 @@ apiRouter.post('/tariffs/change', async (req: Request, res: Response) => {
     }
 
     const periodMonths = Number(reqPeriod) === 12 ? 12 : Number(reqPeriod) === 6 ? 6 : Number(reqPeriod) === 3 ? 3 : 1;
-    const discountPercent = periodMonths === 12 ? 15 : periodMonths === 6 ? 10 : periodMonths === 3 ? 5 : 0;
     const durationDays = periodMonths * 30;
 
     const db = await getSQLiteDB();
@@ -4638,7 +4653,7 @@ apiRouter.post('/tariffs/change', async (req: Request, res: Response) => {
     const currentRank = getTariffRank(currentTariffLower);
     const targetRank = getTariffRank(targetNameLower);
 
-    // Get tariff price details
+    // Get tariff price details from database
     const allTariffs = getAllTariffsFromDb(db);
     const targetTariff = allTariffs.find(t => 
       t.id === targetTariffId || 
@@ -4647,6 +4662,14 @@ apiRouter.post('/tariffs/change', async (req: Request, res: Response) => {
       (targetNameLower.includes('разгон') && t.id === 'razgon') ||
       (targetNameLower.includes('отрыв') && t.id === 'otryv')
     );
+
+    const discountPercent = periodMonths === 12 
+      ? (targetTariff?.discount_12m !== undefined ? Number(targetTariff.discount_12m) : 15) 
+      : periodMonths === 6 
+      ? (targetTariff?.discount_6m !== undefined ? Number(targetTariff.discount_6m) : 10) 
+      : periodMonths === 3 
+      ? (targetTariff?.discount_3m !== undefined ? Number(targetTariff.discount_3m) : 5) 
+      : 0;
 
     const baseMonthlyPriceRub = targetTariff ? Number(targetTariff.price_rub || 0) : (targetRank === 2 ? 990 : targetRank === 3 ? 4900 : 0);
     const totalWithoutDiscount = baseMonthlyPriceRub * periodMonths;
@@ -4749,6 +4772,25 @@ apiRouter.post('/tariffs/cosmos-request', async (req: Request, res: Response) =>
       saveSQLiteDB();
     } catch (e) {
       console.warn('Error adding cosmos notification to DB:', e);
+    }
+
+    // Send Telegram message to admin telegram_id 169262990 using bot token from DB
+    const botToken = getBotTokenFromSQLite() || DB.getSettings().telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o';
+    if (botToken) {
+      try {
+        const tgText = `🚀 <b>Новая заявка на тариф «Космос»</b>\n\n👤 <b>Имя:</b> ${name || 'Пользователь'}\n📱 <b>Telegram:</b> ${telegram || 'не указан'}\n📧 <b>E-mail:</b> ${email || 'не указан'}\n📞 <b>Телефон:</b> ${phone || 'не указан'}\n🆔 <b>User ID:</b> <code>${cleanUserId}</code>\n💬 <b>Запрос:</b> ${message || 'Индивидуальная разработка под ключ'}`;
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: 169262990,
+            text: tgText,
+            parse_mode: 'HTML'
+          })
+        });
+      } catch (tgErr) {
+        console.error('[Cosmos TG Notification Error]:', tgErr);
+      }
     }
 
     console.log(`[Cosmos Request Received for TG ID 169262990]:\n${details}`);
@@ -5366,6 +5408,108 @@ apiRouter.post('/admin/db/import/json', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('DB Import JSON error:', err);
     res.status(500).json({ error: err.message || 'Failed to import JSON' });
+  }
+});
+
+// 3.1. Import rows into a specific table from CSV parsed rows
+apiRouter.post('/admin/db/import/csv', async (req: Request, res: Response) => {
+  try {
+    const { table, rows } = req.body || {};
+    if (!table || !Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'Необходимо указать таблицу (table) и массив строк (rows)' });
+    }
+
+    const db = await getSQLiteDB();
+
+    // Verify table exists
+    const safeTable = table.replace(/[^a-zA-Z0-9_]/g, '');
+    const tableCheck = db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='${safeTable}'`);
+    if (!tableCheck || tableCheck.length === 0) {
+      return res.status(404).json({ error: `Таблица «${safeTable}» не найдена в базе данных` });
+    }
+
+    // Get column names of the table
+    const tableInfo = db.exec(`PRAGMA table_info(${safeTable})`);
+    const validColumns = tableInfo[0]?.values?.map((col: any) => col[1]) || [];
+
+    let importedCount = 0;
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue;
+      
+      // Filter only columns that exist in the table schema
+      const keys = Object.keys(row).filter(k => validColumns.includes(k));
+      if (keys.length === 0) continue;
+
+      const placeholders = keys.map(() => '?').join(', ');
+      const values = keys.map(k => {
+        const val = row[k];
+        if (val === '' || val === null || val === undefined) return null;
+        if (typeof val === 'string' && /^-?\d+(\.\d+)?$/.test(val.trim())) {
+          const num = Number(val.trim());
+          if (!isNaN(num)) return num;
+        }
+        return val;
+      });
+
+      const sql = `INSERT OR REPLACE INTO ${safeTable} (${keys.join(', ')}) VALUES (${placeholders})`;
+      try {
+        db.run(sql, values);
+        importedCount++;
+      } catch (e: any) {
+        console.error(`Error inserting CSV row into ${safeTable}:`, e);
+      }
+    }
+
+    saveSQLiteDB();
+    res.json({ success: true, importedCount, message: `Успешно импортировано ${importedCount} строк в таблицу «${safeTable}»` });
+  } catch (err: any) {
+    console.error('DB Import CSV error:', err);
+    res.status(500).json({ error: err.message || 'Ошибка импорта CSV' });
+  }
+});
+
+// 3.2. Export a table directly as CSV
+apiRouter.get('/admin/db/export/csv/:table', async (req: Request, res: Response) => {
+  try {
+    const table = req.params.table.replace(/[^a-zA-Z0-9_]/g, '');
+    const db = await getSQLiteDB();
+
+    const tableCheck = db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='${table}'`);
+    if (!tableCheck || tableCheck.length === 0) {
+      return res.status(404).json({ error: `Таблица «${table}» не найдена` });
+    }
+
+    const results = db.exec(`SELECT * FROM ${table}`);
+    if (!results || results.length === 0) {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${table}.csv"`);
+      return res.send('');
+    }
+
+    const columns = results[0].columns;
+    const values = results[0].values;
+
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    let csvContent = '\uFEFF'; // UTF-8 BOM
+    csvContent += columns.map(escapeCsv).join(',') + '\n';
+    for (const row of values) {
+      csvContent += row.map(escapeCsv).join(',') + '\n';
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${table}.csv"`);
+    res.send(csvContent);
+  } catch (err: any) {
+    console.error('DB Export CSV error:', err);
+    res.status(500).json({ error: err.message || 'Ошибка экспорта CSV' });
   }
 });
 

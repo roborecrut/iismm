@@ -6,7 +6,7 @@ import {
   TrendingUp, MousePointer, BarChart3, Radio, Link, LayoutGrid, Award, ArrowUpRight, Plus, 
   DollarSign, User, Volume2, Lock, FileText, Users, Shield, BookOpen, Crown, Cpu, Copy, LogOut,
   CreditCard, Camera, Mail, Upload, Trash2, Edit2, Edit3, X, CheckSquare, Square, UserPlus, UserMinus, ShieldAlert,
-  Info, Flag, Ban, UserX
+  Info, Flag, Ban, UserX, ExternalLink, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFileUpload } from '../hooks/useFileUpload';
@@ -620,6 +620,70 @@ export default function ProfileAndOnboarding({
     periodMonths: number;
     discountPercent: number;
   } | null>(null);
+
+  // Buy Iirky Calculator modal states
+  const [isBuyIirkyCalcOpen, setIsBuyIirkyCalcOpen] = useState(false);
+  const [buyIirkyAmount, setBuyIirkyAmount] = useState<string>('990');
+
+  // Referral Promo Post states
+  const [promoChannel, setPromoChannel] = useState<'tg' | 'vk' | 'wa' | 'setka' | 'ok'>('tg');
+  const [promoCopied, setPromoCopied] = useState(false);
+  const [selectedPromoChannelId, setSelectedPromoChannelId] = useState<string>('');
+  const [isPublishingPromo, setIsPublishingPromo] = useState(false);
+  const [promoPublishStatus, setPromoPublishStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handlePublishPromoToOwnChannel = async (promoText: string) => {
+    if (!localChannels || localChannels.length === 0) {
+      setPromoPublishStatus({
+        type: 'error',
+        message: 'У вас еще нет привязанных каналов в базе данных. Перейдите во вкладку «Каналы» для привязки.'
+      });
+      return;
+    }
+
+    const targetChId = selectedPromoChannelId || localChannels[0]?.id || localChannels[0]?.channelId;
+    const targetChan = localChannels.find(c => c.id === targetChId || c.channelId === targetChId) || localChannels[0];
+    const channelIdentifier = targetChan?.handle || targetChan?.channelId || targetChan?.id;
+
+    if (!channelIdentifier) {
+      setPromoPublishStatus({
+        type: 'error',
+        message: 'Не выбран канал для отправки.'
+      });
+      return;
+    }
+
+    setIsPublishingPromo(true);
+    setPromoPublishStatus(null);
+    try {
+      const res = await fetch('/api/telegram/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: channelIdentifier,
+          rawText: promoText,
+          title: 'Реферальный промо-пост ИИSMM',
+          format: 'v2'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success !== false) {
+        setPromoPublishStatus({
+          type: 'success',
+          message: `🎉 Пост с реферальными ссылками успешно опубликован в канал «${targetChan?.title || targetChan?.name || channelIdentifier}»!`
+        });
+      } else {
+        throw new Error(data.error || 'Ошибка отправки в канал');
+      }
+    } catch (err: any) {
+      setPromoPublishStatus({
+        type: 'error',
+        message: err.message || 'Ошибка отправки сообщения. Убедитесь, что бот @IIrkiBot назначен администратором канала.'
+      });
+    } finally {
+      setIsPublishingPromo(false);
+    }
+  };
 
   const handleTariffAction = (
     planName: string, 
@@ -1930,221 +1994,199 @@ export default function ProfileAndOnboarding({
       {/* --- TAB CONTENT: TARIFFS & FINANCIAL --- */}
       {activeTab === 'tariffs' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Balance Widget */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs space-y-4 text-left flex flex-col justify-between">
-              <div className="space-y-3">
-                <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-widest flex items-center gap-1.5 border-b pb-2">
-                  <Wallet className="w-4 h-4 text-orange-500" />
-                  <span>Балансовые активы и Лимиты</span>
-                </h3>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="p-3 bg-slate-50 border rounded-xl text-center">
-                    <span className="text-[9px] text-slate-400 font-bold block uppercase leading-none">Баланс (Рубли)</span>
-                    <span className="font-mono text-sm font-black text-slate-700 block mt-1">{(user.balanceRub || 0).toLocaleString()} ₽</span>
-                  </div>
-                  <div className="p-3 bg-orange-50/50 border border-orange-100 rounded-xl text-center">
-                    <span className="text-[9px] text-orange-500 font-bold block uppercase leading-none">🪙 ИИрки (Генерация)</span>
-                    <span className="font-mono text-sm font-black text-orange-705 block mt-1">{user.iirky.toLocaleString()}</span>
-                  </div>
+          {/* 1. TOP: REALTIME BALANCE BREAKDOWN WIDGET */}
+          <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 backdrop-blur-md rounded-3xl p-5 sm:p-6 border border-pink-300 shadow-md text-left space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-pink-200/80 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 flex items-center justify-center text-white shadow-xs">
+                  <Wallet className="w-5 h-5 text-white" />
                 </div>
-
-                {/* Top Up Box */}
-                <form onSubmit={handleSimulateTopup} className="p-3 bg-orange-50/40 border border-orange-100/50 rounded-2xl space-y-2">
-                  <span className="text-[11px] font-bold text-slate-700 block">Быстрое пополнение счета</span>
-                  <div className="flex gap-2">
-                    <input 
-                      type="number" 
-                      placeholder="990"
-                      value={replenishInput}
-                      onChange={e => setReplenishInput(e.target.value)}
-                      className="flex-1 bg-white border border-slate-200 px-3 py-1 text-xs font-mono rounded-lg focus:outline-none"
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => {
-                        setRobokassaPlanName('Пополнение ИИрок');
-                        setRobokassaAmountRub(Number(replenishInput) || 990);
-                        setRobokassaModalOpen(true);
-                      }}
-                      className="px-3 py-1 bg-gradient-to-r from-orange-450 to-pink-500 text-white font-bold rounded-lg text-[9px] uppercase cursor-pointer flex items-center gap-1"
-                    >
-                      <CreditCard className="w-3 h-3" />
-                      <span>Оплатить 💳</span>
-                    </button>
-                  </div>
-                </form>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
+                    Баланс и активы ИИрок
+                  </h2>
+                  <p className="text-xs text-slate-600 font-medium">
+                    Синхронизация в реальном времени из базы данных транзакций
+                  </p>
+                </div>
               </div>
-              <p className="text-[10px] text-slate-400 mt-2">💡 Лимиты: {user.tariff === 'free' ? '10 постов/день' : user.tariff === 'pro' ? '50 постов/день' : '500 постов/день'}</p>
-            </div>
 
-            {/* Conversions Calculator */}
-            <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 rounded-3xl p-6 border border-pink-200/80 shadow-xs space-y-4 text-left flex flex-col justify-between">
-              <div className="space-y-3">
-                <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5 border-b border-pink-200/80 pb-2">
-                  <RefreshCw className="w-4 h-4 text-pink-500" />
-                  <span className="text-multicolor-gradient">Обменник ИИрок</span>
-                </h3>
-                <p className="text-sm text-slate-700 font-medium leading-relaxed">
-                  ИИрки 🪙 используются для ИИ-постинга и генераций.
-                </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBuyIirkyCalcOpen(true)}
+                  className="px-3.5 py-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                  title="Открыть калькулятор покупки ИИрок"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-white" />
+                  <span>Калькулятор покупки ИИрок 🪙</span>
+                </button>
 
-                <p className="text-sm font-extrabold text-multicolor-gradient">
-                  1 рубль = 1 ИИрка
-                </p>
-
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <div className="flex-1 space-y-1">
-                    <label className="text-sm text-slate-700 font-bold">Списать (₽)</label>
-                    <input 
-                      type="number" 
-                      value={calcRubInput}
-                      onChange={e => handleCalcRubChange(e.target.value)}
-                      className="w-full bg-white/90 border border-pink-200 px-3 py-2 rounded-xl font-mono text-sm text-slate-900 focus:outline-none focus:border-pink-400"
-                    />
-                  </div>
-                  <span className="text-pink-400 font-mono self-end pb-2">➔</span>
-                  <div className="flex-1 space-y-1">
-                    <label className="text-sm font-bold text-multicolor-gradient">Получить ИИрок</label>
-                    <div className="w-full bg-white/90 border border-pink-300 px-3 py-2 rounded-xl font-mono text-sm font-bold text-slate-900">
-                      {calcIirkyResult.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <button 
-                    onClick={handleBuyIirkyWithRubles}
-                    className="w-full py-2.5 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white font-bold text-sm rounded-xl shadow-xs cursor-pointer border border-pink-300 hover:opacity-95 transition-all"
-                  >
-                    Обменять
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={fetchLiveProfile}
+                  className="px-3.5 py-2 bg-white/90 hover:bg-white text-slate-800 text-xs font-bold rounded-xl border border-pink-200 flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                  title="Обновить баланс прямо сейчас"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-pink-500" />
+                  <span>Обновить</span>
+                </button>
               </div>
             </div>
 
+            {syncResultMsg && (
+              <div className="p-3 bg-white/90 border border-pink-300 rounded-2xl text-xs font-medium text-slate-800 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-pink-500 shrink-0" />
+                <span>{syncResultMsg}</span>
+              </div>
+            )}
+
+            {/* 4 Metrics Grid - Общий баланс первым */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* 1. Общий доступный баланс (Первый в списке) */}
+              <div className="p-4 rounded-2xl bg-white/80 backdrop-blur-md border border-purple-200/90 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-purple-800">
+                  <span>Общий баланс</span>
+                  <Crown className="w-4 h-4 text-purple-500" />
+                </div>
+                <div className="text-xl sm:text-2xl font-black font-mono text-slate-900">
+                  {(Number(liveProfile.balance_pay || 0) + Number(liveProfile.balance_free || 0)).toLocaleString('ru-RU')}
+                </div>
+                <p className="text-[11px] text-slate-600 leading-tight">
+                  Суммарно доступно для использования.
+                </p>
+              </div>
+
+              {/* 2. ИИрки (Оплаченные / Активные) */}
+              <div className="p-4 rounded-2xl bg-white/80 backdrop-blur-md border border-sky-200/90 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-sky-800">
+                  <span>ИИрки (Оплаченные)</span>
+                  <Sparkles className="w-4 h-4 text-sky-500" />
+                </div>
+                <div className="text-xl sm:text-2xl font-black font-mono bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent">
+                  {(Number(liveProfile.balance_pay || 0) + Number(liveProfile.balance_admin || 0)).toLocaleString('ru-RU')}
+                </div>
+                <p className="text-[11px] text-slate-600 leading-tight">
+                  Оплаченный баланс (1 ₽ = 1 ИИрка). Не сгорает.
+                </p>
+              </div>
+
+              {/* 3. ИИрки Free (Бонусные / Бесплатные) */}
+              <div className="p-4 rounded-2xl bg-white/80 backdrop-blur-md border border-pink-200/90 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-pink-800">
+                  <span>ИИрки Free (Бонусные)</span>
+                  <Award className="w-4 h-4 text-pink-500" />
+                </div>
+                <div className="text-xl sm:text-2xl font-black font-mono text-pink-600">
+                  {Number(liveProfile.balance_free || 0).toLocaleString('ru-RU')}
+                </div>
+                <p className="text-[11px] text-slate-600 leading-tight">
+                  Старт + рефералы + тариф. Списываются первыми.
+                </p>
+              </div>
+
+              {/* 4. Расход / Списано */}
+              <div className="p-4 rounded-2xl bg-white/80 backdrop-blur-md border border-orange-200/90 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-orange-800">
+                  <span>Расход / Списано</span>
+                  <FileText className="w-4 h-4 text-orange-500" />
+                </div>
+                <div className="text-xl sm:text-2xl font-black font-mono text-orange-600">
+                  {Math.abs(Number(liveProfile.balance_cost || 0)).toLocaleString('ru-RU')}
+                </div>
+                <p className="text-[11px] text-slate-600 leading-tight">
+                  Всего израсходовано на генерации и автопостинг.
+                </p>
+              </div>
+            </div>
+
+            {/* Detailed Structure Accordion / Chips */}
+            <div className="pt-2 border-t border-pink-200/60 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2 font-medium text-slate-700">
+                <span className="font-bold text-slate-900">Составляющие Free:</span>
+                <span className="px-2.5 py-1 rounded-xl bg-white/90 border border-pink-200 font-mono">
+                  Стартовый бонус: <strong className="text-slate-900">{liveProfile.balance_start || 300}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-white/90 border border-pink-200 font-mono">
+                  Реферальные: <strong className="text-pink-600">+{liveProfile.balance_ref || 0}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-white/90 border border-pink-200 font-mono">
+                  Тарифные: <strong className="text-sky-600">+{liveProfile.balance_tarif || 0}</strong>
+                </span>
+                {liveProfile.balance_admin > 0 && (
+                  <span className="px-2.5 py-1 rounded-xl bg-white/90 border border-orange-200 font-mono">
+                    Админ-начисления: <strong className="text-orange-600">+{liveProfile.balance_admin}</strong>
+                  </span>
+                )}
+              </div>
+
+              <div className="text-[11px] text-slate-500 font-mono">
+                {liveProfile.balance_time ? `Посл. операция: ${liveProfile.balance_time}` : 'Баланс актуален'}
+              </div>
+            </div>
           </div>
 
-          {/* TARIFF EXPIRATION & BILLING HISTORY SECTION */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Tariff Expiration Card */}
-            <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 rounded-3xl p-6 border border-pink-200/80 shadow-xs space-y-4 text-left flex flex-col justify-between">
-              <div className="space-y-3">
-                <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5 border-b border-pink-200/80 pb-2">
-                  <Calendar className="w-4 h-4 text-pink-500" />
-                  <span className="text-multicolor-gradient">Статус и срок действия тарифа</span>
-                </h3>
-                
-                <div className="p-4 bg-white/80 rounded-2xl border border-pink-200 space-y-2">
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-sm text-slate-700 font-bold">Текущий тариф:</span>
-                    <span className="text-sm font-bold text-multicolor-gradient font-mono">
-                      {user.tariff === 'vip' ? 'VIP комбайн' : user.tariff === 'pro' ? 'Премиум' : 'Старт'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between items-baseline border-t pt-2 border-pink-200/50">
-                    <span className="text-sm text-slate-700 font-medium">Срок действия подписки:</span>
-                    <span className="text-sm font-bold text-slate-900">
-                      {user.tariff !== 'free' ? `До ${user.premiumUntil || '07.06.2026'}` : 'Бессрочно (с базовыми лимитами)'}
-                    </span>
-                  </div>
-
-                  {user.tariff !== 'free' && (
-                    <div className="text-sm text-slate-800 bg-pink-50/80 p-2.5 rounded-xl border border-pink-200 flex items-center gap-1.5 font-medium mt-2">
-                      <Check className="w-4 h-4 text-pink-500" />
-                      <span>Продление по подписке активно за {user.tariff === 'vip' ? '4,900,000' : '490,000'} ИИрок</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1.5 text-sm text-slate-700">
-                  <p className="font-bold text-sm text-slate-800">Регламент продления подписок:</p>
-                  <p className="leading-relaxed text-sm text-slate-600 font-medium">Вы можете продлить или переключить тариф в любой момент. Оплата списывается автоматически с баланса ИИрок. Смена тарифов конвертируется из внутреннего баланса ИИрок мгновенно.</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Billing Transactions Card */}
-            <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 rounded-3xl p-6 border border-pink-200/80 shadow-xs space-y-4 text-left">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between border-b border-pink-200/80 pb-2">
-                  <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
-                    <FileText className="w-4 h-4 text-pink-500" />
-                    <span className="text-multicolor-gradient">Билинг платежей и транзакции</span>
-                  </h3>
-                  <button
-                    onClick={fetchTransactions}
-                    className="text-sm text-pink-600 hover:text-pink-800 font-bold flex items-center gap-1 cursor-pointer"
-                    title="Обновить историю транзакций из SQLite"
-                  >
-                    <RefreshCw size={13} />
-                    <span>Обновить</span>
-                  </button>
-                </div>
-                
-                {/* Billing items feed */}
-                <div className="space-y-2 max-h-[220px] overflow-y-auto no-scrollbar pt-1 font-medium">
-                  {transactionsList.length === 0 ? (
-                    <div className="p-4 bg-white/80 rounded-xl border border-pink-200/60 text-center text-slate-600 text-sm">
-                      История операций пуста
-                    </div>
-                  ) : (
-                    transactionsList.map((bill: any) => (
-                      <div key={bill.id} className="p-2.5 bg-white/90 rounded-xl border border-pink-200/80 flex items-center justify-between gap-3 text-sm shadow-xs">
-                        <div className="space-y-0.5 min-w-0 flex-1">
-                          <span className="block truncate text-sm text-slate-900 leading-tight font-bold">{bill.description || bill.desc}</span>
-                          <div className="flex items-center gap-2 text-sm text-slate-500 font-mono">
-                            <span>{bill.date || (bill.createdAt ? new Date(bill.createdAt).toLocaleDateString('ru-RU') : 'Сегодня')}</span>
-                            <span>•</span>
-                            <span className="text-slate-700 font-bold">{bill.status || 'Завершено'}</span>
-                          </div>
-                        </div>
-                        
-                        <div className="text-right shrink-0">
-                          <span className={`font-mono text-sm font-bold block ${
-                            bill.type === 'in' ? 'text-multicolor-gradient font-extrabold' : 'text-rose-600'
-                          }`}>
-                            {bill.amount}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Pricing Config Section matching landing page */}
-          <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 rounded-3xl p-6 border border-pink-200/80 space-y-4 text-left">
-            <div className="border-b border-pink-200/80 pb-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm">Тарифные пакеты и тонкие настройки</h3>
-                <p className="text-sm text-slate-600 font-medium">Автоматизация с ИИSMM. 1 ₽ = 1 ИИрка.</p>
-              </div>
-              <button 
-                onClick={() => {
-                  setRobokassaPlanName('РАЗГОН');
-                  setRobokassaAmountRub(990);
-                  setRobokassaModalOpen(true);
-                }}
-                className="px-4 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white font-bold text-sm rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer hover:opacity-95 self-start md:self-auto border border-pink-300"
+          {/* 2. BILLING TRANSACTIONS SECTION */}
+          <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 rounded-3xl p-5 sm:p-6 border border-pink-200/80 shadow-xs space-y-4 text-left">
+            <div className="flex items-center justify-between border-b border-pink-200/80 pb-2">
+              <h3 className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-pink-500" />
+                <span className="text-multicolor-gradient">Билинг платежей и транзакции</span>
+              </h3>
+              <button
+                type="button"
+                onClick={fetchTransactions}
+                className="text-sm text-pink-600 hover:text-pink-800 font-bold flex items-center gap-1 cursor-pointer"
+                title="Обновить историю транзакций из SQLite"
               >
-                <CreditCard className="w-4 h-4" />
-                <span>Оплата через Робокассу 💳</span>
+                <RefreshCw size={13} />
+                <span>Обновить</span>
               </button>
+            </div>
+            
+            {/* Billing items feed */}
+            <div className="space-y-2 max-h-[260px] overflow-y-auto no-scrollbar pt-1 font-medium">
+              {transactionsList.length === 0 ? (
+                <div className="p-4 bg-white/80 rounded-xl border border-pink-200/60 text-center text-slate-600 text-sm">
+                  История операций пуста
+                </div>
+              ) : (
+                transactionsList.map((bill: any) => (
+                  <div key={bill.id} className="p-2.5 bg-white/90 rounded-xl border border-pink-200/80 flex items-center justify-between gap-3 text-sm shadow-xs">
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <span className="block truncate text-sm text-slate-900 leading-tight font-bold">{bill.description || bill.desc}</span>
+                      <div className="flex items-center gap-2 text-sm text-slate-500 font-mono">
+                        <span>{bill.date || (bill.createdAt ? new Date(bill.createdAt).toLocaleDateString('ru-RU') : 'Сегодня')}</span>
+                        <span>•</span>
+                        <span className="text-slate-700 font-bold">{bill.status || 'Завершено'}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="text-right shrink-0">
+                      <span className={`font-mono text-sm font-bold block ${
+                        bill.type === 'in' ? 'text-multicolor-gradient font-extrabold' : 'text-rose-600'
+                      }`}>
+                        {bill.amount}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* 3. TARIFF PACKAGES SECTION */}
+          <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 rounded-3xl p-5 sm:p-6 border border-pink-200/80 space-y-4 text-left">
+            <div className="border-b border-pink-200/80 pb-3">
+              <h3 className="font-bold text-slate-900 text-sm">Тарифные пакеты и тонкие настройки</h3>
+              <p className="text-sm text-slate-600 font-medium">Автоматизация с ИИSMM. 1 ₽ = 1 ИИрка.</p>
             </div>
 
             <TariffCards 
               userTariff={user.tariff}
               userTariffExpiresAt={user.premiumUntil || user.tariff_expires_at}
-              onAction={(planName, priceText, amountRub, actionType) => {
-                handleTariffAction(planName, priceText, amountRub, actionType);
+              onAction={(planName, priceText, amountRub, actionType, periodMonths, discountPercent) => {
+                handleTariffAction(planName, priceText, amountRub, actionType, periodMonths, discountPercent);
               }}
             />
           </div>
@@ -3533,149 +3575,326 @@ export default function ProfileAndOnboarding({
       )}
 
       {/* --- TAB CONTENT: REFERRALS ENGINE --- */}
-      {activeTab === 'referrals' && (
-        <div className="p-6 bg-white rounded-3xl border border-slate-100 text-left space-y-6">
-          <div className="border-b pb-3 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-            <div>
-              <h3 className="font-extrabold text-sm text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Award className="w-4 h-4 text-orange-500" />
-                <span>Реферальная программа: ПОЛУЧАЙТЕ +300 ИИрок ЗА КАЖДОГО ДРУГА</span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Увеличивайте лимит ИИрок! Приглашайте друзей в Telegram Mini App и получайте по +300 ИИрок за каждую новую регистрацию.</p>
-            </div>
-            <div className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl shadow-sm text-center shrink-0">
-              <span className="text-[10px] font-bold uppercase block opacity-90">Реферальный Баланс</span>
-              <span className="text-base font-black font-mono">+{referralStats?.referralRewardBalance || user.referralRewardBalance || 0} ИИрок 🪙</span>
-            </div>
-          </div>
+      {activeTab === 'referrals' && (() => {
+        const currentOrigin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://iismm.ru';
+        const refUserId = user.telegramId || user.id || '16926299042';
+        const webRefLink = `${currentOrigin}/?ref=${refUserId}`;
+        const tgRefLink = referralStats?.referralLink || `https://t.me/IIrkiBot/app?startapp=${refUserId}`;
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs font-semibold">
-            {/* Unique Link Generator */}
-            <div className="p-5 bg-orange-50/30 border border-orange-100 rounded-2xl space-y-4">
-              {/* Link 1: Web Browser / Email */}
-              <div className="space-y-1.5">
-                <span className="text-[10px] text-slate-500 uppercase font-black flex items-center gap-1">
-                  🌐 <span>Ссылка для браузера (E-mail регистрация)</span>
-                </span>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={`https://iismm.ru/?ref=${user.telegramId || user.id || '169262990'}`}
-                    className="flex-1 bg-white border border-slate-200 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-700 select-all"
-                  />
-                  <button 
-                    onClick={() => {
-                      const link = `https://iismm.ru/?ref=${user.telegramId || user.id || '169262990'}`;
-                      navigator.clipboard?.writeText(link);
-                      alert(`📋 Веб-реферальная ссылка скопирована:\n${link}\nПользователи, зарегистрировавшиеся по этой ссылке через E-mail, принесут вам +300 ИИрок!`);
-                    }}
-                    className="p-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
-                  >
-                    <Copy className="w-4 h-4" />
-                    <span>Копировать</span>
-                  </button>
-                </div>
+        const promoPosts: Record<string, { channelName: string; text: string; shareUrl?: string }> = {
+          tg: {
+            channelName: 'Telegram',
+            text: `🔥 Делюсь крутым сервисом для автопостинга и генерации контента с искусственным интеллектом — ИИSMM!\n\n🤖 Автоматически создает посты, пишет сильные тексты, генерирует обложки и делает мгновенный кросспостинг в Telegram, ВК, Сетку и еще 10+ соцсетей в один клик.\n\n🎁 Забирайте 300 ИИрок бонусом на баланс при регистрации:\n📱 В Telegram Mini App: ${tgRefLink}\n🌐 В браузере (веб-версия): ${webRefLink}`,
+            shareUrl: `https://t.me/share/url?url=${encodeURIComponent(tgRefLink)}&text=${encodeURIComponent(`🔥 Попробуй ИИSMM — умный автопостинг и генерация контента с ИИ. Дарим 300 ИИрок!\n📱 В Telegram: ${tgRefLink}\n🌐 В браузере: ${webRefLink}`)}`
+          },
+          vk: {
+            channelName: 'ВКонтакте',
+            text: `🔥 Рекомендую ИИSMM — мощную платформу для автопостинга и генерации контента с искусственным интеллектом!\n\nГенерирует контент-планы, пишет посты, создает нейроиллюстрации и публикует во все соцсети на автомате.\n\n🎁 Получи 300 ИИрок бонусом на баланс при регистрации:\n📱 В Telegram: ${tgRefLink}\n🌐 В браузере (веб-версия): ${webRefLink}`,
+            shareUrl: `https://vk.com/share.php?url=${encodeURIComponent(webRefLink)}&title=${encodeURIComponent('ИИSMM — Умный автопостинг и контент-генератор с ИИ')}`
+          },
+          wa: {
+            channelName: 'WhatsApp',
+            text: `Привет! Нашел классный сервис ИИSMM для автоматического ведения соцсетей и создания постов нейросетью.\n\n🎁 Переходи по ссылке и забирай 300 ИИрок на баланс в подарок:\n📱 В Telegram: ${tgRefLink}\n🌐 В браузере: ${webRefLink}`,
+            shareUrl: `https://api.whatsapp.com/send?text=${encodeURIComponent(`Привет! Нашел классный сервис ИИSMM для автоматического ведения соцсетей и создания постов нейросетью. Переходи по ссылке и забирай 300 ИИрок на баланс в подарок:\n📱 В Telegram: ${tgRefLink}\n🌐 В браузере: ${webRefLink}`)}`
+          },
+          setka: {
+            channelName: 'Сетка',
+            text: `🚀 Автоматизируйте создание контента и кросспостинг с ИИSMM!\n\nИскусственный интеллект готовит регулярные посты, подбирает обложки и публикует в Сетку и Telegram.\n\n🎁 Регистрируйтесь и получайте +300 ИИрок на баланс:\n📱 В Telegram: ${tgRefLink}\n🌐 В веб-версии: ${webRefLink}`
+          },
+          ok: {
+            channelName: 'Одноклассники',
+            text: `Друзья, делюсь сервисом ИИSMM для удобного ведения групп и каналов с помощью искусственного интеллекта.\n\n🎁 Попробуйте бесплатно, при регистрации дарят 300 ИИрок на баланс:\n📱 В Telegram: ${tgRefLink}\n🌐 В браузере: ${webRefLink}`,
+            shareUrl: `https://connect.ok.ru/offer?url=${encodeURIComponent(webRefLink)}&title=${encodeURIComponent('ИИSMM — Автопостинг с ИИ')}`
+          }
+        };
+
+        const activePromo = promoPosts[promoChannel] || promoPosts.tg;
+
+        return (
+          <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 backdrop-blur-md rounded-3xl p-5 sm:p-6 border border-pink-300 shadow-md text-left space-y-6">
+            <div className="border-b border-pink-200/80 pb-3 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                  <Award className="w-4 h-4 text-pink-500" />
+                  <span className="text-multicolor-gradient">Реферальная программа: получайте +300 ИИрок за каждого друга</span>
+                </h3>
+                <p className="text-sm text-slate-600 font-medium mt-0.5">Увеличивайте лимит ИИрок! Приглашайте друзей в сервис и получайте по +300 ИИрок за каждую новую регистрацию.</p>
               </div>
-
-              {/* Link 2: Telegram Mini App */}
-              <div className="space-y-1.5 pt-2 border-t border-orange-100">
-                <span className="text-[10px] text-slate-500 uppercase font-black flex items-center gap-1">
-                  📱 <span>Ссылка для Telegram Mini App</span>
-                </span>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={referralStats?.referralLink || `https://t.me/IIrkiBot/app?startapp=${user.telegramId || user.id || '169262990'}`}
-                    className="flex-1 bg-white border border-slate-200 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-700 select-all"
-                  />
-                  <button 
-                    onClick={() => {
-                      const link = referralStats?.referralLink || `https://t.me/IIrkiBot/app?startapp=${user.telegramId || user.id || '169262990'}`;
-                      navigator.clipboard?.writeText(link);
-                      alert(`📋 Telegram-реферальная ссылка скопирована:\n${link}`);
-                    }}
-                    className="p-2.5 bg-sky-500 hover:bg-sky-600 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
-                  >
-                    <Copy className="w-4 h-4" />
-                    <span>Копировать</span>
-                  </button>
-                </div>
+              <div className="px-4 py-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white rounded-2xl shadow-sm text-center shrink-0">
+                <span className="text-xs font-bold block opacity-90">Реферальный баланс</span>
+                <span className="text-base font-black font-mono">+{referralStats?.referralRewardBalance || user.referralRewardBalance || 0} ИИрок 🪙</span>
               </div>
+            </div>
 
-              <div className="p-3 bg-white/80 border border-orange-200 text-[10px] text-orange-900 leading-relaxed rounded-xl space-y-1">
-                <p>🎁 <strong>Условия начисления:</strong> Отправьте любую из ссылок другу или опубликуйте в канале. При регистрации реферала по правилам через E-mail или Telegram вам автоматически начислится <strong>+300 ИИрок 🪙</strong> на баланс!</p>
-                {referralStats?.referredBy && (
-                  <p className="pt-1 text-slate-600 font-medium border-t border-orange-100">
-                    🤝 Вы были приглашены пользователем:{" "}
-                    <button
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm font-semibold">
+              {/* Unique Link Generator */}
+              <div className="p-5 bg-white/80 border border-pink-200 rounded-2xl space-y-4 shadow-2xs">
+                {/* Link 1: Web Browser / Email */}
+                <div className="space-y-1.5">
+                  <span className="text-xs text-slate-700 font-bold flex items-center gap-1">
+                    🌐 <span>Ссылка для браузера (E-mail регистрация)</span>
+                  </span>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={webRefLink}
+                      className="flex-1 bg-white border border-pink-200 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-700 select-all focus:outline-none"
+                    />
+                    <button 
                       type="button"
                       onClick={() => {
-                        const targetId = (referralStats.referredBy as any)?.telegramId || (referralStats.referredBy as any)?.id || '8092697980';
-                        window.history.pushState(null, '', `/social/${targetId}`);
-                        window.dispatchEvent(new Event('popstate'));
+                        navigator.clipboard?.writeText(webRefLink);
+                        alert(`📋 Веб-реферальная ссылка скопирована:\n${webRefLink}\nПользователи, зарегистрировавшиеся по этой ссылке, принесут вам +300 ИИрок!`);
                       }}
-                      className="font-bold underline text-pink-600 hover:text-pink-800 cursor-pointer"
+                      className="px-3.5 py-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-all shrink-0 text-sm shadow-xs"
                     >
-                      {referralStats.referredBy.firstName}
-                    </button>{" "}
-                    ({referralStats.referredBy.username ? `@${referralStats.referredBy.username}` : referralStats.referredBy.telegramId})
-                  </p>
-                )}
-              </div>
-            </div>
+                      <Copy className="w-4 h-4" />
+                      <span>Копировать</span>
+                    </button>
+                  </div>
+                </div>
 
-            {/* Referrals tracker & list */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-slate-500 uppercase font-black block">Приглашенные пользователи ({referralStats?.invitedCount || 0})</span>
-              </div>
-              
-              <div className="space-y-2 max-h-72 overflow-y-auto">
-                {referralStats?.invitedUsers && referralStats.invitedUsers.length > 0 ? (
-                  referralStats.invitedUsers.map((r, idx) => (
-                    <div 
-                      key={idx} 
+                {/* Link 2: Telegram Mini App */}
+                <div className="space-y-1.5 pt-2 border-t border-pink-200/60">
+                  <span className="text-xs text-slate-700 font-bold flex items-center gap-1">
+                    📱 <span>Ссылка для Telegram Mini App</span>
+                  </span>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={tgRefLink}
+                      className="flex-1 bg-white border border-pink-200 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-700 select-all focus:outline-none"
+                    />
+                    <button 
+                      type="button"
                       onClick={() => {
-                        const targetId = r.telegramId || r.id;
-                        if (targetId) {
+                        navigator.clipboard?.writeText(tgRefLink);
+                        alert(`📋 Telegram-реферальная ссылка скопирована:\n${tgRefLink}`);
+                      }}
+                      className="px-3.5 py-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-all shrink-0 text-sm shadow-xs"
+                    >
+                      <Copy className="w-4 h-4" />
+                      <span>Копировать</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-pink-50/80 border border-pink-200 text-xs text-slate-800 leading-relaxed rounded-xl space-y-1.5">
+                  <p>🎁 <strong>Условия начисления:</strong> Отправьте любую из ссылок другу или опубликуйте в канале. При регистрации реферала по правилам через E-mail или Telegram вам автоматически начислится <strong>+300 ИИрок 🪙</strong> на баланс!</p>
+                  {referralStats?.referredBy && (
+                    <p className="pt-1.5 text-slate-600 font-medium border-t border-pink-200">
+                      🤝 Вы были приглашены пользователем:{" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetId = (referralStats.referredBy as any)?.telegramId || (referralStats.referredBy as any)?.id || '16926299042';
                           window.history.pushState(null, '', `/social/${targetId}`);
                           window.dispatchEvent(new Event('popstate'));
-                        }
-                      }}
-                      className="p-3 bg-white hover:bg-slate-50 transition-colors cursor-pointer rounded-xl border border-slate-100 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-400 via-pink-500 to-orange-400 text-white font-bold text-xs flex items-center justify-center font-mono shrink-0">
-                          {r.firstName ? r.firstName[0].toUpperCase() : 'U'}
-                        </div>
-                        <div className="space-y-0.5 text-left">
-                          <strong className="text-slate-800 block text-xs hover:text-pink-600 transition-colors">{r.firstName}</strong>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            {r.username ? `@${r.username}` : `ID: ${r.telegramId || r.id}`} • {new Date(r.createdAt).toLocaleDateString('ru-RU')}
-                          </span>
-                        </div>
-                      </div>
+                        }}
+                        className="font-bold underline text-pink-600 hover:text-pink-800 cursor-pointer"
+                      >
+                        {referralStats.referredBy.firstName}
+                      </button>{" "}
+                      ({referralStats.referredBy.username ? `@${referralStats.referredBy.username}` : referralStats.referredBy.telegramId})
+                    </p>
+                  )}
+                </div>
+              </div>
 
-                      <span className="text-emerald-600 font-extrabold text-[10px] flex items-center gap-0.5 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100 shrink-0">
-                        <Check className="w-3.5 h-3.5" /> +300 ИИрок
-                      </span>
+              {/* Referrals tracker & list */}
+              <div className="p-5 bg-white/80 border border-pink-200 rounded-2xl space-y-3 shadow-2xs">
+                <div className="flex justify-between items-center border-b border-pink-200/70 pb-2">
+                  <span className="text-sm font-bold text-slate-900 block">Приглашенные пользователи ({referralStats?.invitedCount || 0})</span>
+                </div>
+                
+                <div className="space-y-2 max-h-64 overflow-y-auto no-scrollbar">
+                  {referralStats?.invitedUsers && referralStats.invitedUsers.length > 0 ? (
+                    referralStats.invitedUsers.map((r, idx) => (
+                      <div 
+                        key={idx} 
+                        onClick={() => {
+                          const targetId = r.telegramId || r.id;
+                          if (targetId) {
+                            window.history.pushState(null, '', `/social/${targetId}`);
+                            window.dispatchEvent(new Event('popstate'));
+                          }
+                        }}
+                        className="p-3 bg-white/90 hover:bg-white transition-colors cursor-pointer rounded-xl border border-pink-200/80 flex items-center justify-between shadow-xs"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-400 via-pink-500 to-orange-400 text-white font-bold text-xs flex items-center justify-center font-mono shrink-0">
+                            {r.firstName ? r.firstName[0].toUpperCase() : 'U'}
+                          </div>
+                          <div className="space-y-0.5 text-left">
+                            <strong className="text-slate-800 block text-xs hover:text-pink-600 transition-colors">{r.firstName}</strong>
+                            <span className="text-xs text-slate-500 font-mono">
+                              {r.username ? `@${r.username}` : `ID: ${r.telegramId || r.id}`} • {new Date(r.createdAt).toLocaleDateString('ru-RU')}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className="text-pink-600 font-extrabold text-xs flex items-center gap-0.5 bg-pink-50 px-2.5 py-1 rounded-lg border border-pink-200 shrink-0">
+                          <Check className="w-3.5 h-3.5" /> +300 ИИрок
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-6 bg-pink-50/40 rounded-2xl border border-dashed border-pink-200 text-center space-y-2">
+                      <Users className="w-8 h-8 text-pink-300 mx-auto" />
+                      <p className="text-sm text-slate-600 font-medium">У вас пока нет приглашенных пользователей.</p>
+                      <p className="text-xs text-slate-500">Скопируйте реферальную ссылку и отправьте друзьям, чтобы получить по +300 ИИрок!</p>
                     </div>
-                  ))
-                ) : (
-                  <div className="p-6 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 text-center space-y-2">
-                    <Users className="w-8 h-8 text-slate-300 mx-auto" />
-                    <p className="text-xs text-slate-500 font-medium">У вас пока нет приглашенных пользователей.</p>
-                    <p className="text-[10px] text-slate-400">Скопируйте реферальную ссылку выше и отправьте друзьям, чтобы получить по +300 ИИрок!</p>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 
+            {/* Social Media Ready-Made Promo Post Section */}
+            <div className="p-5 bg-white/80 border border-pink-200 rounded-2xl space-y-4 shadow-2xs text-left">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-pink-200/70 pb-3">
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-pink-500" />
+                    <span>Готовый пост для социальных сетей</span>
+                  </h4>
+                  <p className="text-xs text-slate-600 font-medium">Выберите соцсеть, скопируйте готовый текст с обеими ссылками или сразу опубликуйте в свой канал</p>
+                </div>
+
+                {/* Channel Selector Tabs */}
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'tg', label: 'Telegram' },
+                    { id: 'vk', label: 'ВКонтакте' },
+                    { id: 'wa', label: 'WhatsApp' },
+                    { id: 'setka', label: 'Сетка' },
+                    { id: 'ok', label: 'Одноклассники' }
+                  ].map(ch => (
+                    <button
+                      key={ch.id}
+                      type="button"
+                      onClick={() => setPromoChannel(ch.id as any)}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        promoChannel === ch.id
+                          ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-xs'
+                          : 'bg-white border border-pink-200 text-slate-700 hover:bg-pink-50/50'
+                      }`}
+                    >
+                      {ch.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Post Preview Box */}
+              <div className="p-4 bg-white/90 rounded-xl border border-pink-200 shadow-inner space-y-3">
+                <div className="text-xs text-slate-800 font-medium whitespace-pre-line leading-relaxed select-text">
+                  {activePromo.text}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-pink-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(activePromo.text);
+                      setPromoCopied(true);
+                      setTimeout(() => setPromoCopied(false), 2000);
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{promoCopied ? 'Скопировано! 🎉' : 'Скопировать текст поста'}</span>
+                  </button>
+
+                  {activePromo.shareUrl && (
+                    <a
+                      href={activePromo.shareUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-xl border border-pink-200 flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-pink-500" />
+                      <span>Поделиться в {activePromo.channelName}</span>
+                    </a>
+                  )}
+                </div>
+
+                {/* Send to Connected User Channel */}
+                <div className="pt-3 border-t border-pink-200/80 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="text-xs text-slate-800 font-bold flex items-center gap-1.5">
+                      <Send className="w-3.5 h-3.5 text-orange-500" />
+                      <span>Отправка поста в свой Telegram-канал из базы данных:</span>
+                    </span>
+                  </div>
+
+                  {localChannels && localChannels.length > 0 ? (
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <select
+                        value={selectedPromoChannelId || (localChannels[0]?.id || localChannels[0]?.channelId || '')}
+                        onChange={e => setSelectedPromoChannelId(e.target.value)}
+                        className="flex-1 bg-white border border-pink-200 text-slate-800 text-xs font-bold p-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400"
+                      >
+                        {localChannels.map(ch => (
+                          <option key={ch.id || ch.channelId} value={ch.id || ch.channelId}>
+                            {ch.title || ch.name || ch.handle || 'Канал'} ({ch.handle || ch.channelId || 'Telegram'})
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        type="button"
+                        disabled={isPublishingPromo}
+                        onClick={() => handlePublishPromoToOwnChannel(activePromo.text)}
+                        className="px-4 py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all shrink-0 disabled:opacity-50"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>{isPublishingPromo ? 'Отправляем...' : 'Опубликовать в канал 🚀'}</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 bg-pink-50/90 border border-dashed border-pink-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                      <div className="space-y-0.5">
+                        <strong className="text-slate-800 block">У вас еще нет привязанных каналов в базе данных</strong>
+                        <p className="text-slate-600 font-medium">Привяжите свой Telegram-канал, чтобы отправлять готовые посты в 1 клик</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('channels');
+                          window.history.pushState(null, '', '/channels');
+                          window.dispatchEvent(new Event('popstate'));
+                        }}
+                        className="px-4 py-2 bg-white/90 hover:bg-white text-slate-800 font-bold rounded-xl border border-pink-300 shadow-2xs cursor-pointer shrink-0 text-xs flex items-center justify-center gap-1"
+                      >
+                        <span>Привязать канал 📢</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {promoPublishStatus && (
+                    <div className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 ${
+                      promoPublishStatus.type === 'success' 
+                        ? 'bg-sky-50 text-sky-900 border-sky-200' 
+                        : 'bg-rose-50 text-rose-900 border-rose-200'
+                    }`}>
+                      <span>{promoPublishStatus.message}</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setPromoPublishStatus(null)} 
+                        className="text-slate-400 hover:text-slate-700 font-bold px-1 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* --- TAB CONTENT: ENTERPRISE SERVICES --- */}
       {activeTab === 'enterprise' && (
@@ -4440,6 +4659,236 @@ export default function ProfileAndOnboarding({
           </div>
         )}
 
+        {/* Tariff Transition Confirmation Modal */}
+        {tariffConfirmModal && tariffConfirmModal.isOpen && (() => {
+          const totalBalance = (Number(liveProfile.balance_pay || 0) + Number(liveProfile.balance_free || 0));
+          const neededAmount = tariffConfirmModal.amountRub || 0;
+          const isAffordable = totalBalance >= neededAmount;
+          const deficit = neededAmount - totalBalance;
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 backdrop-blur-xl rounded-3xl p-6 max-w-lg w-full border border-pink-300 shadow-2xl space-y-4 text-left max-h-[90vh] overflow-y-auto no-scrollbar"
+              >
+                <div className="flex justify-between items-center border-b border-pink-200/80 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Crown className="w-5 h-5 text-pink-600" />
+                    <h3 className="font-bold text-base text-slate-900">Подключение тарифа «{tariffConfirmModal.planName}»</h3>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setTariffConfirmModal(null)}
+                    className="w-8 h-8 rounded-full bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 flex items-center justify-center border border-pink-200 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-4 bg-white/90 rounded-2xl border border-pink-200 space-y-3 shadow-inner">
+                  <div className="flex justify-between items-center text-sm font-semibold">
+                    <span className="text-slate-600">Период подписки:</span>
+                    <span className="text-slate-900 font-bold">
+                      {tariffConfirmModal.periodMonths} {tariffConfirmModal.periodMonths === 1 ? 'месяц' : tariffConfirmModal.periodMonths < 5 ? 'месяца' : 'месяцев'}
+                      {tariffConfirmModal.discountPercent > 0 && (
+                        <span className="ml-1.5 px-2 py-0.5 rounded-md bg-pink-100 text-pink-700 text-xs font-black">
+                          -{tariffConfirmModal.discountPercent}%
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-sm font-semibold border-t border-pink-100 pt-2">
+                    <span className="text-slate-600">Сумма к списанию:</span>
+                    <span className="text-pink-600 font-black font-mono text-base">
+                      {neededAmount.toLocaleString('ru-RU')} ИИрок 🪙
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-sm font-semibold border-t border-pink-100 pt-2">
+                    <span className="text-slate-600">Ваш доступный баланс:</span>
+                    <span className="text-slate-900 font-mono font-bold">
+                      {totalBalance.toLocaleString('ru-RU')} ИИрок
+                    </span>
+                  </div>
+                </div>
+
+                {!isAffordable ? (
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs space-y-2">
+                    <div className="font-bold text-rose-800 flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>Недостаточно ИИрок на балансе (не хватает {deficit.toLocaleString('ru-RU')} ИИрок)</span>
+                    </div>
+                    <p className="text-slate-600 font-medium">
+                      Пополните баланс на недостающую сумму, чтобы активировать тариф.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBuyIirkyAmount(String(deficit));
+                        setIsBuyIirkyCalcOpen(true);
+                      }}
+                      className="w-full py-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer"
+                    >
+                      Пополнить баланс на {deficit.toLocaleString('ru-RU')} ИИрок 🪙
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-sky-50/80 border border-sky-200 rounded-2xl text-xs text-sky-900 font-medium space-y-1">
+                    <p>💡 После подтверждения {neededAmount.toLocaleString('ru-RU')} ИИрок спишутся с баланса, и тариф мгновенно обновится.</p>
+                  </div>
+                )}
+
+                <div className="p-3.5 bg-white/80 border border-pink-200 rounded-2xl text-xs text-slate-700 leading-relaxed space-y-1.5 font-medium">
+                  <p className="font-bold text-slate-900">Регламент продления и смены подписок:</p>
+                  <p>
+                    Вы можете продлить или переключить тариф в любой момент. Оплата списывается автоматически с баланса ИИрок. Смена тарифов конвертируется из внутреннего баланса ИИрок мгновенно.
+                  </p>
+                  <p className="text-slate-500 text-[11px] pt-1 border-t border-pink-100">
+                    При переходе на тариф с меньшей стоимостью перерасчет и возврат средств не производится. Новый тариф активируется сразу.
+                  </p>
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setTariffConfirmModal(null)}
+                    className="flex-1 py-2.5 bg-white/90 hover:bg-white text-slate-700 font-bold rounded-xl border border-pink-200 cursor-pointer text-sm"
+                  >
+                    Отмена
+                  </button>
+                  <button 
+                    type="button"
+                    disabled={!isAffordable}
+                    onClick={handleConfirmTariffChange}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold rounded-xl shadow-md cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Подтвердить переход ⚡
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+
+        {/* Buy Iirky Calculator Modal */}
+        {isBuyIirkyCalcOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 backdrop-blur-xl rounded-3xl p-6 max-w-lg w-full border border-pink-300 shadow-2xl space-y-4 text-left max-h-[90vh] overflow-y-auto no-scrollbar"
+            >
+              <div className="flex justify-between items-center border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-pink-600" />
+                  <h3 className="font-bold text-base text-slate-900">Калькулятор покупки ИИрок 🪙</h3>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setIsBuyIirkyCalcOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 flex items-center justify-center border border-pink-200 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4 text-sm font-semibold">
+                <div className="p-3.5 bg-white/90 border border-pink-200 rounded-2xl space-y-1">
+                  <div className="font-extrabold text-sm text-multicolor-gradient">
+                    Курс: 1 рубль = 1 ИИрка 🪙
+                  </div>
+                  <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                    ИИрки не сгорают со временем и расходуются только на фактические генерации текста, картинок и автопостинг.
+                  </p>
+                </div>
+
+                {/* Presets */}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-700 font-bold block">Популярные суммы:</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[500, 990, 2500, 5000, 10000, 25000].map(val => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setBuyIirkyAmount(String(val))}
+                        className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                          buyIirkyAmount === String(val)
+                            ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-xs'
+                            : 'bg-white/90 border border-pink-200 text-slate-800 hover:bg-pink-50'
+                        }`}
+                      >
+                        {val.toLocaleString('ru-RU')} ₽
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Input */}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-700 font-bold block">Сумма в рублях (₽):</label>
+                  <input
+                    type="number"
+                    min="10"
+                    step="10"
+                    value={buyIirkyAmount}
+                    onChange={e => setBuyIirkyAmount(e.target.value)}
+                    placeholder="990"
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl font-mono text-sm font-bold text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                  />
+                </div>
+
+                {/* Calculation summary */}
+                <div className="p-3.5 bg-gradient-to-r from-sky-50 via-pink-50 to-orange-50 border border-pink-200 rounded-2xl flex items-center justify-between text-sm">
+                  <span className="text-slate-700 font-medium">Будет начислено:</span>
+                  <span className="font-mono font-black text-pink-600 text-base">
+                    {(Number(buyIirkyAmount) || 0).toLocaleString('ru-RU')} ИИрок 🪙
+                  </span>
+                </div>
+
+                {/* Oferta Transparent Link */}
+                <a
+                  href="/oferta"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-3 bg-white/40 hover:bg-white/70 text-slate-800 text-xs font-bold rounded-xl border border-pink-300 flex items-center justify-center gap-1.5 transition-all shadow-2xs backdrop-blur-xs text-center cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-pink-500" />
+                  <span>Ознакомиться с договором публичной оферты и регламентом ИИрок 📄</span>
+                </a>
+
+                <div className="pt-2 flex gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setIsBuyIirkyCalcOpen(false)}
+                    className="flex-1 py-2.5 bg-white/90 hover:bg-white text-slate-700 font-bold rounded-xl border border-pink-200 cursor-pointer text-sm"
+                  >
+                    Отмена
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      const rub = Number(buyIirkyAmount) || 990;
+                      setIsBuyIirkyCalcOpen(false);
+                      setRobokassaPlanName('Пополнение ИИрок');
+                      setRobokassaAmountRub(rub);
+                      setRobokassaModalOpen(true);
+                    }}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold rounded-xl shadow-md cursor-pointer text-sm flex items-center justify-center gap-1.5"
+                  >
+                    <CreditCard className="w-4 h-4 text-white" />
+                    <span>Оплатить {(Number(buyIirkyAmount) || 990).toLocaleString('ru-RU')} ₽ 💳</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {/* Cosmos Plan Contact Modal */}
         {isCosmosModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-xs">
@@ -4489,13 +4938,13 @@ export default function ProfileAndOnboarding({
                   <div className="space-y-1">
                     <label className="text-sm text-slate-700 font-bold block">Telegram username</label>
                     <input 
-                      type="text" 
-                      required
-                      value={cosmosTelegram}
-                      onChange={e => setCosmosTelegram(e.target.value)}
-                      placeholder="@username"
-                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
-                    />
+                    type="text" 
+                    required
+                    value={cosmosTelegram}
+                    onChange={e => setCosmosTelegram(e.target.value)}
+                    placeholder="@username"
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                  />
                   </div>
                   <div className="space-y-1">
                     <label className="text-sm text-slate-700 font-bold block">Телефон / Мессенджер</label>

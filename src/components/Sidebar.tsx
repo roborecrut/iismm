@@ -45,7 +45,7 @@ export default function Sidebar({
       
       <div className="space-y-4">
         {/* Geometric Balance brand header */}
-        <div className="flex items-center justify-center px-1 pt-1 cursor-pointer" onClick={() => onNavigate('/profile')}>
+        <div className="flex items-center justify-center px-1 pt-1 cursor-pointer" onClick={() => onNavigate('/')}>
           <ShinyLogo height={38} />
         </div>
 

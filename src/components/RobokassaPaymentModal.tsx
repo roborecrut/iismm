@@ -260,19 +260,29 @@ export default function RobokassaPaymentModal({
                   href={createdUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition-transform active:scale-95"
+                  className="w-full py-3 bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition-transform active:scale-95"
                 >
                   <ExternalLink className="w-4 h-4" />
-                  <span>Перейти в платежный шлюз Робокассы</span>
+                  <span>Перейти в платежный шлюз Робокассы 💳</span>
                 </a>
               )}
+
+              {/* Oferta link */}
+              <a
+                href="/oferta"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-2 bg-white/60 hover:bg-white text-slate-800 text-xs font-bold rounded-xl border border-pink-300 flex items-center justify-center gap-1.5 transition-all shadow-2xs backdrop-blur-xs text-center"
+              >
+                <span>Ознакомиться с договором оферты и регламентом тарифов 📄</span>
+              </a>
 
               {/* Action buttons */}
               <div className="space-y-2 pt-1">
                 <button 
                   onClick={handleCreatePaymentUrl}
                   disabled={paymentLoading}
-                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-black text-xs uppercase rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <CreditCard className="w-4 h-4" />
                   <span>{paymentLoading ? 'Формирование...' : 'Сформировать ссылку Робокассы 💳'}</span>

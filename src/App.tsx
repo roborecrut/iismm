@@ -12,6 +12,9 @@ import ProfilePage from './pages/ProfilePage';
 import AdminPage from './pages/AdminPage';
 import LandingPage from './pages/LandingPage';
 import OfertaPage from './pages/OfertaPage';
+import PublicTarifPayPage from './pages/PublicTarifPayPage';
+import PaymentSuccessPage from './pages/PaymentSuccessPage';
+import PaymentFailPage from './pages/PaymentFailPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 
 import Posts from './pages/Posts';
@@ -80,10 +83,11 @@ export default function App() {
 
       const rawAppPaths = [
         '/dashboard', '/posts', '/channels', '/calendar', '/gallery', '/history', '/templates', '/scenarios', '/crosspost', '/settings',
-        '/social', '/market', '/bundles', '/profile', '/tarif', '/partner', '/teams', '/brand', '/api-keys', '/roundtable', '/enterprise', '/admin', '/system-admin', '/reset-password'
+        '/social', '/market', '/bundles', '/profile', '/tarif', '/tarif/pay', '/partner', '/teams', '/brand', '/api-keys', '/roundtable', '/enterprise', '/admin', '/system-admin', '/reset-password',
+        '/payment/success', '/payment/fail', '/payment/robokassa/success', '/payment/robokassa/fail'
       ];
 
-      const landingPaths = ['/', '/main', '/blog', '/ai', '/market-exchange', '/chat', '/prices', '/projects', '/academy', '/oferta', '/reset-password'];
+      const landingPaths = ['/', '/main', '/blog', '/ai', '/market-exchange', '/chat', '/prices', '/projects', '/academy', '/oferta', '/tarif/pay', '/reset-password', '/payment/success', '/payment/fail', '/payment/robokassa/success', '/payment/robokassa/fail'];
 
       const isAppPath = rawAppPaths.some(p => path === p || path.startsWith(p + '/') || (p === '/social' && path.startsWith('/social')));
       const isLandingPath = landingPaths.some(p => path === p || path.startsWith(p + '/'));
@@ -859,7 +863,24 @@ export default function App() {
   const totalViews = posts.reduce((sum, p) => sum + (p.views || 0), 12500);
   const totalClicks = posts.reduce((sum, p) => sum + (p.clicks || 0), 980);
 
-  const landingPaths = ['/', '/main', '/blog', '/ai', '/market-exchange', '/chat', '/prices', '/projects', '/academy', '/oferta'];
+  // Standalone public routes (available without login or inside app)
+  if (currentPath === '/oferta' || currentPath.startsWith('/oferta')) {
+    return <OfertaPage onNavigate={changeRoute} />;
+  }
+
+  if (currentPath === '/tarif/pay' || currentPath.startsWith('/tarif/pay')) {
+    return <PublicTarifPayPage onNavigate={changeRoute} currentUser={user} />;
+  }
+
+  if (currentPath.startsWith('/payment/success') || currentPath.startsWith('/payment/robokassa/success')) {
+    return <PaymentSuccessPage onNavigate={changeRoute} />;
+  }
+
+  if (currentPath.startsWith('/payment/fail') || currentPath.startsWith('/payment/robokassa/fail')) {
+    return <PaymentFailPage onNavigate={changeRoute} />;
+  }
+
+  const landingPaths = ['/', '/main', '/blog', '/ai', '/market-exchange', '/chat', '/prices', '/projects', '/academy'];
 
   const isLandingRoute = landingPaths.includes(currentPath) || currentPath.startsWith('/blog/') || currentPath.startsWith('/blog');
 
