@@ -169,6 +169,200 @@ export function initUsersTable(db: Database) {
   } catch (e) {
     console.error('[UsersTable] Error checking referral transactions on init:', e);
   }
+
+  // Run full balance audit and reconciliation strictly against transactions history
+  try {
+    reconcileAllUserBalancesFromTransactions(db);
+  } catch (e) {
+    console.error('[UsersTable] Error reconciling user balances on init:', e);
+  }
+}
+
+export function reconcileAllUserBalancesFromTransactions(db: Database): { updatedCount: number; details: string[] } {
+  const details: string[] = [];
+  let updatedCount = 0;
+  try {
+    const userStmt = db.prepare("SELECT id, telegram_id, email, username, first_name, created_at, balance_admin FROM users");
+    const users: any[] = [];
+    while (userStmt.step()) {
+      users.push(userStmt.getAsObject());
+    }
+    userStmt.free();
+
+    for (const u of users) {
+      const canonicalId = String(u.id);
+      const tgId = Number(u.telegram_id || 0);
+
+      // Normalize all transactions to canonical user id
+      if (tgId > 0 && String(tgId) !== canonicalId) {
+        try {
+          db.run("UPDATE transactions SET user_id = ? WHERE user_id = ?", [canonicalId, String(tgId)]);
+        } catch (e) {}
+      }
+
+      // Fetch all transactions for user
+      const txStmt = db.prepare("SELECT id, type, balance_type, amount, description, comment, created_at FROM transactions WHERE user_id = ? ORDER BY created_at ASC");
+      txStmt.bind([canonicalId]);
+      const txs: any[] = [];
+      while (txStmt.step()) {
+        txs.push(txStmt.getAsObject());
+      }
+      txStmt.free();
+
+      // Check start transactions (start, start_tma, start_email)
+      const hasTg = Number(u.telegram_id || 0) > 0;
+      const hasEm = Boolean(u.email && String(u.email).trim() !== '' && u.password_hash);
+      const targetStartType = hasTg ? 'start_tma' : (hasEm ? 'start_email' : 'start_tma');
+      const targetDesc = hasTg ? 'Стартовый баланс Telegram Mini App (300 ИИрок)' : 'Стартовый баланс при регистрации через Email (300 ИИрок)';
+
+      // Auto-migrate legacy 'start' type to start_tma or start_email
+      for (const t of txs) {
+        if (t.type === 'start') {
+          db.run("UPDATE transactions SET type = ?, description = ? WHERE id = ?", [targetStartType, targetDesc, t.id]);
+          t.type = targetStartType;
+          t.description = targetDesc;
+          details.push(`Обновлен тип стартовой транзакции ${t.id} на ${targetStartType} для ${canonicalId}`);
+        }
+      }
+
+      const startTxs = txs.filter(t => t.type === 'start' || t.type === 'start_tma' || t.type === 'start_email');
+      if (startTxs.length === 0) {
+        // User has no start transaction - add standard 300 start transaction
+        const regTime = u.created_at || new Date().toISOString();
+        const startTxId = `tx_start_${canonicalId}_${Date.now()}`;
+        db.run(
+          `INSERT INTO transactions (id, user_id, type, balance_type, amount, description, comment, status, created_at)
+           VALUES (?, ?, ?, 'start', 300, ?, 'Стартовый баланс', 'Завершено', ?)`,
+          [startTxId, canonicalId, targetStartType, targetDesc, regTime]
+        );
+        txs.push({
+          id: startTxId,
+          type: targetStartType,
+          balance_type: 'start',
+          amount: 300,
+          description: targetDesc,
+          comment: 'Стартовый баланс',
+          status: 'Завершено',
+          created_at: regTime
+        });
+        details.push(`Добавлен стартовый бонус (${targetStartType}) 300 ИИрок для пользователя ${canonicalId}`);
+      } else if (startTxs.length > 1) {
+        // If there are duplicate identical start transactions for same registration, clean up duplicates
+        const seenDescriptions = new Set<string>();
+        let keptStartCount = 0;
+        for (const st of startTxs) {
+          const key = (st.type || 'start').trim().toLowerCase();
+          if (seenDescriptions.has(key) && startTxs.length > 1 && keptStartCount >= 1) {
+            // Delete duplicate start transaction
+            try {
+              db.run("DELETE FROM transactions WHERE id = ?", [st.id]);
+              const idx = txs.findIndex(t => t.id === st.id);
+              if (idx !== -1) txs.splice(idx, 1);
+              details.push(`Удалена дублирующаяся транзакция старта ${st.id} для пользователя ${canonicalId}`);
+            } catch (e) {}
+          } else {
+            seenDescriptions.add(key);
+            keptStartCount++;
+          }
+        }
+      }
+
+      // Calculate sums from cleaned transactions list
+      let startSum = 0;
+      let refSum = 0;
+      let tarifSum = 0;
+      let paySum = 0;
+      let adminSum = 0;
+      let costSum = 0;
+      let lastTime: string | null = null;
+
+      for (const t of txs) {
+        const amt = Number(t.amount) || 0;
+        const tType = String(t.type || '').toLowerCase();
+        if (t.created_at && (!lastTime || new Date(t.created_at) > new Date(lastTime))) {
+          lastTime = t.created_at;
+        }
+
+        if (tType === 'start' || tType === 'start_tma' || tType === 'start_email') {
+          startSum += amt;
+        } else if (tType === 'ref' || tType === 'referral_bonus') {
+          refSum += amt;
+        } else if (tType === 'tarif') {
+          tarifSum += amt;
+        } else if (tType === 'pay') {
+          paySum += amt;
+        } else if (tType === 'admin') {
+          adminSum += amt;
+        } else if (tType === 'cost') {
+          costSum += Math.abs(amt);
+        }
+      }
+
+      // Apply deduction order for costSum:
+      // Priority: balance_tarif -> balance_start -> balance_ref -> balance_admin, then balance_pay
+      let b_tarif = Math.max(0, tarifSum);
+      let b_start = Math.max(0, startSum);
+      let b_ref = Math.max(0, refSum);
+      let b_admin = adminSum;
+      let b_pay = Math.max(0, paySum);
+
+      let remainingCost = costSum;
+      if (remainingCost > 0) {
+        if (b_tarif >= remainingCost) {
+          b_tarif -= remainingCost;
+          remainingCost = 0;
+        } else {
+          remainingCost -= b_tarif;
+          b_tarif = 0;
+          if (b_start >= remainingCost) {
+            b_start -= remainingCost;
+            remainingCost = 0;
+          } else {
+            remainingCost -= b_start;
+            b_start = 0;
+            if (b_ref >= remainingCost) {
+              b_ref -= remainingCost;
+              remainingCost = 0;
+            } else {
+              remainingCost -= b_ref;
+              b_ref = 0;
+              if (b_admin >= remainingCost) {
+                b_admin -= remainingCost;
+                remainingCost = 0;
+              } else {
+                remainingCost -= Math.max(0, b_admin);
+                b_admin = 0;
+                b_pay = Math.max(0, b_pay - remainingCost);
+                remainingCost = 0;
+              }
+            }
+          }
+        }
+      }
+
+      const b_free = Math.max(0, b_start + b_ref + b_tarif + b_admin);
+      const b_total = Math.max(0, b_pay + b_free);
+
+      db.run(
+        `UPDATE users
+         SET balance_start = ?,
+             balance_ref = ?,
+             balance_tarif = ?,
+             balance_admin = ?,
+             balance_pay = ?,
+             balance_cost = ?,
+             balance_free = ?,
+             balance = ?,
+             balance_time = ?
+         WHERE id = ?`,
+        [b_start, b_ref, b_tarif, b_admin, b_pay, costSum, b_free, b_total, lastTime, canonicalId]
+      );
+      updatedCount++;
+    }
+  } catch (e) {
+    console.error('[Reconcile Balances] Error in reconcileAllUserBalancesFromTransactions:', e);
+  }
+  return { updatedCount, details };
 }
 
 export function checkAndSyncReferralTransactions(db: Database): { syncedCount: number; details: string[] } {
@@ -233,6 +427,95 @@ export function checkAndSyncReferralTransactions(db: Database): { syncedCount: n
     console.error('[Referral Trigger] Error in checkAndSyncReferralTransactions:', e);
   }
   return { syncedCount, details };
+}
+
+export function checkAndApplyStartRegistrationBonus(
+  db: Database,
+  userId: string,
+  authMethod: 'telegram' | 'email' | 'auto' = 'auto'
+): { applied: boolean; type?: string; message?: string } {
+  try {
+    const cleanId = format11DigitUserId(userId);
+    const userStmt = db.prepare("SELECT id, telegram_id, email, password_hash, created_at, balance_start FROM users WHERE id = ? OR telegram_id = ? LIMIT 1");
+    const tgNum = parseInt(userId, 10) || 0;
+    userStmt.bind([cleanId, tgNum]);
+    let u: any = null;
+    if (userStmt.step()) {
+      u = userStmt.getAsObject();
+    }
+    userStmt.free();
+
+    if (!u) return { applied: false };
+
+    const canonicalId = String(u.id);
+    const hasTelegram = Number(u.telegram_id || 0) > 0 || authMethod === 'telegram';
+    const hasEmail = Boolean(u.email && String(u.email).trim() !== '' && u.password_hash && String(u.password_hash).trim() !== '') || authMethod === 'email';
+
+    // Fetch user's transactions
+    const txStmt = db.prepare("SELECT id, type, description, amount FROM transactions WHERE user_id = ?");
+    txStmt.bind([canonicalId]);
+    const txs: any[] = [];
+    while (txStmt.step()) {
+      txs.push(txStmt.getAsObject());
+    }
+    txStmt.free();
+
+    let hasStartTma = txs.some(t => t.type === 'start_tma');
+    let hasStartEmail = txs.some(t => t.type === 'start_email');
+    const legacyStartTx = txs.find(t => t.type === 'start');
+
+    // If legacy 'start' exists, rename/update it based on registration type
+    if (legacyStartTx) {
+      if (hasTelegram && !hasStartTma) {
+        db.run("UPDATE transactions SET type = 'start_tma', description = 'Стартовый баланс Telegram Mini App 300 ИИрок' WHERE id = ?", [legacyStartTx.id]);
+        hasStartTma = true;
+      } else if (hasEmail && !hasStartEmail) {
+        db.run("UPDATE transactions SET type = 'start_email', description = 'Стартовый баланс при регистрации через Email 300 ИИрок' WHERE id = ?", [legacyStartTx.id]);
+        hasStartEmail = true;
+      } else if (hasTelegram) {
+        db.run("UPDATE transactions SET type = 'start_tma' WHERE id = ?", [legacyStartTx.id]);
+        hasStartTma = true;
+      } else {
+        db.run("UPDATE transactions SET type = 'start_email' WHERE id = ?", [legacyStartTx.id]);
+        hasStartEmail = true;
+      }
+    }
+
+    const regTime = u.created_at || new Date().toISOString();
+
+    // 1. If user has telegram_id and no start_tma transaction:
+    if (hasTelegram && !hasStartTma) {
+      addTransactionWithBalanceUpdate(db, {
+        userId: canonicalId,
+        type: 'start_tma',
+        balanceType: 'start',
+        amount: 300,
+        description: 'Стартовый баланс Telegram Mini App 300 ИИрок',
+        comment: 'Регистрация через Telegram',
+        createdAt: regTime
+      });
+      return { applied: true, type: 'start_tma', message: 'Начислен стартовый баланс Telegram Mini App (300 ИИрок)' };
+    }
+
+    // 2. If user has email + password and no start_email transaction (and no start_tma):
+    if (hasEmail && !hasStartEmail && !hasStartTma) {
+      addTransactionWithBalanceUpdate(db, {
+        userId: canonicalId,
+        type: 'start_email',
+        balanceType: 'start',
+        amount: 300,
+        description: 'Стартовый баланс при регистрации через Email 300 ИИрок',
+        comment: 'Регистрация через E-mail',
+        createdAt: regTime
+      });
+      return { applied: true, type: 'start_email', message: 'Начислен стартовый баланс Email (300 ИИрок)' };
+    }
+
+    return { applied: false };
+  } catch (e) {
+    console.error('[Registration Trigger] Error checking/applying start bonus:', e);
+    return { applied: false };
+  }
 }
 
 export function format11DigitUserId(idOrTg: string | number, telegramId?: number): string {
@@ -434,12 +717,17 @@ export function insertDefaultUserInDb(db: Database, user: UserRecord) {
       );
 
       // Create transaction for starting balance
+      const isTgUser = Boolean(user.telegram_id && user.telegram_id > 0);
+      const isEmailUser = Boolean(user.email && user.password_hash);
+      const startType = isTgUser ? 'start_tma' : (isEmailUser ? 'start_email' : 'start_tma');
+      const startDesc = isTgUser ? 'Стартовый баланс Telegram Mini App 300 ИИрок' : 'Стартовый баланс при регистрации через Email 300 ИИрок';
+
       addTransactionWithBalanceUpdate(db, {
         userId: finalId,
-        type: 'start',
+        type: startType,
         balanceType: 'start',
         amount: startBalance,
-        description: 'Единовременное начисление стартового баланса 300 ИИрок',
+        description: startDesc,
         createdAt
       });
     } else {
@@ -542,12 +830,17 @@ export function insertOrUpdateUserInDb(db: Database, user: UserRecord) {
     );
 
     if (!exists) {
+      const isTgUser = Boolean(user.telegram_id && user.telegram_id > 0);
+      const isEmailUser = Boolean(user.email && user.password_hash);
+      const startType = isTgUser ? 'start_tma' : (isEmailUser ? 'start_email' : 'start_tma');
+      const startDesc = isTgUser ? 'Стартовый баланс Telegram Mini App 300 ИИрок' : 'Стартовый баланс при регистрации через Email 300 ИИрок';
+
       addTransactionWithBalanceUpdate(db, {
         userId: finalId,
-        type: 'start',
+        type: startType,
         balanceType: 'start',
         amount: startBalance,
-        description: 'Единовременное начисление стартового баланса 300 ИИрок',
+        description: startDesc,
         createdAt
       });
     }

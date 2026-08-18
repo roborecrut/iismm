@@ -1,7 +1,7 @@
 import { Database } from 'sql.js';
 import { createNotificationInDb } from './notificationsTable';
 
-export type TransactionType = 'start' | 'pay' | 'tarif' | 'ref' | 'admin' | 'cost';
+export type TransactionType = 'start' | 'start_tma' | 'start_email' | 'pay' | 'tarif' | 'ref' | 'admin' | 'cost';
 
 export interface TransactionRecord {
   id: string;
@@ -124,7 +124,7 @@ export function addTransactionWithBalanceUpdate(
   let balance_time = u.balance_time || null;
 
   if (userFound) {
-    if (params.type === 'start') {
+    if (params.type === 'start' || params.type === 'start_tma' || params.type === 'start_email') {
       balance_start = Math.max(0, balance_start + amount);
     } else if (params.type === 'ref') {
       balance_ref = Math.max(0, balance_ref + amount);
@@ -190,9 +190,12 @@ export function addTransactionWithBalanceUpdate(
     // 3. Create real-time notification
     let notifTitle = 'Изменение баланса';
     let notifMsg = `${description}: ${amount > 0 ? '+' : ''}${amount} ИИрок.`;
-    if (params.type === 'start') {
-      notifTitle = 'Приветственный бонус';
-      notifMsg = `Вам начислено ${amount} ИИрок по тарифу Старт!`;
+    if (params.type === 'start' || params.type === 'start_tma') {
+      notifTitle = 'Приветственный бонус Telegram';
+      notifMsg = `Вам начислено ${amount} ИИрок за регистрацию через Telegram!`;
+    } else if (params.type === 'start_email') {
+      notifTitle = 'Приветственный бонус E-mail';
+      notifMsg = `Вам начислено ${amount} ИИрок за регистрацию через E-mail!`;
     } else if (params.type === 'pay') {
       notifTitle = 'Пополнение баланса';
       notifMsg = `Баланс успешно пополнен на ${amount} ИИрок.`;

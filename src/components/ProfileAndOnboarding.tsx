@@ -184,6 +184,64 @@ export default function ProfileAndOnboarding({
   // Real SQLite Transactions & Billing state
   const [transactionsList, setTransactionsList] = useState<any[]>([]);
 
+  // Real-time Live SQLite Profile State
+  const [liveProfile, setLiveProfile] = useState<any>({
+    balance: (user.balance ?? 0),
+    balance_pay: (user.balance_pay ?? user.balance ?? user.iirky ?? 0),
+    balance_free: (user.balance_free ?? ((user.balance_start || 300) + (user.balance_ref || 0) + (user.balance_tarif || 0) + (user.balance_admin || 0))),
+    balance_start: (user.balance_start ?? 300),
+    balance_ref: (user.balance_ref ?? 0),
+    balance_tarif: (user.balance_tarif ?? 0),
+    balance_admin: (user.balance_admin ?? 0),
+    balance_cost: (user.balance_cost ?? 0),
+    balance_time: (user.balance_time ?? null),
+    tariff: (user.tariff || 'Старт'),
+    tariff_expires_at: (user.tariff_expires_at ?? user.premiumUntil ?? null),
+    tariff_assigned_at: (user.tariff_assigned_at ?? null),
+    tariff_duration_days: (user.tariff_duration_days ?? 30)
+  });
+
+  const [syncingBalances, setSyncingBalances] = useState(false);
+  const [syncResultMsg, setSyncResultMsg] = useState<string | null>(null);
+
+  // Admin Custom Tariff & Assignment Modal States
+  const [isCreateCustomTariffModalOpen, setIsCreateCustomTariffModalOpen] = useState(false);
+  const [isAssignTariffModalOpen, setIsAssignTariffModalOpen] = useState(false);
+  const [customTariffName, setCustomTariffName] = useState('Космос Индивидуальный');
+  const [customTariffPriceRub, setCustomTariffPriceRub] = useState(15000);
+  const [customTariffMonthlyIirky, setCustomTariffMonthlyIirky] = useState(15000);
+  const [customTariffDurationDays, setCustomTariffDurationDays] = useState(30);
+  const [customTariffSub, setCustomTariffSub] = useState('Индивидуальная разработка и приоритетный баланс');
+  const [customTariffFeaturesText, setCustomTariffFeaturesText] = useState('Персональный баланс 15,000 ИИрок в месяц\nВыделенный сервер GPU\nПерсональный контент-план под ключ\nРазработка брендбука и SMM-стратегии\nИндивидуальные интеграции и боты');
+  const [customTariffTargetUserId, setCustomTariffTargetUserId] = useState('');
+
+  const [assignTargetUserId, setAssignTargetUserId] = useState(user.id || '16926299042');
+  const [assignTariffName, setAssignTariffName] = useState('Космос');
+  const [assignDurationDays, setAssignDurationDays] = useState(30);
+  const [assignBonusIirky, setAssignBonusIirky] = useState(15000);
+  const [assignComment, setAssignComment] = useState('Назначение тарифа администратором');
+  const [allUsersList, setAllUsersList] = useState<any[]>([]);
+
+  const fetchLiveProfile = async () => {
+    try {
+      const activeUserId = user.id || '16926299042';
+      const res = await fetch(`/api/user-profile?userId=${encodeURIComponent(activeUserId)}`);
+      const data = await res.json();
+      if (data.success && data.user) {
+        setLiveProfile(data.user);
+        if (onUpdateUser) {
+          onUpdateUser({
+            ...user,
+            ...data.user,
+            iirky: data.user.balance_pay ?? user.iirky
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Error loading live user profile from SQLite:', e);
+    }
+  };
+
   const fetchTransactions = async () => {
     try {
       const res = await fetch(`/api/billing/transactions?userId=${user.id || '16926299042'}`);
@@ -196,11 +254,124 @@ export default function ProfileAndOnboarding({
     }
   };
 
+  const fetchAllUsersForAdmin = async () => {
+    if (user.role !== 'admin') return;
+    try {
+      const res = await fetch('/api/db/table/users');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.rows)) {
+          setAllUsersList(data.rows);
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching users for admin:', e);
+    }
+  };
+
+  const handleReconcileAllBalances = async () => {
+    setSyncingBalances(true);
+    setSyncResultMsg(null);
+    try {
+      const res = await fetch('/api/admin/reconcile-balances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSyncResultMsg(`Успешно синхронизировано ${data.auditedCount} пользователей, начислено реферальных связей: ${data.createdRefTxsCount}.`);
+        await fetchLiveProfile();
+        await fetchTransactions();
+      } else {
+        setSyncResultMsg(data.error || 'Ошибка при синхронизации балансов');
+      }
+    } catch (e: any) {
+      setSyncResultMsg('Ошибка сети при синхронизации балансов');
+    } finally {
+      setSyncingBalances(false);
+    }
+  };
+
+  const handleCreateCustomTariff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const featuresArray = customTariffFeaturesText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => ({ title: line, desc: line }));
+
+      const res = await fetch('/api/tariffs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: customTariffName,
+          price_rub: customTariffPriceRub,
+          price_iirky: `${customTariffMonthlyIirky.toLocaleString('ru-RU')} ИИрок / мес`,
+          monthly_iirky: customTariffMonthlyIirky,
+          duration_days: customTariffDurationDays,
+          sub: customTariffSub,
+          features: featuresArray,
+          target_user_id: customTariffTargetUserId || null,
+          is_custom: 1
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Индивидуальный тариф «${customTariffName}» успешно сохранен в базе данных!`);
+        setIsCreateCustomTariffModalOpen(false);
+      } else {
+        alert(data.error || 'Не удалось сохранить тариф');
+      }
+    } catch (e: any) {
+      alert('Ошибка сети при сохранении тарифа');
+    }
+  };
+
+  const handleAssignTariffToUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/tariffs/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: assignTargetUserId,
+          tariffName: assignTariffName,
+          durationDays: Number(assignDurationDays) || 30,
+          bonusIirky: Number(assignBonusIirky) || 0,
+          comment: assignComment
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Тариф «${assignTariffName}» успешно привязан к пользователю ${assignTargetUserId}! Начислено ${assignBonusIirky} ИИрок.`);
+        setIsAssignTariffModalOpen(false);
+        await fetchLiveProfile();
+        await fetchTransactions();
+      } else {
+        alert(data.error || 'Ошибка при назначении тарифа');
+      }
+    } catch (e: any) {
+      alert('Ошибка сети при назначении тарифа');
+    }
+  };
+
   React.useEffect(() => {
     if (user) {
       fetchTransactions();
+      fetchLiveProfile();
+      if (user.role === 'admin') {
+        fetchAllUsersForAdmin();
+      }
     }
-  }, [user.id, user.balanceRub, user.iirky]);
+
+    const onFocus = () => {
+      fetchLiveProfile();
+      fetchTransactions();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [user?.id, user?.balanceRub, user?.iirky, activeTab]);
 
   // Withdrawal logic
   const [withdrawAmount, setWithdrawAmount] = useState('5000');
@@ -395,6 +566,132 @@ export default function ProfileAndOnboarding({
   const [confirmNewPasswordInput, setConfirmNewPasswordInput] = useState('');
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState('');
+
+  // Cosmos Contact Request modal states
+  const [isCosmosModalOpen, setIsCosmosModalOpen] = useState(false);
+  const [cosmosName, setCosmosName] = useState(user.name || user.firstName || '');
+  const [cosmosTelegram, setCosmosTelegram] = useState(user.telegramUsername || (user.telegram_id ? `@${user.telegram_id}` : ''));
+  const [cosmosEmail, setCosmosEmail] = useState(user.email || '');
+  const [cosmosPhone, setCosmosPhone] = useState('');
+  const [cosmosMessage, setCosmosMessage] = useState('Индивидуальный тариф «Космос»: требуется интеграция и разработка под ключ.');
+  const [cosmosSending, setCosmosSending] = useState(false);
+  const [cosmosMsg, setCosmosMsg] = useState('');
+
+  const handleCosmosSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCosmosSending(true);
+    setCosmosMsg('');
+    try {
+      const res = await fetch('/api/tariffs/cosmos-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id || '16926299042',
+          name: cosmosName.trim(),
+          telegram: cosmosTelegram.trim(),
+          email: cosmosEmail.trim(),
+          phone: cosmosPhone.trim(),
+          message: cosmosMessage.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCosmosMsg('🎉 Ваша заявка на тариф «Космос» успешно отправлена! Мы свяжемся с вами в Telegram в ближайшее время.');
+        setTimeout(() => {
+          setIsCosmosModalOpen(false);
+          setCosmosMsg('');
+        }, 2500);
+      } else {
+        setCosmosMsg(`⚠️ ${data.error || 'Ошибка отправки заявки'}`);
+      }
+    } catch (e: any) {
+      setCosmosMsg(`⚠️ Ошибка соединения с сервером: ${e.message}`);
+    } finally {
+      setCosmosSending(false);
+    }
+  };
+
+  // Tariff transition confirmation modal
+  const [tariffConfirmModal, setTariffConfirmModal] = useState<{
+    isOpen: boolean;
+    planName: string;
+    priceText: string;
+    amountRub: number;
+    periodMonths: number;
+    discountPercent: number;
+  } | null>(null);
+
+  const handleTariffAction = (
+    planName: string, 
+    priceText: string, 
+    amountRub: number, 
+    actionType?: 'connect' | 'contact',
+    periodMonths: number = 1,
+    discountPercent: number = 0
+  ) => {
+    if (actionType === 'contact' || planName.toLowerCase().includes('космос')) {
+      setIsCosmosModalOpen(true);
+      return;
+    }
+
+    setTariffConfirmModal({
+      isOpen: true,
+      planName,
+      priceText,
+      amountRub,
+      periodMonths,
+      discountPercent
+    });
+  };
+
+  const handleConfirmTariffChange = async () => {
+    if (!tariffConfirmModal) return;
+    const { planName, amountRub, periodMonths } = tariffConfirmModal;
+    setTariffConfirmModal(null);
+
+    try {
+      const res = await fetch('/api/tariffs/change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id || '16926299042',
+          targetTariffName: planName,
+          periodMonths
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(data.message || `Тариф успешно изменен на «${planName}»!`);
+        if (data.user && onUpdateUser) {
+          onUpdateUser({
+            ...user,
+            tariff: data.user.tariff,
+            tariff_expires_at: data.user.tariff_expires_at,
+            premiumUntil: data.user.tariff_expires_at ? new Date(data.user.tariff_expires_at).toLocaleDateString('ru-RU') : user.premiumUntil,
+            balance: data.user.balance,
+            balance_pay: data.user.balance_pay,
+            balance_free: data.user.balance_free
+          });
+        }
+        await fetchTransactions();
+        await fetchLiveProfile();
+      } else if (data.needTopup) {
+        const missing = data.missingAmount || amountRub;
+        const confirmPay = window.confirm(`${data.error}\n\nЖелаете перейти к оплате и пополнению через Робокассу?`);
+        if (confirmPay) {
+          setRobokassaPlanName(planName);
+          setRobokassaAmountRub(missing);
+          setRobokassaModalOpen(true);
+        }
+      } else {
+        alert(`⚠️ ${data.error || 'Ошибка смены тарифа'}`);
+      }
+    } catch (e: any) {
+      setRobokassaPlanName(planName);
+      setRobokassaAmountRub(amountRub || 990);
+      setRobokassaModalOpen(true);
+    }
+  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1402,6 +1699,127 @@ export default function ProfileAndOnboarding({
       {/* --- TAB CONTENT 1: MAIN PROFILE --- */}
       {activeTab === 'profile' && (
         <div className="space-y-6">
+          {/* REALTIME BALANCE BREAKDOWN WIDGET */}
+          <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 backdrop-blur-md rounded-3xl p-5 sm:p-6 border border-pink-300 shadow-md text-left space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-pink-200/80 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 flex items-center justify-center text-white shadow-xs">
+                  <Wallet className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
+                    Баланс и активы ИИрок
+                  </h2>
+                  <p className="text-xs text-slate-600 font-medium">
+                    Синхронизация в реальном времени из базы данных транзакций
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchLiveProfile}
+                  className="px-3.5 py-2 bg-white/90 hover:bg-white text-slate-800 text-xs font-bold rounded-xl border border-pink-200 flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                  title="Обновить баланс прямо сейчас"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-pink-500" />
+                  <span>Обновить</span>
+                </button>
+              </div>
+            </div>
+
+            {syncResultMsg && (
+              <div className="p-3 bg-white/90 border border-pink-300 rounded-2xl text-xs font-medium text-slate-800 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-pink-500 shrink-0" />
+                <span>{syncResultMsg}</span>
+              </div>
+            )}
+
+            {/* 4 Metrics Grid - Общий баланс первым */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* 1. Общий доступный баланс (Первый в списке) */}
+              <div className="p-4 rounded-2xl bg-white/80 backdrop-blur-md border border-purple-200/90 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-purple-800">
+                  <span>Общий баланс</span>
+                  <Crown className="w-4 h-4 text-purple-500" />
+                </div>
+                <div className="text-xl sm:text-2xl font-black font-mono text-slate-900">
+                  {(Number(liveProfile.balance_pay || 0) + Number(liveProfile.balance_free || 0)).toLocaleString('ru-RU')}
+                </div>
+                <p className="text-[11px] text-slate-600 leading-tight">
+                  Суммарно доступно для использования.
+                </p>
+              </div>
+
+              {/* 2. ИИрки (Оплаченные / Активные) */}
+              <div className="p-4 rounded-2xl bg-white/80 backdrop-blur-md border border-sky-200/90 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-sky-800">
+                  <span>ИИрки (Оплаченные)</span>
+                  <Sparkles className="w-4 h-4 text-sky-500" />
+                </div>
+                <div className="text-xl sm:text-2xl font-black font-mono bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent">
+                  {(Number(liveProfile.balance_pay || 0) + Number(liveProfile.balance_admin || 0)).toLocaleString('ru-RU')}
+                </div>
+                <p className="text-[11px] text-slate-600 leading-tight">
+                  Оплаченный баланс (1 ₽ = 1 ИИрка). Не сгорает.
+                </p>
+              </div>
+
+              {/* 3. ИИрки Free (Бонусные / Бесплатные) */}
+              <div className="p-4 rounded-2xl bg-white/80 backdrop-blur-md border border-pink-200/90 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-pink-800">
+                  <span>ИИрки Free (Бонусные)</span>
+                  <Award className="w-4 h-4 text-pink-500" />
+                </div>
+                <div className="text-xl sm:text-2xl font-black font-mono text-pink-600">
+                  {Number(liveProfile.balance_free || 0).toLocaleString('ru-RU')}
+                </div>
+                <p className="text-[11px] text-slate-600 leading-tight">
+                  Старт + рефералы + тариф. Списываются первыми.
+                </p>
+              </div>
+
+              {/* 4. Расход / Списано */}
+              <div className="p-4 rounded-2xl bg-white/80 backdrop-blur-md border border-orange-200/90 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-orange-800">
+                  <span>Расход / Списано</span>
+                  <FileText className="w-4 h-4 text-orange-500" />
+                </div>
+                <div className="text-xl sm:text-2xl font-black font-mono text-orange-600">
+                  {Math.abs(Number(liveProfile.balance_cost || 0)).toLocaleString('ru-RU')}
+                </div>
+                <p className="text-[11px] text-slate-600 leading-tight">
+                  Всего израсходовано на генерации и автопостинг.
+                </p>
+              </div>
+            </div>
+
+            {/* Detailed Structure Accordion / Chips */}
+            <div className="pt-2 border-t border-pink-200/60 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2 font-medium text-slate-700">
+                <span className="font-bold text-slate-900">Составляющие Free:</span>
+                <span className="px-2.5 py-1 rounded-xl bg-white/90 border border-pink-200 font-mono">
+                  Стартовый бонус: <strong className="text-slate-900">{liveProfile.balance_start || 300}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-white/90 border border-pink-200 font-mono">
+                  Реферальные: <strong className="text-pink-600">+{liveProfile.balance_ref || 0}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-white/90 border border-pink-200 font-mono">
+                  Тарифные: <strong className="text-sky-600">+{liveProfile.balance_tarif || 0}</strong>
+                </span>
+                {liveProfile.balance_admin > 0 && (
+                  <span className="px-2.5 py-1 rounded-xl bg-white/90 border border-orange-200 font-mono">
+                    Админ-начисления: <strong className="text-orange-600">+{liveProfile.balance_admin}</strong>
+                  </span>
+                )}
+              </div>
+
+              <div className="text-[11px] text-slate-500 font-mono">
+                {liveProfile.balance_time ? `Посл. операция: ${liveProfile.balance_time}` : 'Баланс актуален'}
+              </div>
+            </div>
+          </div>
+
           {/* STATS TILES */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Connected Channels List Section */}
@@ -1436,7 +1854,7 @@ export default function ProfileAndOnboarding({
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg border shrink-0 ${
                           ch.isActive !== false 
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
+                            ? 'bg-sky-100 text-sky-800 border-sky-200' 
                             : 'bg-rose-100 text-rose-700 border-rose-200'
                         }`}>
                           {ch.isActive !== false ? 'Активен' : 'Неактивен'}
@@ -1724,10 +2142,9 @@ export default function ProfileAndOnboarding({
 
             <TariffCards 
               userTariff={user.tariff}
-              onAction={(planName, _priceText, amountRub) => {
-                setRobokassaPlanName(planName);
-                setRobokassaAmountRub(amountRub || 990);
-                setRobokassaModalOpen(true);
+              userTariffExpiresAt={user.premiumUntil || user.tariff_expires_at}
+              onAction={(planName, priceText, amountRub, actionType) => {
+                handleTariffAction(planName, priceText, amountRub, actionType);
               }}
             />
           </div>
@@ -3775,6 +4192,359 @@ export default function ProfileAndOnboarding({
                     className="flex-1 py-2.5 bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 hover:opacity-95 text-white font-extrabold rounded-xl shadow-md cursor-pointer disabled:opacity-50"
                   >
                     {bindEmailSaving ? 'Привязка...' : 'Привязать E-mail ✉️'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Admin Modal: Create Custom Tariff */}
+        {isCreateCustomTariffModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 backdrop-blur-xl rounded-3xl p-6 max-w-lg w-full border border-pink-300 shadow-2xl space-y-4 text-left max-h-[90vh] overflow-y-auto no-scrollbar"
+            >
+              <div className="flex justify-between items-center border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-pink-600" />
+                  <h3 className="font-extrabold text-base text-slate-900">Создание индивидуального тарифа 👑</h3>
+                </div>
+                <button 
+                  onClick={() => setIsCreateCustomTariffModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 flex items-center justify-center border border-pink-200 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateCustomTariff} className="space-y-3.5 text-xs font-semibold">
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-700 font-bold block">Название тарифа</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={customTariffName}
+                    onChange={e => setCustomTariffName(e.target.value)}
+                    placeholder="Например: Космос Индивидуальный"
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-700 font-bold block">Стоимость (рублей)</label>
+                    <input 
+                      type="number" 
+                      required
+                      value={customTariffPriceRub}
+                      onChange={e => setCustomTariffPriceRub(Number(e.target.value))}
+                      placeholder="15000"
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-700 font-bold block">ИИрок в месяц</label>
+                    <input 
+                      type="number" 
+                      required
+                      value={customTariffMonthlyIirky}
+                      onChange={e => setCustomTariffMonthlyIirky(Number(e.target.value))}
+                      placeholder="15000"
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-700 font-bold block">Срок действия (дней)</label>
+                    <input 
+                      type="number" 
+                      required
+                      value={customTariffDurationDays}
+                      onChange={e => setCustomTariffDurationDays(Number(e.target.value))}
+                      placeholder="30"
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-700 font-bold block">Привязать к User ID (опционально)</label>
+                    <input 
+                      type="text" 
+                      value={customTariffTargetUserId}
+                      onChange={e => setCustomTariffTargetUserId(e.target.value)}
+                      placeholder="Оставьте пустым для общего доступа"
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-700 font-bold block">Краткое описание / подзаголовок</label>
+                  <input 
+                    type="text" 
+                    value={customTariffSub}
+                    onChange={e => setCustomTariffSub(e.target.value)}
+                    placeholder="Индивидуальное сопровождение и максимальные лимиты"
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-700 font-bold block">Преимущества (каждое с новой строки)</label>
+                  <textarea 
+                    rows={4}
+                    value={customTariffFeaturesText}
+                    onChange={e => setCustomTariffFeaturesText(e.target.value)}
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none resize-none"
+                  />
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setIsCreateCustomTariffModalOpen(false)}
+                    className="flex-1 py-2.5 bg-white/90 hover:bg-white text-slate-700 font-bold rounded-xl border border-pink-200 cursor-pointer"
+                  >
+                    Отмена
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-extrabold rounded-xl shadow-md cursor-pointer"
+                  >
+                    Сохранить в базу данных 💾
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Admin Modal: Assign Tariff to User */}
+        {isAssignTariffModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 backdrop-blur-xl rounded-3xl p-6 max-w-lg w-full border border-pink-300 shadow-2xl space-y-4 text-left max-h-[90vh] overflow-y-auto no-scrollbar"
+            >
+              <div className="flex justify-between items-center border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-sky-600" />
+                  <h3 className="font-extrabold text-base text-slate-900">Назначить тариф пользователю 👑</h3>
+                </div>
+                <button 
+                  onClick={() => setIsAssignTariffModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 flex items-center justify-center border border-pink-200 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleAssignTariffToUser} className="space-y-3.5 text-xs font-semibold">
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-700 font-bold block">Выберите пользователя (ID или логин)</label>
+                  {allUsersList.length > 0 ? (
+                    <select 
+                      value={assignTargetUserId}
+                      onChange={e => setAssignTargetUserId(e.target.value)}
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-sky-400 focus:outline-none"
+                    >
+                      {allUsersList.map((u: any) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name || u.email || u.telegram || u.id} ({u.id}) — {u.tariff || 'Старт'}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input 
+                      type="text" 
+                      required
+                      value={assignTargetUserId}
+                      onChange={e => setAssignTargetUserId(e.target.value)}
+                      placeholder="ID пользователя, например 16926299042"
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-sky-400 focus:outline-none"
+                    />
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-700 font-bold block">Тариф</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={assignTariffName}
+                    onChange={e => setAssignTariffName(e.target.value)}
+                    placeholder="Например: Космос, Премиум, VIP комбайн"
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-sky-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-700 font-bold block">Срок действия (дней)</label>
+                    <input 
+                      type="number" 
+                      required
+                      value={assignDurationDays}
+                      onChange={e => setAssignDurationDays(Number(e.target.value))}
+                      placeholder="30"
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-sky-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-700 font-bold block">Начислить ИИрок (balance_tarif)</label>
+                    <input 
+                      type="number" 
+                      value={assignBonusIirky}
+                      onChange={e => setAssignBonusIirky(Number(e.target.value))}
+                      placeholder="15000"
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-sky-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-700 font-bold block">Комментарий к назначению</label>
+                  <input 
+                    type="text" 
+                    value={assignComment}
+                    onChange={e => setAssignComment(e.target.value)}
+                    placeholder="Индивидуальный тариф Космос для клиента"
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-sky-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setIsAssignTariffModalOpen(false)}
+                    className="flex-1 py-2.5 bg-white/90 hover:bg-white text-slate-700 font-bold rounded-xl border border-pink-200 cursor-pointer text-sm"
+                  >
+                    Отмена
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold rounded-xl shadow-md cursor-pointer text-sm"
+                  >
+                    Привязать тариф ⚡
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Cosmos Plan Contact Modal */}
+        {isCosmosModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-xs">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 backdrop-blur-xl rounded-3xl p-6 max-w-lg w-full border border-pink-300 shadow-2xl space-y-4 text-left max-h-[90vh] overflow-y-auto no-scrollbar"
+            >
+              <div className="flex justify-between items-center border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-pink-500" />
+                  <h3 className="font-extrabold text-base text-slate-900">Заявка на индивидуальный тариф «Космос» 🚀</h3>
+                </div>
+                <button 
+                  onClick={() => setIsCosmosModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 flex items-center justify-center border border-pink-200 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {cosmosMsg && (
+                <div className="p-3 bg-white/90 border border-pink-300 rounded-xl text-sm font-bold text-slate-800">
+                  {cosmosMsg}
+                </div>
+              )}
+
+              <form onSubmit={handleCosmosSubmit} className="space-y-3.5 text-sm font-semibold">
+                <p className="text-sm text-slate-700 leading-relaxed font-medium">
+                  Тариф «Космос» включает выделенные серверные мощности, индивидуальные ИИ-сценарии, неограниченное число каналов и персональное сопровождение 24/7. Заполните форму, и мы свяжемся с вами в Telegram.
+                </p>
+
+                <div className="space-y-1">
+                  <label className="text-sm text-slate-700 font-bold block">Ваше имя</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={cosmosName}
+                    onChange={e => setCosmosName(e.target.value)}
+                    placeholder="Денис"
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-sm text-slate-700 font-bold block">Telegram username</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={cosmosTelegram}
+                      onChange={e => setCosmosTelegram(e.target.value)}
+                      placeholder="@username"
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm text-slate-700 font-bold block">Телефон / Мессенджер</label>
+                    <input 
+                      type="tel" 
+                      value={cosmosPhone}
+                      onChange={e => setCosmosPhone(e.target.value)}
+                      placeholder="+7 (999) 000-00-00"
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm text-slate-700 font-bold block">E-mail (для договора и связи)</label>
+                  <input 
+                    type="email" 
+                    value={cosmosEmail}
+                    onChange={e => setCosmosEmail(e.target.value)}
+                    placeholder="user@example.com"
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm text-slate-700 font-bold block">Пожелания к проекту и интеграциям</label>
+                  <textarea 
+                    rows={3}
+                    value={cosmosMessage}
+                    onChange={e => setCosmosMessage(e.target.value)}
+                    placeholder="Опишите задачи вашего бизнеса, количество каналов и требования"
+                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-pink-400 focus:outline-none resize-none"
+                  />
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setIsCosmosModalOpen(false)}
+                    className="flex-1 py-2.5 bg-white/90 hover:bg-white text-slate-700 font-bold rounded-xl border border-pink-200 cursor-pointer text-sm"
+                  >
+                    Отмена
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={cosmosSending}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold rounded-xl shadow-md cursor-pointer text-sm flex items-center justify-center gap-2"
+                  >
+                    <span>{cosmosSending ? 'Отправка...' : 'Отправить заявку 🚀'}</span>
                   </button>
                 </div>
               </form>

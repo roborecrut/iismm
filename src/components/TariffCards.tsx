@@ -161,13 +161,24 @@ export const DEFAULT_TARIFF_PLANS: TariffPlan[] = [
 ];
 
 interface TariffCardsProps {
-  onAction?: (planName: string, priceText: string, amountRub: number) => void;
+  onAction?: (planName: string, priceText: string, amountRub: number, actionType?: 'connect' | 'contact', periodMonths?: number, discountPercent?: number) => void;
   buttonText?: string;
   userTariff?: string;
+  userTariffExpiresAt?: string | null;
 }
 
-export default function TariffCards({ onAction, buttonText = "Подключить", userTariff }: TariffCardsProps) {
+export type TariffPeriodMonths = 1 | 3 | 6 | 12;
+
+export const TARIFF_PERIODS: Array<{ months: TariffPeriodMonths; label: string; discount: number; tag?: string }> = [
+  { months: 1, label: '1 месяц', discount: 0 },
+  { months: 3, label: '3 месяца', discount: 5, tag: '-5%' },
+  { months: 6, label: '6 месяцев', discount: 10, tag: '-10%' },
+  { months: 12, label: '12 месяцев', discount: 15, tag: '-15%' },
+];
+
+export default function TariffCards({ onAction, buttonText = "Подключить", userTariff, userTariffExpiresAt }: TariffCardsProps) {
   const [plans, setPlans] = useState<TariffPlan[]>(DEFAULT_TARIFF_PLANS);
+  const [selectedPeriod, setSelectedPeriod] = useState<TariffPeriodMonths>(1);
   const [selectedFeature, setSelectedFeature] = useState<{ title: string; desc: string; planName: string } | null>(null);
   const [activeCardIdx, setActiveCardIdx] = useState(0);
   const [currentFeatureLimit, setCurrentFeatureLimit] = useState(0);
@@ -238,8 +249,81 @@ export default function TariffCards({ onAction, buttonText = "Подключит
 
   const cleanUserTariff = (userTariff || '').toLowerCase();
 
+  const currentPeriodConfig = TARIFF_PERIODS.find(p => p.months === selectedPeriod) || TARIFF_PERIODS[0];
+  const discountPercent = currentPeriodConfig.discount;
+
+  const calculatePlanPrice = (plan: TariffPlan) => {
+    if (plan.name.toLowerCase().includes('космос')) {
+      return {
+        displayPrice: 'Индивидуально',
+        totalPrice: 0,
+        perMonthPrice: 0,
+        savings: 0,
+        subNote: 'По персональной заявке'
+      };
+    }
+
+    if (plan.amountRub === 0) {
+      return {
+        displayPrice: '0 ИИрок',
+        totalPrice: 0,
+        perMonthPrice: 0,
+        savings: 0,
+        subNote: 'Бессрочно'
+      };
+    }
+
+    const baseMonthly = plan.amountRub;
+    const totalWithoutDiscount = baseMonthly * selectedPeriod;
+    const totalPrice = Math.round(totalWithoutDiscount * (1 - discountPercent / 100));
+    const perMonthPrice = Math.round(totalPrice / selectedPeriod);
+    const savings = totalWithoutDiscount - totalPrice;
+
+    return {
+      displayPrice: selectedPeriod === 1 
+        ? `${totalPrice.toLocaleString('ru-RU')} ИИрок / мес` 
+        : `${totalPrice.toLocaleString('ru-RU')} ИИрок`,
+      totalPrice,
+      perMonthPrice,
+      savings,
+      subNote: selectedPeriod === 1 
+        ? 'Списание каждый месяц' 
+        : `${perMonthPrice.toLocaleString('ru-RU')} ИИрок / мес (за ${selectedPeriod} мес.)`
+    };
+  };
+
   return (
     <div ref={containerRef} className="space-y-6 w-full relative text-left">
+      {/* Period selector with discounts */}
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-2xl mx-auto px-2">
+        <div className="p-1.5 rounded-2xl bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-300 shadow-sm flex flex-wrap items-center justify-center gap-1.5 w-full">
+          {TARIFF_PERIODS.map((period) => {
+            const isSelected = selectedPeriod === period.months;
+            return (
+              <button
+                key={period.months}
+                type="button"
+                onClick={() => setSelectedPeriod(period.months)}
+                className={`flex-1 min-w-[120px] py-2.5 px-3 rounded-xl font-bold text-sm transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 relative ${
+                  isSelected
+                    ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-md scale-[1.02]'
+                    : 'bg-white/80 hover:bg-white text-slate-700 border border-pink-200/80 shadow-2xs'
+                }`}
+              >
+                <span>{period.label}</span>
+                {period.tag && (
+                  <span className={`px-1.5 py-0.5 rounded-lg text-xs font-extrabold ${
+                    isSelected ? 'bg-white text-pink-600 shadow-2xs' : 'bg-pink-100 text-pink-700'
+                  }`}>
+                    {period.tag}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto items-stretch px-2 sm:px-4 min-h-[500px]">
         {plans.map((plan, idx) => {
           const isCardVisible = idx <= activeCardIdx;
@@ -252,6 +336,8 @@ export default function TariffCards({ onAction, buttonText = "Подключит
             (planNameLower.includes('разгон') && (cleanUserTariff === 'pro' || cleanUserTariff === 'разгон')) ||
             (planNameLower.includes('отрыв') && (cleanUserTariff === 'vip' || cleanUserTariff === 'отрыв')) ||
             (planNameLower.includes('космос') && (cleanUserTariff === 'cosmos' || cleanUserTariff === 'космос'));
+
+          const priceCalc = calculatePlanPrice(plan);
 
           return (
             <motion.div 
@@ -273,14 +359,27 @@ export default function TariffCards({ onAction, buttonText = "Подключит
                     </h3>
                     {isCurrentPlanActive && (
                       <span className="px-2.5 py-0.5 bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 text-white text-xs font-bold rounded-full shadow-xs">
-                        Текущий
+                        {userTariffExpiresAt ? `Текущий (до ${new Date(userTariffExpiresAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })})` : 'Текущий'}
                       </span>
                     )}
                   </div>
+
                   <div className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent mt-1">
-                    {plan.price}
+                    {priceCalc.displayPrice}
                   </div>
-                  <p className="text-sm text-slate-700 font-medium mt-1 leading-snug">{plan.sub}</p>
+
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    <span className="text-xs text-slate-700 font-bold bg-white/70 px-2 py-0.5 rounded-lg border border-pink-200">
+                      {priceCalc.subNote}
+                    </span>
+                    {priceCalc.savings > 0 && (
+                      <span className="text-xs font-bold text-pink-700 bg-pink-100/80 px-2 py-0.5 rounded-lg border border-pink-300">
+                        Экономия {priceCalc.savings.toLocaleString('ru-RU')} ИИрок
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-sm text-slate-700 font-medium mt-2 leading-snug">{plan.sub}</p>
                 </div>
 
                 {plan.continuation && (
@@ -311,13 +410,23 @@ export default function TariffCards({ onAction, buttonText = "Подключит
               </div>
 
               {/* Action Button */}
-              <button 
-                onClick={() => onAction && onAction(plan.name, plan.price, plan.amountRub)} 
-                className="w-full py-3 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white font-bold text-sm rounded-2xl shadow-md transition-all duration-200 hover:opacity-95 cursor-pointer active:scale-98 mt-4 flex items-center justify-center gap-2"
-              >
-                <span>{plan.amountRub === 0 ? 'Подключить бесплатно' : buttonText}</span>
-                <Sparkles className="w-4 h-4 text-white" />
-              </button>
+              {planNameLower.includes('космос') ? (
+                <button 
+                  onClick={() => onAction && onAction(plan.name, priceCalc.displayPrice, priceCalc.totalPrice, 'contact', selectedPeriod, discountPercent)} 
+                  className="w-full py-3 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white font-bold text-sm rounded-2xl shadow-md transition-all duration-200 hover:opacity-95 cursor-pointer active:scale-98 mt-4 flex items-center justify-center gap-2"
+                >
+                  <span>Связаться</span>
+                  <Sparkles className="w-4 h-4 text-white" />
+                </button>
+              ) : (
+                <button 
+                  onClick={() => onAction && onAction(plan.name, priceCalc.displayPrice, priceCalc.totalPrice, 'connect', selectedPeriod, discountPercent)} 
+                  className="w-full py-3 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white font-bold text-sm rounded-2xl shadow-md transition-all duration-200 hover:opacity-95 cursor-pointer active:scale-98 mt-4 flex items-center justify-center gap-2"
+                >
+                  <span>{buttonText} {discountPercent > 0 ? `(-${discountPercent}%)` : ''}</span>
+                  <Sparkles className="w-4 h-4 text-white" />
+                </button>
+              )}
             </motion.div>
           );
         })}

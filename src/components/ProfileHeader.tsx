@@ -38,17 +38,28 @@ export default function ProfileHeader({
 
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [liveUser, setLiveUser] = useState<Partial<UserAccount>>(user);
 
-  // Calculate distinct balances: balance_admin contributes to balance_free
-  const payBalance = user.balance_pay !== undefined 
-    ? Number(user.balance_pay) 
-    : Number(user.balance ?? user.iirky ?? 0);
+  // Sync with prop changes
+  useEffect(() => {
+    setLiveUser(prev => ({ ...prev, ...user }));
+  }, [user]);
 
-  const freeBalance = user.balance_free !== undefined
-    ? Number(user.balance_free)
-    : (Number(user.balance_start || 0) + Number(user.balance_ref || 0) + Number(user.balance_tarif || 0) + Number(user.balance_admin || 0));
+  // Real-time direct SQLite profile & balance fetch
+  const fetchLiveProfile = () => {
+    fetch(`/api/user-profile?userId=${encodeURIComponent(dbId)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.user) {
+          setLiveUser(prev => ({ ...prev, ...data.user }));
+        }
+      })
+      .catch(() => null);
+  };
 
   useEffect(() => {
+    fetchLiveProfile();
+
     fetch(`/api/notifications?userId=${encodeURIComponent(dbId)}`)
       .then(res => res.json())
       .then(data => {
@@ -57,7 +68,25 @@ export default function ProfileHeader({
         }
       })
       .catch(() => null);
+
+    const onFocus = () => {
+      fetchLiveProfile();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [dbId]);
+
+  // Calculate distinct balances per requirements: "ИИрки" = balance, "ИИрки Free" = balance_free
+  const totalBalance = liveUser.balance !== undefined 
+    ? Number(liveUser.balance) 
+    : (Number(liveUser.balance_pay ?? user.balance_pay ?? 0) + Number(liveUser.balance_free ?? 300));
+
+  const freeBalance = liveUser.balance_free !== undefined
+    ? Number(liveUser.balance_free)
+    : (Number(liveUser.balance_start ?? user.balance_start ?? 300) + 
+       Number(liveUser.balance_ref ?? user.balance_ref ?? 0) + 
+       Number(liveUser.balance_tarif ?? user.balance_tarif ?? 0) + 
+       Number(liveUser.balance_admin ?? user.balance_admin ?? 0));
 
   const handleNavigateSocial = () => {
     if (onNavigateToSocial) {
@@ -163,7 +192,7 @@ export default function ProfileHeader({
                   title="Перейти к тарифам и пополнению"
                 >
                   <Sparkles className="w-4 h-4 text-white" />
-                  <span>ИИрки: <strong className="font-mono text-sm font-bold">{payBalance.toLocaleString('ru-RU')}</strong></span>
+                  <span>ИИрки: <strong className="font-mono text-sm font-bold">{totalBalance.toLocaleString('ru-RU')}</strong></span>
                 </button>
 
                 <button 
