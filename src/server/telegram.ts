@@ -28,11 +28,11 @@ export function convertToTelegramHTML(text: string, format: string = 'v2'): stri
   // 3. Collapsible / Details: <details><summary>S</summary>C</details>
   html = html.replace(/<details.*?>\s*<summary>(.*?)<\/summary>([\s\S]*?)<\/details>/gi, '<b>$1</b>\n$2');
 
-  // 4. Headings: # Heading -> <b>HEADING</b>
-  html = html.replace(/^####\s+(.*$)/gim, '<b>$1</b>');
-  html = html.replace(/^###\s+(.*$)/gim, '<b>$1</b>');
-  html = html.replace(/^##\s+(.*$)/gim, '<b>$1</b>');
-  html = html.replace(/^#\s+(.*$)/gim, '<b>$1</b>');
+  // 4. Headings: # Heading -> <b>HEADING</b> (Requires space so hashtags like #word are NOT matched)
+  html = html.replace(/^####\s+(.+)$/gim, '<b>$1</b>');
+  html = html.replace(/^###\s+(.+)$/gim, '<b>$1</b>');
+  html = html.replace(/^##\s+(.+)$/gim, '<b>$1</b>');
+  html = html.replace(/^#\s+(.+)$/gim, '<b>$1</b>');
 
   // 5. Spoilers: ||text|| -> <span class="tg-spoiler">text</span>
   html = html.replace(/\|\|([\s\S]+?)\|\|/g, '<span class="tg-spoiler">$1</span>');
@@ -165,6 +165,18 @@ export async function sendPromptToTelegram(
         continue;
       }
       channel = String(numericTgId);
+    } else {
+      // Resolve internal channel IDs (like ch_f6sxk9h87 or IDs without @)
+      if (channel && (channel.startsWith('ch_') || channel.startsWith('channel_') || !channel.startsWith('@') && isNaN(Number(channel)))) {
+        const dbChannels = DB.getChannels() || [];
+        const found = dbChannels.find((c: any) => c.id === channel || c.channelId === channel || c.username === channel || c.name === channel);
+        if (found) {
+          channel = found.username || (found.telegramId ? String(found.telegramId) : '') || found.name || channel;
+        }
+        if (channel && !channel.startsWith('@') && !channel.startsWith('-100') && isNaN(Number(channel))) {
+          channel = `@${channel.replace(/^@/, '')}`;
+        }
+      }
     }
 
     try {

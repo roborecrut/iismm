@@ -1186,6 +1186,60 @@ apiRouter.put('/teams/:id/channels', async (req: Request, res: Response) => {
   }
 });
 
+// Check user in database before adding to team
+apiRouter.get('/teams/check-user', async (req: Request, res: Response) => {
+  try {
+    const rawHandle = String(req.query.handle || req.query.query || req.query.username || '').trim();
+    if (!rawHandle) {
+      return res.json({ success: true, found: false, user: null });
+    }
+
+    const db = await getSQLiteDB();
+    const matchedUser = findUserInDb(db, rawHandle);
+
+    if (!matchedUser) {
+      return res.json({ 
+        success: true, 
+        found: false, 
+        user: null, 
+        message: `Пользователь ${rawHandle.startsWith('@') ? rawHandle : '@' + rawHandle} не найден в базе данных сервиса` 
+      });
+    }
+
+    // Privacy & blacklist checks
+    const allowInvites = matchedUser.allow_team_invites !== 0 && matchedUser.allow_team_invites !== false && matchedUser.allow_team_invites !== '0';
+    let blacklist: string[] = [];
+    try {
+      if (matchedUser.team_blacklist) {
+        blacklist = typeof matchedUser.team_blacklist === 'string' ? JSON.parse(matchedUser.team_blacklist) : matchedUser.team_blacklist;
+      }
+    } catch (e) {}
+
+    const cleanUsername = matchedUser.username ? (matchedUser.username.startsWith('@') ? matchedUser.username : `@${matchedUser.username}`) : `@user_${matchedUser.id}`;
+    const displayName = `${matchedUser.first_name || ''} ${matchedUser.last_name || ''}`.trim() || matchedUser.username || `Пользователь #${matchedUser.id}`;
+
+    return res.json({
+      success: true,
+      found: true,
+      user: {
+        id: String(matchedUser.id),
+        telegramId: matchedUser.telegram_id ? Number(matchedUser.telegram_id) : undefined,
+        username: cleanUsername,
+        firstName: matchedUser.first_name || '',
+        lastName: matchedUser.last_name || '',
+        displayName,
+        photoUrl: matchedUser.photo_url || null,
+        tariff: matchedUser.tariff || 'Старт',
+        role: matchedUser.role || 'Пользователь',
+        allowInvites,
+        blacklist
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка проверки пользователя: ' + err.message });
+  }
+});
+
 // Add member with strict user database validation & privacy & blacklist check
 apiRouter.post('/teams/members', async (req: Request, res: Response) => {
   try {
@@ -1198,11 +1252,11 @@ apiRouter.post('/teams/members', async (req: Request, res: Response) => {
       return;
     }
 
-    // 1. Verify that user exists in SQLite 'users' table
+    // 1. Look up user in SQLite 'users' table - must exist in database!
     const matchedUser = findUserInDb(db, rawHandle);
     if (!matchedUser) {
       res.status(404).json({
-        error: `Пользователь @${rawHandle} не найден в базе данных сервиса. Пользователь должен предварительно зарегистрироваться на платформе или запустить бота t.me/IIrkiBot.`
+        error: `Пользователь @${rawHandle} не найден в базе данных сервиса. Пользователь должен предварительно авторизоваться на сервисе или запустить Telegram-бота.`
       });
       return;
     }
@@ -1235,9 +1289,9 @@ apiRouter.post('/teams/members', async (req: Request, res: Response) => {
 
     const newMember: TeamMember = {
       userId: String(matchedUser.id),
-      telegramId: matchedUser.telegram_id ? Number(matchedUser.telegram_id) : undefined,
-      handle: matchedUser.username ? (matchedUser.username.startsWith('@') ? matchedUser.username : `@${matchedUser.username}`) : `@${rawHandle}`,
-      name: `${matchedUser.first_name || ''} ${matchedUser.last_name || ''}`.trim() || matchedUser.username || `@${rawHandle}`,
+      telegramId: matchedUser?.telegram_id ? Number(matchedUser.telegram_id) : undefined,
+      handle: matchedUser?.username ? (matchedUser.username.startsWith('@') ? matchedUser.username : `@${matchedUser.username}`) : `@${rawHandle}`,
+      name: (`${matchedUser.first_name || ''} ${matchedUser.last_name || ''}`.trim() || matchedUser.username || `@${rawHandle}`),
       joinedAt: new Date().toISOString(),
       status: 'active',
       role: role || 'Участник'
@@ -5795,8 +5849,11 @@ apiRouter.get(['/user-profile', '/user/profile', '/users/me'], async (req: Reque
         bio: userRecord.bio,
         role: userRecord.role,
         tariff: userRecord.tariff || 'Старт',
+        tarif_date: userRecord.tarif_date || userRecord.tariff_assigned_at || userRecord.created_at,
+        tariff_date: userRecord.tarif_date || userRecord.tariff_assigned_at || userRecord.created_at,
+        tariff_expires_at: userRecord.tariff_expires_at,
         tariffExpiresAt: userRecord.tariff_expires_at,
-        tariffAssignedAt: userRecord.tariff_assigned_at,
+        tariffAssignedAt: userRecord.tariff_assigned_at || userRecord.tarif_date,
         tariffDurationDays: userRecord.tariff_duration_days || 30,
         status: userRecord.status || 'Активный',
         balance,
@@ -5925,6 +5982,163 @@ apiRouter.post('/tariffs/assign', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Ошибка привязки тарифа: ' + err.message });
+  }
+});
+
+// Switch/Change Tariff by User using internal Iirky Balance
+apiRouter.post('/tariffs/change', async (req: Request, res: Response) => {
+  try {
+    const { userId, targetTariffName, periodMonths = 1 } = req.body;
+    if (!targetTariffName) {
+      res.status(400).json({ error: 'Не указан целевой тариф' });
+      return;
+    }
+
+    const cleanUserId = normalizeUserId(userId || '16926299042');
+    const db = await getSQLiteDB();
+
+    const userRecord = getUserByIdFromDb(db, cleanUserId);
+    if (!userRecord) {
+      res.status(404).json({ error: 'Пользователь не найден' });
+      return;
+    }
+
+    // Determine cost and duration
+    const months = Math.max(1, Number(periodMonths) || 1);
+    const days = months * 30;
+
+    let basePricePerMonth = 0;
+    let monthlyIirkyBonus = 0;
+    const nameLower = targetTariffName.toLowerCase();
+
+    if (nameLower.includes('старт')) {
+      basePricePerMonth = 0;
+      monthlyIirkyBonus = 300;
+    } else if (nameLower.includes('разгон')) {
+      basePricePerMonth = 990;
+      monthlyIirkyBonus = 990;
+    } else if (nameLower.includes('отрыв')) {
+      basePricePerMonth = 4900;
+      monthlyIirkyBonus = 4900;
+    } else if (nameLower.includes('космос')) {
+      res.status(400).json({ error: 'Тариф «Космос» подключается через персональную заявку и индивидуальный договор.' });
+      return;
+    }
+
+    // Calculate discount for longer periods (3m -> 10%, 6m -> 20%, 12m -> 30%)
+    let discountPercent = 0;
+    if (months === 3) discountPercent = 10;
+    else if (months === 6) discountPercent = 20;
+    else if (months === 12) discountPercent = 30;
+
+    const totalCost = Math.round(basePricePerMonth * months * (1 - discountPercent / 100));
+
+    // Check user balance (balance_pay + balance_free)
+    const availableBalance = (Number(userRecord.balance_pay) || 0) + (Number(userRecord.balance_free) || 0);
+
+    if (totalCost > 0 && availableBalance < totalCost) {
+      const missing = totalCost - availableBalance;
+      res.status(400).json({
+        success: false,
+        needTopup: true,
+        missingAmount: missing,
+        error: `Недостаточно ИИрок на балансе для активации тарифа «${targetTariffName}» на ${months} мес. Требуется: ${totalCost} ИИрок, ваш баланс: ${availableBalance} ИИрок. Не хватает: ${missing} ИИрок.`
+      });
+      return;
+    }
+
+    // Deduct cost if > 0
+    if (totalCost > 0) {
+      addTransactionWithBalanceUpdate(db, {
+        userId: cleanUserId,
+        type: 'cost',
+        amount: totalCost,
+        description: `Списание за переход на тариф «${targetTariffName}» на ${months} мес.`,
+        comment: `Тариф ${targetTariffName} (${days} дней)`
+      });
+    }
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+
+    // Update user tariff info with triggers tracking tarif_date
+    db.run(
+      `UPDATE users 
+       SET 
+         tariff = ?, 
+         tarif_date = ?, 
+         tariff_assigned_at = ?, 
+         tariff_expires_at = ?, 
+         tariff_duration_days = ?,
+         balance_time = ?
+       WHERE id = ?`,
+      [targetTariffName, nowIso, nowIso, expiresAt, days, nowIso, cleanUserId]
+    );
+
+    // Credit monthly Iirky bonus if applicable
+    if (monthlyIirkyBonus > 0) {
+      addTransactionWithBalanceUpdate(db, {
+        userId: cleanUserId,
+        type: 'tarif',
+        balanceType: 'tarif',
+        amount: monthlyIirkyBonus,
+        description: `Пакетное начисление по тарифу «${targetTariffName}» (+${monthlyIirkyBonus} ИИрок)`,
+        comment: `Бонус тарифа ${targetTariffName}`
+      });
+    }
+
+    saveSQLiteDB();
+
+    const updatedUser = getUserByIdFromDb(db, cleanUserId);
+
+    res.json({
+      success: true,
+      message: `Тариф успешно изменен на «${targetTariffName}» на ${days} дней!`,
+      user: {
+        id: updatedUser?.id,
+        tariff: updatedUser?.tariff,
+        tarif_date: updatedUser?.tarif_date,
+        tariff_expires_at: updatedUser?.tariff_expires_at,
+        tariffDurationDays: updatedUser?.tariff_duration_days,
+        balance: (Number(updatedUser?.balance_pay) || 0) + (Number(updatedUser?.balance_free) || 0),
+        balance_pay: updatedUser?.balance_pay,
+        balance_free: updatedUser?.balance_free
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка смены тарифа: ' + err.message });
+  }
+});
+
+// Test Simulation Balance Topup Endpoint
+apiRouter.post('/tariffs/simulate-topup', async (req: Request, res: Response) => {
+  try {
+    const { userId, amountRub = 990 } = req.body;
+    const cleanUserId = normalizeUserId(userId || '16926299042');
+    const db = await getSQLiteDB();
+
+    const amount = Number(amountRub) || 990;
+    const result = addTransactionWithBalanceUpdate(db, {
+      userId: cleanUserId,
+      type: 'pay',
+      balanceType: 'pay',
+      amount: amount,
+      description: `Тестовая симуляция пополнения: +${amount} ИИрок 🪙`,
+      comment: 'Тестовое пополнение баланса в кабинете'
+    });
+
+    saveSQLiteDB();
+
+    res.json({
+      success: true,
+      addedIirky: amount,
+      transaction: result.transaction,
+      newBalances: result.newBalances,
+      message: `Успешно начислено +${amount} ИИрок на баланс пользователя ${cleanUserId}!`
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Ошибка тестового пополнения: ' + err.message });
   }
 });
 

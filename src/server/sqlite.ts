@@ -63,6 +63,9 @@ export function normalizeUserId(userId?: string | number): string {
 export async function getSQLiteDB(): Promise<Database> {
   const db = await getModularSQLiteDB();
   dbInstance = db;
+  try {
+    initSchema(db);
+  } catch (e) {}
   return db;
 }
 
@@ -966,20 +969,55 @@ function initSchema(db: Database) {
     console.error('[SQLite] Error updating 11-digit user IDs:', e);
   }
 
-  // Purge all unwanted default and mock data completely
+  // Ensure SQLite data is populated and synchronized from database.json if empty
   try {
-    db.run("DELETE FROM posts;");
-    db.run("DELETE FROM sceneries;");
-    db.run("DELETE FROM transactions;");
-    db.run("DELETE FROM prompts;");
-    db.run("DELETE FROM channels;");
-    db.run("DELETE FROM history;");
-    db.run("DELETE FROM logs;");
-    db.run("DELETE FROM chat_messages;");
-    db.run("DELETE FROM blog_posts;");
-    console.log('[SQLite Cleanup] Successfully wiped default mock data from posts, sceneries, transactions, prompts, channels, history, logs, chat_messages.');
+    const { DB } = require('./db');
+    // Sync channels
+    const channelsCheck = db.exec("SELECT COUNT(*) as cnt FROM channels");
+    const channelsCount = Number(channelsCheck[0]?.values[0]?.[0] || 0);
+    if (channelsCount === 0) {
+      const jsonChannels = DB.getChannels() || [];
+      for (const ch of jsonChannels) {
+        db.run(
+          `INSERT OR IGNORE INTO channels (id, user_id, name, username, telegram_id, is_active, subscribers_count, invite_link, description, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [ch.id || `ch_${Date.now()}`, ch.userId || '16926299042', ch.name || ch.username, ch.username || ch.name, ch.telegramId ? String(ch.telegramId) : null, ch.isActive !== false ? 1 : 0, ch.subscribersCount || 0, ch.inviteLink || '', ch.description || '', new Date().toISOString()]
+        );
+      }
+    }
+
+    // Sync posts
+    const postsCheck = db.exec("SELECT COUNT(*) as cnt FROM posts");
+    const postsCount = Number(postsCheck[0]?.values[0]?.[0] || 0);
+    if (postsCount === 0) {
+      const jsonPosts = DB.getDayRequests() || [];
+      for (const p of jsonPosts) {
+        db.run(
+          `INSERT OR IGNORE INTO posts (id, user_id, title, category, request_template, post_text, channel, channels, message_format, signature, attachment_type, attachment_url, attachment_urls, status, trigger_schedule, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            p.id,
+            p.userId || '16926299042',
+            p.title || 'Пост',
+            p.category || 'общее',
+            p.requestTemplate || '',
+            p.postText || '',
+            p.channel || '@SAV_AI',
+            p.channels ? JSON.stringify(p.channels) : JSON.stringify([p.channel || '@SAV_AI']),
+            p.messageFormat || 'v2',
+            p.signature || '',
+            p.attachmentType || 'none',
+            p.attachmentUrl || '',
+            p.attachmentUrls ? JSON.stringify(p.attachmentUrls) : '[]',
+            p.status || 'создается',
+            p.triggerSchedule ? JSON.stringify(p.triggerSchedule) : JSON.stringify({ enabled: false }),
+            p.createdAt || new Date().toISOString()
+          ]
+        );
+      }
+    }
   } catch (e) {
-    console.error('[SQLite Cleanup] Error during table purge:', e);
+    console.error('[SQLite Sync] Error syncing data on startup:', e);
   }
 
   // Ensure essential files are seeded
@@ -1021,6 +1059,7 @@ function initSchema(db: Database) {
 export const ALLOWED_TABLES = [
   'users',
   'tarifs',
+  'tariffs',
   'transactions',
   'notifications',
   'posts',
@@ -1038,15 +1077,26 @@ export const ALLOWED_TABLES = [
   'file_folders',
   'file_folder_relations',
   'ai_agents',
-  'tariffs',
-  'chat_messages'
+  'chat_messages',
+  'blog_posts'
 ];
 
 export async function getAllTablesInfo() {
   const db = await getSQLiteDB();
   const tablesInfo = [];
 
-  for (const table of ALLOWED_TABLES) {
+  // Fetch all existing tables from sqlite_master
+  let masterTables: string[] = [];
+  try {
+    const masterRes = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+    if (masterRes && masterRes[0]?.values) {
+      masterTables = masterRes[0].values.map((row: any) => String(row[0]));
+    }
+  } catch (e) {}
+
+  const allTables = Array.from(new Set([...ALLOWED_TABLES, ...masterTables]));
+
+  for (const table of allTables) {
     try {
       const countRes = db.exec(`SELECT COUNT(*) FROM ${table}`);
       const count = countRes[0]?.values[0]?.[0] || 0;
@@ -1064,13 +1114,26 @@ export async function getAllTablesInfo() {
 }
 
 export async function getTableRows(tableName: string) {
-  if (!ALLOWED_TABLES.includes(tableName)) {
-    throw new Error(`Таблица ${tableName} не разрешена или не существует.`);
+  const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+  if (!safeTableName) {
+    throw new Error(`Некорректное имя таблицы: ${tableName}`);
   }
 
   const db = await getSQLiteDB();
-  const res = db.exec(`SELECT * FROM ${tableName} ORDER BY rowid DESC LIMIT 500`);
-  if (!res[0]) return { columns: [], rows: [] };
+
+  // Verify table exists in sqlite_master
+  const masterRes = db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='${safeTableName}'`);
+  if (!masterRes || !masterRes[0]?.values?.length) {
+    // If not found in sqlite_master, check if it's allowed and initialize or return empty
+    return { columns: [], rows: [] };
+  }
+
+  const res = db.exec(`SELECT * FROM ${safeTableName} ORDER BY rowid DESC LIMIT 500`);
+  if (!res[0]) {
+    const colsRes = db.exec(`PRAGMA table_info(${safeTableName})`);
+    const columns = colsRes[0]?.values.map((v: any) => String(v[1])) || [];
+    return { columns, rows: [] };
+  }
 
   const columns = res[0].columns;
   const rows = res[0].values.map((valArr: any[]) => {

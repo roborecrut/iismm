@@ -175,7 +175,7 @@ export const ScenariosPage: React.FC<ScenariosPageProps> = ({ currentUser, chann
         stepNumber: 2,
         type: 'generate_text',
         title: 'Шаг 2: Написать текст поста',
-        description: 'Отправка запроса в нейросеть ProTalk по выбранному промпту',
+        description: 'Отправка запроса в нейросеть ИИ по выбранному промпту',
         enabled: true,
         config: { requestTemplate: `Напиши экспертный пост для Telegram по теме [ТЕМА] на основе промпта: "${post.content.slice(0, 200)}..."` }
       },
@@ -192,7 +192,7 @@ export const ScenariosPage: React.FC<ScenariosPageProps> = ({ currentUser, chann
         id: 'step_4',
         stepNumber: 4,
         type: 'generate_image',
-        title: 'Шаг 4: Сгенерировать картинку в ProTalk',
+        title: 'Шаг 4: Сгенерировать картинку через ИИ',
         description: 'Получение прямой ссылки на сгенерированное нейросетью изображение и прикрепление в альбом',
         enabled: true,
         config: {}

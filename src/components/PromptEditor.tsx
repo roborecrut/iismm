@@ -48,7 +48,8 @@ import {
   Clipboard,
   Calculator,
   Hash,
-  Anchor
+  Anchor,
+  Heart
 } from 'lucide-react';
 import { DayRequest, PostTemplate, User, InlineButton, Channel } from '../types';
 import { FileUpload } from './FileUpload';
@@ -332,7 +333,7 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           return (
             <span
               key={index}
-              className="bg-[#2a3848] text-transparent hover:text-slate-100 rounded px-1 cursor-pointer transition-colors select-none font-sans border border-slate-700/40"
+              className="bg-pink-200/60 text-transparent hover:text-slate-900 rounded px-1 cursor-pointer transition-colors select-none font-sans border border-pink-300"
               title="Нажмите, чтобы показать спойлер"
             >
               {renderFormattedText(content, format)}
@@ -346,7 +347,7 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           (part.startsWith('<b>') && part.endsWith('</b>'))
         ) {
           const content = part.startsWith('<b>') ? part.slice(3, -4) : (part.startsWith('**') ? part.slice(2, -2) : part.slice(1, -1));
-          return <strong key={index} className="font-bold text-white">{renderFormattedText(content, format)}</strong>;
+          return <strong key={index} className="font-bold text-slate-950">{renderFormattedText(content, format)}</strong>;
         }
 
         if (
@@ -355,7 +356,7 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           (part.startsWith('<i>') && part.endsWith('</i>'))
         ) {
           const content = part.startsWith('<i>') ? part.slice(3, -4) : part.slice(1, -1);
-          return <em key={index} className="italic text-slate-200">{renderFormattedText(content, format)}</em>;
+          return <em key={index} className="italic text-slate-800">{renderFormattedText(content, format)}</em>;
         }
 
         if (
@@ -363,17 +364,17 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           (format === 'v2' && part.startsWith('~') && part.endsWith('~') && part.length >= 2)
         ) {
           const content = part.startsWith('~~') ? part.slice(2, -2) : part.slice(1, -1);
-          return <del key={index} className="line-through text-slate-400">{renderFormattedText(content, format)}</del>;
+          return <del key={index} className="line-through text-slate-500">{renderFormattedText(content, format)}</del>;
         }
 
         if (part.startsWith('<u>') && part.endsWith('</u>')) {
           const content = part.slice(3, -4);
-          return <span key={index} className="underline decoration-slate-300">{renderFormattedText(content, format)}</span>;
+          return <span key={index} className="underline decoration-pink-400">{renderFormattedText(content, format)}</span>;
         }
 
         if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
           const content = part.slice(1, -1);
-          return <code key={index} className="bg-[#1f2c3a] text-amber-300 font-mono text-[11px] px-1.5 py-0.5 rounded border border-amber-900/40">{content}</code>;
+          return <code key={index} className="bg-white/90 text-pink-700 font-mono text-[11px] px-1.5 py-0.5 rounded border border-pink-200">{content}</code>;
         }
 
         if (part.startsWith('[') && part.includes('](') && part.endsWith(')')) {
@@ -386,14 +387,14 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
               const idMatch = url.match(/id=(\d+)/);
               const emojiId = idMatch ? idMatch[1] : '';
               return (
-                <span key={index} className="inline-flex items-center space-x-1 bg-amber-950/80 border border-amber-700/60 px-1.5 py-0.5 rounded text-amber-300 font-bold text-[11px]" title={`Custom Emoji ID: ${emojiId}`}>
+                <span key={index} className="inline-flex items-center space-x-1 bg-white/90 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700 font-bold text-[11px]" title={`Custom Emoji ID: ${emojiId}`}>
                   <span>{label || '✨'}</span>
                 </span>
               );
             }
 
             return (
-              <a key={index} href={url} target="_blank" rel="noreferrer" className="text-blue-400 font-semibold underline hover:text-blue-300">
+              <a key={index} href={url} target="_blank" rel="noreferrer" className="text-pink-600 font-semibold underline hover:text-pink-700">
                 {label}
               </a>
             );
@@ -405,7 +406,7 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           if (timeMatch) {
             const timeLabel = timeMatch[2];
             return (
-              <span key={index} className="inline-flex items-center space-x-1 bg-emerald-950/80 border border-emerald-700/60 px-1.5 py-0.5 rounded text-emerald-300 font-mono text-[11px]">
+              <span key={index} className="inline-flex items-center space-x-1 bg-white/90 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700 font-mono text-[11px]">
                 <Clock size={11} />
                 <span>{timeLabel}</span>
               </span>
@@ -508,13 +509,13 @@ function RichPreviewRenderer({
               const dataRows = hasHeader ? parsedMatrix.slice(1) : [parsedMatrix[0]];
 
               return (
-                <div key={sIdx} className="overflow-x-auto my-2 rounded-xl border border-slate-700/60 bg-[#1a2430] shadow-md">
+                <div key={sIdx} className="overflow-x-auto my-2 rounded-xl border border-pink-200 bg-white/90 shadow-xs">
                   <table className="w-full text-[11px] border-collapse">
                     {hasHeader && (
                       <thead>
-                        <tr className="bg-[#243142] font-bold text-white border-b border-slate-700">
+                        <tr className="bg-gradient-to-r from-sky-100 via-pink-100 to-orange-100 font-extrabold text-slate-900 border-b border-pink-200">
                           {headers.map((headerCell, hIdx) => (
-                            <th key={hIdx} className="p-2.5 text-left border-r border-slate-700/80 last:border-r-0 font-semibold text-blue-200">
+                            <th key={hIdx} className="p-2.5 text-left border-r border-pink-200 last:border-r-0 font-bold text-slate-900">
                               {renderInlineMarkdown(headerCell)}
                             </th>
                           ))}
@@ -523,9 +524,9 @@ function RichPreviewRenderer({
                     )}
                     <tbody>
                       {dataRows.map((rowCells, rIdx) => (
-                        <tr key={rIdx} className="border-t border-slate-800 hover:bg-slate-800/40 transition-colors">
+                        <tr key={rIdx} className="border-t border-pink-100 hover:bg-pink-50/50 transition-colors">
                           {(hasHeader ? headers : rowCells).map((_, cIdx) => (
-                            <td key={cIdx} className="p-2 border-r border-slate-800/80 last:border-r-0 text-slate-200">
+                            <td key={cIdx} className="p-2 border-r border-pink-100 last:border-r-0 text-slate-800">
                               {renderInlineMarkdown(rowCells[cIdx] || '')}
                             </td>
                           ))}
@@ -544,26 +545,26 @@ function RichPreviewRenderer({
   };
 
   if (!postText && !signature) {
-    return <p className="text-xs text-slate-400 italic">Текст вашего сообщения появится здесь...</p>;
+    return <p className="text-xs text-slate-500 italic">Текст вашего сообщения появится здесь...</p>;
   }
 
   const blocks = postText.split('\n\n');
 
   return (
-    <div className="space-y-2.5 text-xs text-slate-200 leading-relaxed font-sans">
+    <div className="space-y-2.5 text-xs text-slate-900 leading-relaxed font-sans">
       {blocks.map((block, idx) => {
-        // Headings
-        if (block.startsWith('# ')) {
-          return <h1 key={idx} className="text-base font-bold text-white pt-1">{block.replace('# ', '')}</h1>;
+        // Headings with clean gradient text (strictly require space after '#' to avoid hashtags like #smm)
+        if (block.match(/^#\s+(.+)$/)) {
+          return <h1 key={idx} className="text-base font-extrabold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent pt-1">{renderInlineMarkdown(block.replace(/^#\s+/, ''))}</h1>;
         }
-        if (block.startsWith('## ')) {
-          return <h2 key={idx} className="text-sm font-bold text-blue-200 pt-1">{block.replace('## ', '')}</h2>;
+        if (block.match(/^##\s+(.+)$/)) {
+          return <h2 key={idx} className="text-sm font-extrabold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent pt-1">{renderInlineMarkdown(block.replace(/^##\s+/, ''))}</h2>;
         }
-        if (block.startsWith('### ')) {
-          return <h3 key={idx} className="text-xs font-bold text-blue-300 pt-1">{block.replace('### ', '')}</h3>;
+        if (block.match(/^###\s+(.+)$/)) {
+          return <h3 key={idx} className="text-xs font-bold text-pink-700 pt-1">{renderInlineMarkdown(block.replace(/^###\s+/, ''))}</h3>;
         }
-        if (block.startsWith('#### ')) {
-          return <h4 key={idx} className="text-[11px] font-bold text-blue-400 pt-1">{block.replace('#### ', '')}</h4>;
+        if (block.match(/^####\s+(.+)$/)) {
+          return <h4 key={idx} className="text-[11px] font-bold text-sky-700 pt-1">{renderInlineMarkdown(block.replace(/^####\s+/, ''))}</h4>;
         }
 
         // <tg-collage>
@@ -573,13 +574,13 @@ function RichPreviewRenderer({
           if (imgUrls.length > 0) {
             return (
               <div key={idx} className="my-2 space-y-1">
-                <div className="text-[10px] text-purple-400 font-mono flex items-center space-x-1">
+                <div className="text-[10px] text-pink-600 font-mono flex items-center space-x-1">
                   <ImageIcon size={12} />
                   <span>Коллаж ({imgUrls.length} фото):</span>
                 </div>
                 <div className={`grid gap-1.5 rounded-xl overflow-hidden ${imgUrls.length === 1 ? 'grid-cols-1' : imgUrls.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
                   {imgUrls.map((url, i) => (
-                    <div key={i} className="aspect-video bg-slate-900 overflow-hidden relative rounded-lg border border-slate-800">
+                    <div key={i} className="aspect-video bg-white/80 overflow-hidden relative rounded-lg border border-pink-200">
                       <img src={url} alt="collage" className="w-full h-full object-cover" />
                     </div>
                   ))}
@@ -596,16 +597,16 @@ function RichPreviewRenderer({
           if (imgUrls.length > 0) {
             const currentIdx = slideshowIndices[idx] || 0;
             return (
-              <div key={idx} className="my-2 space-y-1.5 bg-[#121922] p-2.5 rounded-xl border border-[#232e3c]">
-                <div className="flex items-center justify-between text-[10px] text-purple-300 font-mono">
+              <div key={idx} className="my-2 space-y-1.5 bg-white/80 p-2.5 rounded-xl border border-pink-200">
+                <div className="flex items-center justify-between text-[10px] text-pink-700 font-mono">
                   <span className="flex items-center space-x-1 font-bold">
                     <ImageIcon size={12} />
                     <span>Слайдер изображений</span>
                   </span>
-                  <span className="bg-purple-950 px-2 py-0.5 rounded border border-purple-800/60 font-semibold">{currentIdx + 1} / {imgUrls.length}</span>
+                  <span className="bg-pink-100 px-2 py-0.5 rounded border border-pink-200 font-semibold">{currentIdx + 1} / {imgUrls.length}</span>
                 </div>
 
-                <div className="relative aspect-video rounded-lg overflow-hidden bg-black flex items-center justify-center border border-slate-800">
+                <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-pink-200">
                   <img src={imgUrls[currentIdx]} alt="slide" className="w-full h-full object-contain" />
 
                   {imgUrls.length > 1 && (
@@ -613,14 +614,14 @@ function RichPreviewRenderer({
                       <button
                         type="button"
                         onClick={() => setSlideIndex(idx, (currentIdx - 1 + imgUrls.length) % imgUrls.length)}
-                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black text-white p-1.5 rounded-full cursor-pointer transition-all shadow-md"
+                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-slate-800 p-1.5 rounded-full cursor-pointer transition-all shadow-md border border-pink-200"
                       >
                         <ChevronLeft size={16} />
                       </button>
                       <button
                         type="button"
                         onClick={() => setSlideIndex(idx, (currentIdx + 1) % imgUrls.length)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black text-white p-1.5 rounded-full cursor-pointer transition-all shadow-md"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-slate-800 p-1.5 rounded-full cursor-pointer transition-all shadow-md border border-pink-200"
                       >
                         <ChevronRight size={16} />
                       </button>
@@ -638,11 +639,11 @@ function RichPreviewRenderer({
           const videoUrl = srcMatch ? srcMatch[1] : '';
           return (
             <div key={idx} className="my-2 space-y-1">
-              <div className="text-[10px] text-blue-400 font-mono flex items-center space-x-1">
+              <div className="text-[10px] text-pink-600 font-mono flex items-center space-x-1">
                 <Video size={12} />
                 <span>Видеозапись:</span>
               </div>
-              <video controls className="w-full max-h-56 rounded-xl bg-black border border-slate-800" src={videoUrl}>
+              <video controls className="w-full max-h-56 rounded-xl bg-black border border-pink-200" src={videoUrl}>
                 Ваш браузер не поддерживает видео.
               </video>
             </div>
@@ -654,8 +655,8 @@ function RichPreviewRenderer({
           const srcMatch = block.match(/src=["'](.*?)["']/i) || block.match(/!\[audio\]\((.*?)\)/i);
           const audioUrl = srcMatch ? srcMatch[1] : '';
           return (
-            <div key={idx} className="my-2 p-3 bg-[#1e293b] rounded-xl border border-slate-700/60 space-y-2">
-              <div className="flex items-center space-x-2 text-xs text-blue-300 font-semibold">
+            <div key={idx} className="my-2 p-3 bg-white/90 rounded-xl border border-pink-200 space-y-2">
+              <div className="flex items-center space-x-2 text-xs text-pink-700 font-semibold">
                 <Volume2 size={16} />
                 <span>Аудиосообщение</span>
               </div>
@@ -671,10 +672,10 @@ function RichPreviewRenderer({
           const imgUrl = singleImgMatch[2];
           const captionTitle = singleImgMatch[3];
           return (
-            <div key={idx} className="my-2 space-y-1 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 p-1">
+            <div key={idx} className="my-2 space-y-1 rounded-xl overflow-hidden bg-white/80 border border-pink-200 p-1">
               <img src={imgUrl} alt={altText || 'Image'} className="w-full max-h-64 object-cover rounded-lg" />
               {captionTitle && (
-                <div className="text-[11px] text-slate-300 px-2 py-1 italic font-medium">
+                <div className="text-[11px] text-slate-600 px-2 py-1 italic font-medium">
                   {captionTitle}
                 </div>
               )}
@@ -693,11 +694,11 @@ function RichPreviewRenderer({
             .trim();
 
           return (
-            <details key={idx} open className="bg-[#212d3b] border border-[#2b3a4c] rounded-xl p-3 my-2 text-xs group cursor-pointer shadow-md">
-              <summary className="font-bold text-purple-300 select-none flex items-center justify-between">
+            <details key={idx} open className="bg-white/80 border border-pink-200 rounded-xl p-3 my-2 text-xs group cursor-pointer shadow-xs">
+              <summary className="font-bold text-pink-700 select-none flex items-center justify-between">
                 <span>{summaryText}</span>
               </summary>
-              <div className="mt-2 pt-2 border-t border-slate-700/60 text-slate-300 whitespace-pre-wrap leading-relaxed">
+              <div className="mt-2 pt-2 border-t border-pink-100 text-slate-800 whitespace-pre-wrap leading-relaxed">
                 {renderContentWithTables(detailsContent)}
               </div>
             </details>
@@ -723,13 +724,13 @@ function RichPreviewRenderer({
             const dataRows = hasHeader ? parsedMatrix.slice(1) : [parsedMatrix[0]];
 
             return (
-              <div key={idx} className="overflow-x-auto my-2 rounded-xl border border-slate-700/60 bg-[#1a2430] shadow-md">
+              <div key={idx} className="overflow-x-auto my-2 rounded-xl border border-pink-200 bg-white/90 shadow-xs">
                 <table className="w-full text-[11px] border-collapse">
                   {hasHeader && (
                     <thead>
-                      <tr className="bg-[#243142] font-bold text-white border-b border-slate-700">
+                      <tr className="bg-gradient-to-r from-sky-100 via-pink-100 to-orange-100 font-extrabold text-slate-900 border-b border-pink-200">
                         {headers.map((headerCell, hIdx) => (
-                          <th key={hIdx} className="p-2.5 text-left border-r border-slate-700/80 last:border-r-0 font-semibold text-blue-200">
+                          <th key={hIdx} className="p-2.5 text-left border-r border-pink-200 last:border-r-0 font-bold text-slate-900">
                             {renderInlineMarkdown(headerCell)}
                           </th>
                         ))}
@@ -738,9 +739,9 @@ function RichPreviewRenderer({
                   )}
                   <tbody>
                     {dataRows.map((rowCells, rIdx) => (
-                      <tr key={rIdx} className="border-t border-slate-800 hover:bg-slate-800/40 transition-colors">
+                      <tr key={rIdx} className="border-t border-pink-100 hover:bg-pink-50/50 transition-colors">
                         {(hasHeader ? headers : rowCells).map((_, cIdx) => (
-                          <td key={cIdx} className="p-2 border-r border-slate-800/80 last:border-r-0 text-slate-200">
+                          <td key={cIdx} className="p-2 border-r border-pink-100 last:border-r-0 text-slate-800">
                             {renderInlineMarkdown(rowCells[cIdx] || '')}
                           </td>
                         ))}
@@ -757,7 +758,7 @@ function RichPreviewRenderer({
         if (block.startsWith('>') || block.includes('<blockquote>')) {
           const cleanQuote = block.replace(/<\/?blockquote>/g, '').replace(/<\/?cite>/g, '').replace(/^>\s?/gm, '');
           return (
-            <div key={idx} className="border-l-3 border-blue-500 pl-3 py-1.5 my-2 bg-[#1b2633] rounded-r-xl text-slate-300 italic">
+            <div key={idx} className="border-l-3 border-pink-400 pl-3 py-1.5 my-2 bg-white/70 rounded-r-xl text-slate-800 italic">
               {renderInlineMarkdown(cleanQuote)}
             </div>
           );
@@ -778,8 +779,8 @@ function RichPreviewRenderer({
                 if (trimmed.startsWith('- [ ] ') || trimmed.startsWith('* [ ] ')) {
                   const content = trimmed.slice(6);
                   return (
-                    <div key={lIdx} className="flex items-start space-x-2 text-slate-200">
-                      <span className="inline-flex items-center justify-center w-4 h-4 rounded border border-slate-600 bg-slate-900 text-[10px] text-slate-400 shrink-0 mt-0.5 select-none font-bold">
+                    <div key={lIdx} className="flex items-start space-x-2 text-slate-800">
+                      <span className="inline-flex items-center justify-center w-4 h-4 rounded border border-pink-300 bg-white text-[10px] text-slate-400 shrink-0 mt-0.5 select-none font-bold">
                         ☐
                       </span>
                       <div className="flex-1 leading-relaxed">{renderInlineMarkdown(content)}</div>
@@ -789,8 +790,8 @@ function RichPreviewRenderer({
                 if (trimmed.startsWith('- [x] ') || trimmed.startsWith('* [x] ') || trimmed.startsWith('- [X] ') || trimmed.startsWith('* [X] ')) {
                   const content = trimmed.slice(6);
                   return (
-                    <div key={lIdx} className="flex items-start space-x-2 text-slate-200">
-                      <span className="inline-flex items-center justify-center w-4 h-4 rounded border border-emerald-500 bg-emerald-950 text-[10px] text-emerald-400 shrink-0 mt-0.5 select-none font-bold">
+                    <div key={lIdx} className="flex items-start space-x-2 text-slate-800">
+                      <span className="inline-flex items-center justify-center w-4 h-4 rounded border border-pink-400 bg-pink-100 text-[10px] text-pink-700 shrink-0 mt-0.5 select-none font-bold">
                         ✓
                       </span>
                       <div className="flex-1 leading-relaxed line-through text-slate-400">{renderInlineMarkdown(content)}</div>
@@ -800,8 +801,8 @@ function RichPreviewRenderer({
                 if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
                   const content = trimmed.slice(2);
                   return (
-                    <div key={lIdx} className="flex items-start space-x-2 text-slate-200 pl-1">
-                      <span className="text-blue-400 font-bold select-none">•</span>
+                    <div key={lIdx} className="flex items-start space-x-2 text-slate-800 pl-1">
+                      <span className="text-pink-600 font-bold select-none">•</span>
                       <div className="flex-1 leading-relaxed">{renderInlineMarkdown(content)}</div>
                     </div>
                   );
@@ -809,8 +810,8 @@ function RichPreviewRenderer({
                 const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
                 if (numMatch) {
                   return (
-                    <div key={lIdx} className="flex items-start space-x-2 text-slate-200 pl-1">
-                      <span className="text-purple-400 font-mono font-bold text-[11px] select-none">{numMatch[1]}.</span>
+                    <div key={lIdx} className="flex items-start space-x-2 text-slate-800 pl-1">
+                      <span className="text-pink-700 font-mono font-bold text-[11px] select-none">{numMatch[1]}.</span>
                       <div className="flex-1 leading-relaxed">{renderInlineMarkdown(numMatch[2])}</div>
                     </div>
                   );
@@ -835,7 +836,7 @@ function RichPreviewRenderer({
 
       {/* Formatted Signature */}
       {signature && (
-        <div className="text-[11px] text-blue-400 pt-2 border-t border-slate-800/80 font-medium whitespace-pre-wrap">
+        <div className="text-[11px] text-pink-700 pt-2 border-t border-pink-200/80 font-bold whitespace-pre-wrap">
           {renderInlineMarkdown(signature)}
         </div>
       )}
@@ -859,16 +860,16 @@ const CopyButton: React.FC<{ value: string; className?: string }> = ({ value, cl
       onClick={handleCopy}
       disabled={!value || !value.trim()}
       title={copied ? "Скопировано!" : "Скопировать ссылку"}
-      className={`px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 hover:text-white rounded-xl text-xs font-semibold transition-all flex items-center space-x-1 border border-slate-700/60 cursor-pointer shrink-0 ${className}`}
+      className={`px-2.5 py-1.5 bg-white/90 hover:bg-white disabled:opacity-40 text-slate-800 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 border border-pink-200 cursor-pointer shrink-0 shadow-xs ${className}`}
     >
       {copied ? (
         <>
-          <Check size={14} className="text-emerald-400" />
-          <span className="text-[11px] text-emerald-400 font-bold">Скопировано!</span>
+          <Check size={14} className="text-pink-600" />
+          <span className="text-[11px] text-pink-600 font-bold">Скопировано!</span>
         </>
       ) : (
         <>
-          <Copy size={14} className="text-blue-400" />
+          <Copy size={14} className="text-pink-600" />
           <span className="text-[11px]">Копировать</span>
         </>
       )}
@@ -1004,9 +1005,26 @@ export default function PromptEditor({
   const [mobileTab, setMobileTab] = useState<'edit' | 'preview'>('edit');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
+  const [aiTimer, setAiTimer] = useState<number>(0);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  // Timer effect for AI Generation (0 to 120s)
+  useEffect(() => {
+    let interval: any = null;
+    if (isGenerating || isGeneratingImage) {
+      setAiTimer(0);
+      interval = setInterval(() => {
+        setAiTimer(prev => (prev < 120 ? prev + 1 : 120));
+      }, 1000);
+    } else {
+      setAiTimer(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isGenerating, isGeneratingImage]);
 
   // Constructor Modals State
   const [activeModal, setActiveModal] = useState<'link' | 'media' | 'table' | 'emoji_time' | 'anchors' | null>(null);
@@ -1154,8 +1172,11 @@ export default function PromptEditor({
     } catch (e) {}
   }, []);
 
+  const lastLoadedIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (activeRequest) {
+    if (activeRequest && lastLoadedIdRef.current !== selectedId) {
+      lastLoadedIdRef.current = selectedId;
       setTopic((activeRequest.category || '').slice(0, 15));
       setTitle(activeRequest.title || '');
       setSignature(activeRequest.signature || '');
@@ -1312,7 +1333,7 @@ export default function PromptEditor({
 
   const isMediaAttached = attachmentType !== 'none';
   const maxAllowedCharLimit = messageFormat === 'rich' 
-    ? 32768 
+    ? 36000 
     : (isMediaAttached ? 1024 : 4096);
 
   const isLimitExceeded = totalPostCharCount > maxAllowedCharLimit;
@@ -1698,7 +1719,7 @@ export default function PromptEditor({
         if (data.content) setPostText(data.content);
         setStatusMessage({ 
           type: 'success', 
-          text: `Пост успешно сгенерирован ProTalk ИИ в стиле "${styleObj?.title || selectedPostStyle}"! Списано: 10 ИИрок.` 
+          text: `Пост успешно сгенерирован ИИ в стиле "${styleObj?.title || selectedPostStyle}"! Списано: 10 ИИрок.` 
         });
       } else {
         throw new Error(data.error || 'Ошибка генерации');
@@ -1711,7 +1732,7 @@ export default function PromptEditor({
     }
   };
 
-  // AI Image Generation via ProTalk
+  // AI Image Generation
   const handleGenerateImageAI = async () => {
     if (!imagePrompt.trim()) {
       setStatusMessage({ type: 'error', text: 'Укажите промпт для генерации картинки!' });
@@ -1738,7 +1759,7 @@ export default function PromptEditor({
         setPhotoUrl(data.imageUrl);
         setStatusMessage({
           type: 'success',
-          text: `Изображение сгенерировано через ProTalk ИИ и прикреплено к посту! Списано: 10 ИИрок.`
+          text: `Изображение сгенерировано через ИИ и прикреплено к посту! Списано: 10 ИИрок.`
         });
       } else {
         throw new Error(data.error || 'Ошибка генерации картинки');
@@ -1962,17 +1983,17 @@ export default function PromptEditor({
     const activeCount = urls.filter(u => u && u.trim()).length;
 
     return (
-      <div className="space-y-3 pt-2 border-t border-slate-800/60">
+      <div className="space-y-3 pt-2 border-t border-pink-200/80">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
-            <span className="text-xs font-semibold text-slate-200">{typeTitle}</span>
-            <span className="text-[10px] font-mono font-bold bg-blue-950 text-blue-300 border border-blue-800/60 px-2 py-0.5 rounded">
+            <span className="text-xs font-bold text-slate-800">{typeTitle}</span>
+            <span className="text-[10px] font-mono font-extrabold bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 to-sky-100 text-pink-700 border border-pink-300 px-2 py-0.5 rounded-lg shadow-2xs">
               {activeCount} / 10 заполнено
             </span>
           </div>
           <FileUpload
             variant="button"
-            buttonLabel={`Массовая загрузка на ProTalk (до 10)`}
+            buttonLabel={`Массовая загрузка (до 10)`}
             multiple={true}
             accept={acceptFilter}
             onUploaded={handleBatchUpload}
@@ -1982,13 +2003,13 @@ export default function PromptEditor({
         <div className="space-y-2">
           {urls.map((url, idx) => (
             <div key={idx} className="flex items-center space-x-2">
-              <span className="text-[11px] font-mono text-slate-400 w-6 shrink-0 text-center">#{idx + 1}</span>
+              <span className="text-[11px] font-mono font-bold text-slate-500 w-6 shrink-0 text-center">#{idx + 1}</span>
               <input
                 type="url"
                 value={url}
                 onChange={(e) => updateSlot(idx, e.target.value)}
                 placeholder={`URL ${typeLabel} #${idx + 1}`}
-                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
+                className="flex-1 bg-white/90 border border-pink-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-pink-500 font-mono shadow-2xs"
               />
               <CopyButton value={url} />
               <FileUpload
@@ -2000,7 +2021,7 @@ export default function PromptEditor({
               <button
                 type="button"
                 onClick={() => removeSlot(idx)}
-                className="p-2 text-rose-400 hover:bg-slate-800/80 rounded-xl transition-colors cursor-pointer"
+                className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                 title="Удалить этот файл"
               >
                 <Trash2 size={14} />
@@ -2013,9 +2034,9 @@ export default function PromptEditor({
           <button
             type="button"
             onClick={() => setUrls(prev => [...prev, ''])}
-            className="w-full py-2 bg-slate-950 hover:bg-slate-800/80 border border-dashed border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 rounded-xl text-xs font-semibold transition-all flex items-center justify-center space-x-1 cursor-pointer"
+            className="w-full py-2.5 bg-gradient-to-r from-sky-50 via-pink-50 via-orange-50 to-sky-50 hover:bg-white border border-dashed border-pink-300 hover:border-pink-400 text-pink-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer shadow-2xs"
           >
-            <Plus size={14} />
+            <Plus size={14} className="text-pink-600" />
             <span>Добавить поле для {typeLabel} (всего {urls.length}/10)</span>
           </button>
         )}
@@ -2990,7 +3011,7 @@ export default function PromptEditor({
 
                     <FileUpload
                       variant="compact"
-                      buttonLabel="Загрузить файл на ProTalk"
+                      buttonLabel="Загрузить файл"
                       onUploaded={(key, url, fileInfo) => {
                         if (fileInfo?.type.startsWith('image/')) {
                           insertRichTag(`![${fileInfo.name}](${url})`);
@@ -3291,7 +3312,7 @@ export default function PromptEditor({
         <div className="flex justify-between items-center border-b border-pink-200 pb-3">
           <label className="block text-[10px] font-mono font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
             <Sparkles size={14} className="text-pink-600" />
-            Текстовое поле для генерации (ProTalk ИИ)
+            Текстовое поле для генерации
           </label>
           <span className="text-[10px] font-mono text-pink-700 font-extrabold bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 px-2.5 py-1 rounded-lg border border-pink-300 shadow-2xs">Списание: 10 ИИрок</span>
         </div>
@@ -3300,7 +3321,7 @@ export default function PromptEditor({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-pink-50/50 p-3 rounded-xl border border-pink-200/80">
           <div className="md:col-span-2 space-y-1">
             <label className="block text-[10px] font-mono font-bold text-slate-700 uppercase">
-              Стиль поста (20 вариантов ProTalk):
+              Стиль поста (20 вариантов ИИ):
             </label>
             <select
               value={selectedPostStyle}
@@ -3320,18 +3341,31 @@ export default function PromptEditor({
 
           <div className="space-y-1">
             <label className="block text-[10px] font-mono font-bold text-slate-700 uppercase">
-              Лимит символов поста:
+              Лимит символов ({messageFormat === 'rich' ? 'до 36 000' : '500-3600 / 4096'}):
             </label>
             <select
               value={maxCharsLimit}
               onChange={(e) => setMaxCharsLimit(Number(e.target.value))}
               className="w-full bg-white border border-pink-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-pink-500 shadow-2xs cursor-pointer"
             >
-              <option value={500}>Короткий (до 500 симв.)</option>
-              <option value={1000}>Средний (до 1000 симв.)</option>
-              <option value={2000}>Стандарт (до 2000 симв.)</option>
-              <option value={2500}>Развернутый (до 2500 симв.)</option>
-              <option value={3600}>Максимальный (до 3600 симв.)</option>
+              {messageFormat === 'rich' ? (
+                <>
+                  <option value={1000}>Краткий (до 1000 симв.)</option>
+                  <option value={4000}>Стандарт (до 4000 симв.)</option>
+                  <option value={10000}>Развернутый (до 10 000 симв.)</option>
+                  <option value={20000}>Лонгрид (до 20 000 симв.)</option>
+                  <option value={36000}>Максимум Rich (до 36 000 симв.)</option>
+                </>
+              ) : (
+                <>
+                  <option value={500}>Короткий (до 500 симв.)</option>
+                  <option value={1000}>Средний (до 1000 симв.)</option>
+                  <option value={2000}>Стандарт (до 2000 симв.)</option>
+                  <option value={2500}>Развернутый (до 2500 симв.)</option>
+                  <option value={3600}>Максимальный (до 3600 симв.)</option>
+                  <option value={4096}>Полный лимит TG (до 4096 симв.)</option>
+                </>
+              )}
             </select>
           </div>
         </div>
@@ -3355,7 +3389,7 @@ export default function PromptEditor({
             className="flex items-center space-x-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all shadow-2xs cursor-pointer"
           >
             {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-            <span>Сгенерировать текст поста через ProTalk ИИ (10 ИИрок)</span>
+            <span>Сгенерировать текст поста через ИИ (10 ИИрок)</span>
           </button>
         </div>
       </div>
@@ -3394,32 +3428,35 @@ export default function PromptEditor({
       {/* Bottom Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-pink-200">
         <div className="flex flex-wrap items-center gap-3">
+          {/* Button 1: Normal Gradient */}
           <button
             type="button"
             onClick={handlePublishManual}
             disabled={isPublishing}
-            className="flex items-center space-x-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all shadow-2xs cursor-pointer"
+            className="flex items-center space-x-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all shadow-md cursor-pointer border border-white/40"
           >
             {isPublishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             <span>Опубликовать в Telegram сейчас (Бесплатно)</span>
           </button>
 
+          {/* Button 2: Light Gradient (Alternating) */}
           <button
             type="button"
             onClick={handleTestSendDM}
             disabled={isPublishing}
-            className="flex items-center space-x-1.5 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all shadow-2xs cursor-pointer"
+            className="flex items-center space-x-1.5 bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 hover:from-sky-200 hover:to-orange-200 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer border border-pink-300"
             title="Отправить напрямую в личку пользователю 169262990 в Telegram"
           >
-            <Send size={14} className="text-white" />
+            <Send size={14} className="text-pink-600" />
             <span>🧪 Тест в личку (169262990)</span>
           </button>
 
+          {/* Button 3: Light Tone Gradient (Alternating) */}
           {onDeleteDayRequest && selectedId && (
             <button
               type="button"
               onClick={() => setShowDeleteConfirmModal(true)}
-              className="flex items-center space-x-1.5 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-2xs"
+              className="flex items-center space-x-1.5 bg-gradient-to-r from-pink-50 via-orange-50 to-pink-50 hover:bg-pink-100 text-rose-700 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-xs border border-rose-200"
               title="Удалить пост из БД"
             >
               <Trash2 size={16} />
@@ -3428,6 +3465,7 @@ export default function PromptEditor({
           )}
         </div>
 
+        {/* Button 4: Normal Gradient (Alternating) */}
         <button
           type="button"
           onClick={() => {
@@ -3435,12 +3473,24 @@ export default function PromptEditor({
             setShowSaveConfirmModal(true);
           }}
           disabled={isSaving}
-          className="flex items-center space-x-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all shadow-2xs cursor-pointer"
+          className="flex items-center space-x-2 bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 hover:opacity-95 text-white px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all shadow-md cursor-pointer border border-white/40"
         >
           {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           <span>Сохранить изменения</span>
         </button>
       </div>
+
+      {/* Status Notification - Placed under the action buttons with our platform light gradient */}
+      {statusMessage && (
+        <div className={`p-4 rounded-2xl flex items-start space-x-3 text-xs font-semibold shadow-xs border transition-all ${
+          statusMessage.type === 'success' 
+            ? 'bg-gradient-to-r from-sky-50/95 via-pink-50/95 via-orange-50/95 via-pink-50/95 to-sky-50/95 border-pink-300 text-slate-900' 
+            : 'bg-gradient-to-r from-rose-50/95 via-pink-50/95 to-orange-50/95 border-rose-300 text-rose-900'
+        }`}>
+          <AlertCircle size={18} className={`shrink-0 mt-0.5 ${statusMessage.type === 'success' ? 'text-pink-600' : 'text-rose-600'}`} />
+          <span className="leading-relaxed">{statusMessage.text}</span>
+        </div>
+      )}
     </div>
   );
 
@@ -3451,7 +3501,9 @@ export default function PromptEditor({
         <div className="flex justify-between items-center border-b border-pink-200/80 pb-3">
           <div className="flex items-center space-x-2">
             <div className="w-2.5 h-2.5 rounded-full bg-pink-500 animate-pulse" />
-            <span className="text-xs font-extrabold text-slate-900">Предпросмотр в Telegram</span>
+            <span className="text-xs font-extrabold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent">
+              Предпросмотр в Telegram
+            </span>
           </div>
           <span className="text-[10px] font-mono font-bold text-pink-700 bg-white/80 px-2 py-0.5 rounded border border-pink-200">
             {messageFormat === 'v2' ? 'Markdown V2' : 'Markdown Rich'}
@@ -3459,7 +3511,7 @@ export default function PromptEditor({
         </div>
 
         {/* Telegram Replica Message Box Card - Light Gradient Aesthetic */}
-        <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-300 rounded-2xl p-4 text-slate-900 shadow-sm space-y-3 font-sans relative overflow-hidden">
+        <div className="bg-gradient-to-r from-sky-50/95 via-pink-50/95 via-orange-50/95 via-pink-50/95 to-sky-50/95 border border-pink-200/90 rounded-2xl p-4 text-slate-900 shadow-sm space-y-3 font-sans relative overflow-hidden">
           {/* Telegram Header */}
           <div className="flex items-center space-x-3 border-b border-pink-200/80 pb-2.5">
             <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-sky-400 via-pink-500 to-orange-400 flex items-center justify-center font-bold text-white text-sm shadow-inner shrink-0">
@@ -3621,25 +3673,13 @@ export default function PromptEditor({
 
   return (
     <div className="space-y-6 relative">
-      {/* Status Alert */}
-      {statusMessage && (
-        <div className={`p-4 rounded-xl flex items-start space-x-3 text-xs ${
-          statusMessage.type === 'success' 
-            ? 'bg-emerald-950/30 border border-emerald-800/40 text-emerald-300' 
-            : 'bg-rose-950/30 border border-rose-800/40 text-rose-300'
-        }`}>
-          <AlertCircle size={16} className="shrink-0 mt-0.5" />
-          <span>{statusMessage.text}</span>
-        </div>
-      )}
-
       {/* MOBILE SWITCHER TABS (< md) */}
-      <div className="block md:hidden bg-slate-900 border border-slate-800 rounded-xl p-1 flex">
+      <div className="block md:hidden bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-xl p-1 flex">
         <button
           type="button"
           onClick={() => setMobileTab('edit')}
           className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-xs font-bold transition-all ${
-            mobileTab === 'edit' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'
+            mobileTab === 'edit' ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-xs' : 'text-slate-700'
           }`}
         >
           <FileEdit size={14} />
@@ -3649,7 +3689,7 @@ export default function PromptEditor({
           type="button"
           onClick={() => setMobileTab('preview')}
           className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-xs font-bold transition-all ${
-            mobileTab === 'preview' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'
+            mobileTab === 'preview' ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white shadow-xs' : 'text-slate-700'
           }`}
         >
           <Eye size={14} />
@@ -4516,6 +4556,97 @@ export default function PromptEditor({
                 Отлично
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 8: AI GENERATION OVERLAY (HEART ANIMATION + 0-120s TIMER) */}
+      {/* ========================================================================= */}
+      {(isGenerating || isGeneratingImage) && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border-2 border-pink-300 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 text-center">
+            {/* Heart Animation Container */}
+            <div className="relative flex items-center justify-center pt-2">
+              <div className="absolute w-24 h-24 rounded-full bg-gradient-to-r from-sky-300/40 via-pink-400/40 to-orange-300/40 animate-ping" />
+              <div className="relative w-20 h-20 rounded-full bg-white/90 border-2 border-pink-300 flex items-center justify-center shadow-lg">
+                <Heart className="w-10 h-10 text-pink-500 fill-pink-500 animate-pulse drop-shadow-md" />
+              </div>
+            </div>
+
+            {/* Title & Description */}
+            <div className="space-y-1.5">
+              <h3 className="text-base font-black text-slate-900">
+                {isGenerating ? 'ИИ генерирует текст поста...' : 'ИИ генерирует изображение...'}
+              </h3>
+              <p className="text-xs text-slate-700 font-semibold leading-relaxed max-w-xs mx-auto">
+                {isGenerating 
+                  ? 'Пожалуйста, подождите. Нейросеть составляет уникальный пост и проверяет форматирование.' 
+                  : 'Нейросеть генерирует и оптимизирует изображение для публикации в Telegram.'}
+              </p>
+            </div>
+
+            {/* Progress Bar & Live Timer */}
+            <div className="space-y-2 bg-white/80 p-3.5 rounded-2xl border border-pink-200/80 shadow-2xs">
+              <div className="flex justify-between items-center text-xs font-mono font-bold text-slate-800">
+                <span className="flex items-center space-x-1">
+                  <Loader2 size={12} className="animate-spin text-pink-600" />
+                  <span>Обработка запроса</span>
+                </span>
+                <span className="text-pink-700 font-extrabold">{aiTimer} сек. / 120 сек.</span>
+              </div>
+              <div className="w-full bg-slate-200/80 h-3 rounded-full overflow-hidden p-0.5 border border-pink-200">
+                <div 
+                  className="h-full bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 rounded-full transition-all duration-1000 ease-out"
+                  style={{ width: `${Math.min(100, Math.max(3, (aiTimer / 120) * 100))}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Cancel Action */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsGenerating(false);
+                  setIsGeneratingImage(false);
+                }}
+                className="px-4 py-1.5 text-xs text-slate-600 hover:text-slate-900 font-bold hover:underline cursor-pointer"
+              >
+                Отменить генерацию
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* DUPLICATE CENTER FLOATING STATUS NOTIFICATION */}
+      {/* ========================================================================= */}
+      {statusMessage && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 max-w-lg w-[90%] pointer-events-auto">
+          <div className={`p-4 rounded-2xl shadow-xl border-2 flex items-center justify-between space-x-3 backdrop-blur-md ${
+            statusMessage.type === 'success'
+              ? 'bg-gradient-to-r from-sky-100 via-pink-100 to-orange-100 border-pink-400 text-slate-900'
+              : 'bg-gradient-to-r from-rose-100 via-pink-100 to-orange-100 border-rose-400 text-slate-900'
+          }`}>
+            <div className="flex items-center space-x-2.5 flex-1 min-w-0">
+              {statusMessage.type === 'success' ? (
+                <Check size={20} className="text-pink-600 shrink-0" />
+              ) : (
+                <AlertCircle size={20} className="text-rose-600 shrink-0" />
+              )}
+              <span className="text-xs font-bold leading-snug break-words">
+                {statusMessage.text}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStatusMessage(null)}
+              className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer shrink-0"
+            >
+              <X size={16} />
+            </button>
           </div>
         </div>
       )}

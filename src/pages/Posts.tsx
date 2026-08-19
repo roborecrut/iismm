@@ -81,6 +81,8 @@ export default function Posts({
 }: PostsProps) {
   // Local selected post ID for editing
   const [internalSelectedPostId, setInternalSelectedPostId] = useState<string | null>(null);
+  const [postToDelete, setPostToDelete] = useState<DayRequest | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const activePostId = externalSelectedPostId !== undefined ? externalSelectedPostId : internalSelectedPostId;
 
@@ -681,14 +683,9 @@ export default function Posts({
                 {/* Card Actions */}
                 <div className="pt-3 border-t border-pink-200/60 flex justify-between items-center space-x-2">
                   <button
-                    onClick={async (e) => {
+                    onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm(`Вы действительно хотите удалить пост "${post.title}"?`)) {
-                        await onDeleteDayRequest(post.id);
-                        if (activePostId === post.id) {
-                          setActivePostId(null);
-                        }
-                      }
+                      setPostToDelete(post);
                     }}
                     className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                     title="Удалить пост"
@@ -807,13 +804,9 @@ export default function Posts({
                             <Edit3 size={14} />
                           </button>
                           <button
-                            onClick={async () => {
-                              if (confirm(`Удалить пост "${post.title}"?`)) {
-                                await onDeleteDayRequest(post.id);
-                                if (activePostId === post.id) {
-                                  setActivePostId(null);
-                                }
-                              }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPostToDelete(post);
                             }}
                             className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                             title="Удалить"
@@ -831,6 +824,62 @@ export default function Posts({
         </div>
       )}
         </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {postToDelete && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-3xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-pink-200 pb-3">
+              <div className="flex items-center space-x-2">
+                <Trash2 size={20} className="text-pink-600" />
+                <h3 className="text-sm font-extrabold text-slate-900">Удаление поста</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPostToDelete(null)}
+                className="text-slate-500 hover:text-slate-900 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-800 leading-relaxed font-semibold">
+              Вы действительно хотите безвозвратно удалить пост <strong className="text-pink-700">"{postToDelete.title || 'Пост без названия'}"</strong> из базы данных?
+            </p>
+
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setPostToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-pink-50 text-slate-700 text-xs font-bold border border-pink-200 cursor-pointer shadow-2xs"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  if (!postToDelete) return;
+                  setIsDeleting(true);
+                  try {
+                    await onDeleteDayRequest(postToDelete.id);
+                    if (activePostId === postToDelete.id) {
+                      setActivePostId(null);
+                    }
+                    setPostToDelete(null);
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 via-pink-600 to-orange-500 hover:opacity-95 text-white text-xs font-extrabold cursor-pointer shadow-2xs flex items-center space-x-1.5"
+              >
+                {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                <span>Да, удалить</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -32,6 +32,19 @@ export function initTeamsTable(db: Database) {
       created_at TEXT
     );
   `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS team_reports (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL,
+      author_id TEXT,
+      author_name TEXT,
+      period TEXT,
+      posts_published INTEGER DEFAULT 0,
+      posts_scheduled INTEGER DEFAULT 0,
+      channels_count INTEGER DEFAULT 0,
+      created_at TEXT
+    );
+  `);
 }
 
 /**
@@ -89,11 +102,27 @@ export function syncTeamChannelsFromDb(db: Database, teamId: string): string[] {
  */
 export function findUserInDb(db: Database, handleOrId: string): any | null {
   try {
-    const clean = String(handleOrId || '').trim().replace(/^@/, '');
-    if (!clean) return null;
+    const raw = String(handleOrId || '').trim();
+    if (!raw) return null;
 
+    const clean = raw.replace(/^@/, '').replace(/^user_/, '').trim();
+    const cleanLower = clean.toLowerCase();
+
+    // Query with multiple flexible criteria and case-insensitivity
     const res = db.exec(
-      `SELECT * FROM users WHERE username = '${clean}' OR username = '@${clean}' OR id = '${clean}' OR telegram_id = '${clean}' OR email = '${clean}' LIMIT 1`
+      `SELECT * FROM users 
+       WHERE LOWER(username) = '${cleanLower}' 
+          OR LOWER(username) = '@${cleanLower}' 
+          OR username = 'user_${clean}'
+          OR id = '${clean}' 
+          OR id = '${raw}'
+          OR id = 'user_${clean}'
+          OR telegram_id = '${clean}' 
+          OR telegram_id = '${raw}'
+          OR LOWER(email) = '${cleanLower}'
+          OR (first_name IS NOT NULL AND LOWER(first_name) LIKE '%${cleanLower}%')
+          OR (last_name IS NOT NULL AND LOWER(last_name) LIKE '%${cleanLower}%')
+       LIMIT 1`
     );
 
     if (!res || res.length === 0 || !res[0].values.length) return null;
@@ -115,7 +144,7 @@ export function findUserInDb(db: Database, handleOrId: string): any | null {
 export function seedDefaultTeams(db: Database) {
   try {
     const ownerId = '16926299042';
-    const check = db.exec(`SELECT * FROM teams WHERE owner_id = '${ownerId}' OR owner_id = '169262990'`);
+    const check = db.exec(`SELECT * FROM teams WHERE owner_id = '${ownerId}' OR owner_id = '169262990' OR id = 'team_${ownerId}'`);
     if (!check || check.length === 0 || !check[0].values.length) {
       // Create initial team for main admin if no team exists
       const initialTeamId = `team_${ownerId}`;
@@ -141,7 +170,7 @@ export function seedDefaultTeams(db: Database) {
       ];
 
       db.run(
-        `INSERT INTO teams (id, owner_id, name, invite_code, members, channels, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO teams (id, owner_id, name, invite_code, members, channels, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           initialTeamId,
           ownerId,
@@ -163,9 +192,10 @@ export function seedDefaultTeams(db: Database) {
 
 export function getTeamsByOwnerOrMember(db: Database, userId: string): TeamRecord[] {
   try {
-    const cleanId = String(userId).trim();
+    const rawId = String(userId || '').trim();
+    const cleanId = rawId.replace(/^team_/, '').trim();
     const shortId = cleanId.replace(/\d$/, '');
-    const res = db.exec(`SELECT * FROM teams WHERE owner_id = '${cleanId}' OR owner_id = '${shortId}' OR members LIKE '%${cleanId}%' OR members LIKE '%${shortId}%'`);
+    const res = db.exec(`SELECT * FROM teams WHERE owner_id = '${cleanId}' OR owner_id = '${shortId}' OR owner_id = '${rawId}' OR id = '${rawId}' OR id = 'team_${cleanId}' OR members LIKE '%${cleanId}%' OR members LIKE '%${shortId}%'`);
     if (!res || res.length === 0) return [];
     const columns = res[0].columns;
     const values = res[0].values;
@@ -203,9 +233,27 @@ export function addMemberToTeamInDb(db: Database, teamIdOrOwnerId: string, membe
       const teams = getTeamsByOwnerOrMember(db, teamIdOrOwnerId);
       team = teams[0] || null;
     }
-    if (!team) return null;
 
-    const existingMembers = team.members.filter(m => m.userId !== member.userId && m.handle.toLowerCase() !== member.handle.toLowerCase());
+    // If team still doesn't exist, automatically create default team for this owner!
+    if (!team) {
+      const cleanOwnerId = String(teamIdOrOwnerId || '16926299042').replace(/^team_/, '').trim();
+      const teamId = `team_${cleanOwnerId}`;
+      team = createTeamInDb(db, {
+        id: teamId,
+        ownerId: cleanOwnerId,
+        name: 'SMM Команда SAV_AI',
+        inviteCode: teamId,
+        channels: [],
+        members: [member]
+      });
+      return team;
+    }
+
+    const existingMembers = (team.members || []).filter(m => {
+      const sameId = m.userId && member.userId && String(m.userId) === String(member.userId);
+      const sameHandle = m.handle && member.handle && m.handle.toLowerCase() === member.handle.toLowerCase();
+      return !sameId && !sameHandle;
+    });
     existingMembers.push(member);
     team.members = existingMembers;
 

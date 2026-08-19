@@ -12,7 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useFileUpload } from '../hooks/useFileUpload';
 import IirkySocialNetwork from './IirkySocialNetwork';
 import TariffCards from './TariffCards';
-import RobokassaPaymentModal from './RobokassaPaymentModal';
+import OfertaModalContent from './OfertaModalContent';
 import AdminPage from '../pages/AdminPage';
 import Channels from '../pages/Channels';
 import ProfileHeader from './ProfileHeader';
@@ -545,7 +545,7 @@ export default function ProfileAndOnboarding({
     const file = e.target.files?.[0];
     if (!file) return;
     setEditSaving(true);
-    setEditMsg('Загрузка фото через ProTalk...');
+    setEditMsg('Загрузка фото...');
     try {
       const { url } = await upload(file);
       if (url) {
@@ -554,7 +554,7 @@ export default function ProfileAndOnboarding({
         setEditMsg('🎉 Фото успешно загружено! Нажмите "Сохранить в БД"');
       }
     } catch (err) {
-      setEditMsg('⚠️ Ошибка загрузки картинкичерез ProTalk');
+      setEditMsg('⚠️ Ошибка загрузки картинки');
     } finally {
       setEditSaving(false);
     }
@@ -624,6 +624,34 @@ export default function ProfileAndOnboarding({
   // Buy Iirky Calculator modal states
   const [isBuyIirkyCalcOpen, setIsBuyIirkyCalcOpen] = useState(false);
   const [buyIirkyAmount, setBuyIirkyAmount] = useState<string>('990');
+  const [isOfertaModalOpen, setIsOfertaModalOpen] = useState(false);
+  const [isSimulatingTopup, setIsSimulatingTopup] = useState(false);
+
+  const handleSimulateTariffTopup = async (amountRub: number = 990) => {
+    setIsSimulatingTopup(true);
+    try {
+      const res = await fetch('/api/tariffs/simulate-topup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id || '16926299042',
+          amountRub
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(`🎉 ${data.message || `Успешно начислено +${amountRub} ИИрок на баланс!`}`);
+        await fetchLiveProfile();
+        await fetchTransactions();
+      } else {
+        alert(`⚠️ ${data.error || 'Ошибка симуляции пополнения'}`);
+      }
+    } catch (e: any) {
+      alert(`⚠️ Ошибка соединения: ${e.message}`);
+    } finally {
+      setIsSimulatingTopup(false);
+    }
+  };
 
   // Referral Promo Post states
   const [promoChannel, setPromoChannel] = useState<'tg' | 'vk' | 'wa' | 'setka' | 'ok'>('tg');
@@ -643,7 +671,7 @@ export default function ProfileAndOnboarding({
 
     const targetChId = selectedPromoChannelId || localChannels[0]?.id || localChannels[0]?.channelId;
     const targetChan = localChannels.find(c => c.id === targetChId || c.channelId === targetChId) || localChannels[0];
-    const channelIdentifier = targetChan?.handle || targetChan?.channelId || targetChan?.id;
+    const channelIdentifier = targetChan?.username || targetChan?.handle || (targetChan?.telegram_id ? String(targetChan.telegram_id) : (targetChan?.telegramId ? String(targetChan.telegramId) : targetChan?.name)) || targetChan?.id;
 
     if (!channelIdentifier) {
       setPromoPublishStatus({
@@ -741,19 +769,16 @@ export default function ProfileAndOnboarding({
         await fetchLiveProfile();
       } else if (data.needTopup) {
         const missing = data.missingAmount || amountRub;
-        const confirmPay = window.confirm(`${data.error}\n\nЖелаете перейти к оплате и пополнению через Робокассу?`);
+        const confirmPay = window.confirm(`${data.error}\n\nЖелаете открыть калькулятор пополнения баланса ИИрок?`);
         if (confirmPay) {
-          setRobokassaPlanName(planName);
-          setRobokassaAmountRub(missing);
-          setRobokassaModalOpen(true);
+          setBuyIirkyAmount(String(missing));
+          setIsBuyIirkyCalcOpen(true);
         }
       } else {
         alert(`⚠️ ${data.error || 'Ошибка смены тарифа'}`);
       }
     } catch (e: any) {
-      setRobokassaPlanName(planName);
-      setRobokassaAmountRub(amountRub || 990);
-      setRobokassaModalOpen(true);
+      alert(`⚠️ Ошибка смены тарифа: ${e.message}`);
     }
   };
 
@@ -2014,11 +2039,22 @@ export default function ProfileAndOnboarding({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setIsBuyIirkyCalcOpen(true)}
-                  className="px-3.5 py-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-                  title="Открыть калькулятор покупки ИИрок"
+                  disabled={isSimulatingTopup}
+                  onClick={() => handleSimulateTariffTopup(990)}
+                  className="px-3.5 py-2 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                  title="Тестовая симуляция зачисления +990 ИИрок на баланс"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-white" />
+                  <span>{isSimulatingTopup ? 'Начисляем...' : 'Тестовая симуляция (+990 ИИрок 🪙)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsBuyIirkyCalcOpen(true)}
+                  className="px-3.5 py-2 bg-white/90 hover:bg-white text-slate-800 text-xs font-bold rounded-xl border border-pink-200 flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                  title="Открыть калькулятор покупки ИИрок"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-pink-500" />
                   <span>Калькулятор покупки ИИрок 🪙</span>
                 </button>
 
@@ -2183,8 +2219,8 @@ export default function ProfileAndOnboarding({
             </div>
 
             <TariffCards 
-              userTariff={user.tariff}
-              userTariffExpiresAt={user.premiumUntil || user.tariff_expires_at}
+              userTariff={liveProfile.tariff || user.tariff}
+              userTariffExpiresAt={liveProfile.tariff_expires_at || liveProfile.tariffExpiresAt || liveProfile.balance_time || user.tariff_expires_at || user.premiumUntil}
               onAction={(planName, priceText, amountRub, actionType, periodMonths, discountPercent) => {
                 handleTariffAction(planName, priceText, amountRub, actionType, periodMonths, discountPercent);
               }}
@@ -2649,14 +2685,6 @@ export default function ProfileAndOnboarding({
             <div className="bg-white/80 backdrop-blur-md p-5 rounded-2xl border border-pink-200/80 space-y-5 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-900 font-bold block">Пригласить в команду</span>
-                <button
-                  type="button"
-                  onClick={() => setIsAddMemberModalOpen(true)}
-                  className="text-sm font-bold text-pink-600 hover:text-pink-800 flex items-center gap-1 cursor-pointer"
-                >
-                  <UserPlus size={15} />
-                  <span>Выбрать из базы</span>
-                </button>
               </div>
 
               <form onSubmit={handleInviteCoworker} className="space-y-3.5">
@@ -3131,107 +3159,7 @@ export default function ProfileAndOnboarding({
         )}
       </AnimatePresence>
 
-      {/* --- MODAL 4: ADD MEMBER MODAL (FROM SQLITE USERS OR HANDLE) --- */}
-      <AnimatePresence>
-        {isAddMemberModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 border border-pink-200/80 rounded-3xl p-6 shadow-2xl text-left space-y-5 text-slate-900"
-            >
-              <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
-                <div className="flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-pink-500" />
-                  <h3 className="text-base font-bold text-slate-900">Добавить участника команды</h3>
-                </div>
-                <button 
-                  onClick={() => setIsAddMemberModalOpen(false)}
-                  className="text-slate-500 hover:text-slate-900 p-1 cursor-pointer"
-                >
-                  <X size={20} />
-                </button>
-              </div>
 
-              {/* Select from existing registered DB users */}
-              {allDbUsers.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-sm text-slate-800 font-bold block">
-                    Быстрый выбор из зарегистрированных пользователей:
-                  </label>
-                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 border border-pink-200 rounded-xl p-2 bg-white/70">
-                    {allDbUsers.slice(0, 15).map((u, i) => (
-                      <div 
-                        key={u.id || i}
-                        onClick={() => {
-                          setNewMemberHandle(u.username || `@user_${u.id}`);
-                          setNewMemberName(u.name || u.firstName || '');
-                        }}
-                        className="flex items-center justify-between p-2 rounded-lg bg-white/90 hover:bg-white border border-pink-100 cursor-pointer transition-all shadow-2xs"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-7 h-7 rounded-full bg-pink-100 text-pink-600 text-sm flex items-center justify-center font-bold shrink-0">
-                            {u.name ? u.name[0] : 'U'}
-                          </div>
-                          <span className="text-sm font-bold text-slate-900 truncate">{u.name}</span>
-                          <span className="text-sm font-mono text-slate-600 truncate">{u.username || `ID: ${u.id}`}</span>
-                        </div>
-                        <span className="text-sm text-pink-600 font-bold shrink-0">Выбрать</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <form onSubmit={handleAddMemberSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm text-slate-800 font-bold block">
-                    Telegram имя пользователя (@handle или ID)
-                  </label>
-                  <input
-                    type="text"
-                    value={newMemberHandle}
-                    onChange={e => setNewMemberHandle(e.target.value)}
-                    placeholder="@smm_colleague"
-                    className="w-full bg-white/90 border border-pink-200 rounded-xl p-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-pink-400"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-sm text-slate-800 font-bold block">
-                    Имя / Должность сотрудника (необязательно)
-                  </label>
-                  <input
-                    type="text"
-                    value={newMemberName}
-                    onChange={e => setNewMemberName(e.target.value)}
-                    placeholder="Например: Иван Маркетолог"
-                    className="w-full bg-white/90 border border-pink-200 rounded-xl p-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-pink-400"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-pink-200/80">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddMemberModalOpen(false)}
-                    className="px-4 py-2 bg-white/80 hover:bg-white text-slate-800 border border-pink-200 rounded-xl text-sm font-bold cursor-pointer transition-all"
-                  >
-                    Отмена
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
-                  >
-                    Добавить в SQLite
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* --- MODAL 5: REVOKE MEMBER CONFIRMATION MODAL --- */}
       <AnimatePresence>
@@ -3585,25 +3513,25 @@ export default function ProfileAndOnboarding({
           tg: {
             channelName: 'Telegram',
             text: `🔥 Делюсь крутым сервисом для автопостинга и генерации контента с искусственным интеллектом — ИИSMM!\n\n🤖 Автоматически создает посты, пишет сильные тексты, генерирует обложки и делает мгновенный кросспостинг в Telegram, ВК, Сетку и еще 10+ соцсетей в один клик.\n\n🎁 Забирайте 300 ИИрок бонусом на баланс при регистрации:\n📱 В Telegram Mini App: ${tgRefLink}\n🌐 В браузере (веб-версия): ${webRefLink}`,
-            shareUrl: `https://t.me/share/url?url=${encodeURIComponent(tgRefLink)}&text=${encodeURIComponent(`🔥 Попробуй ИИSMM — умный автопостинг и генерация контента с ИИ. Дарим 300 ИИрок!\n📱 В Telegram: ${tgRefLink}\n🌐 В браузере: ${webRefLink}`)}`
+            shareUrl: `https://t.me/share/url?url=${encodeURIComponent(tgRefLink)}&text=${encodeURIComponent(`🔥 Попробуй ИИSMM — умный автопостинг и генерация контента с ИИ. Дарим 300 ИИрок!\n📱 В Telegram Mini App: ${tgRefLink}\n🌐 В браузере (веб-версия): ${webRefLink}`)}`
           },
           vk: {
             channelName: 'ВКонтакте',
-            text: `🔥 Рекомендую ИИSMM — мощную платформу для автопостинга и генерации контента с искусственным интеллектом!\n\nГенерирует контент-планы, пишет посты, создает нейроиллюстрации и публикует во все соцсети на автомате.\n\n🎁 Получи 300 ИИрок бонусом на баланс при регистрации:\n📱 В Telegram: ${tgRefLink}\n🌐 В браузере (веб-версия): ${webRefLink}`,
+            text: `🔥 Рекомендую ИИSMM — мощную платформу для автопостинга и генерации контента с искусственным интеллектом!\n\nГенерирует контент-планы, пишет посты, создает нейроиллюстрации и публикует во все соцсети на автомате.\n\n🎁 Получи 300 ИИрок бонусом на баланс при регистрации:\n📱 В Telegram Mini App: ${tgRefLink}\n🌐 В браузере (веб-версия): ${webRefLink}`,
             shareUrl: `https://vk.com/share.php?url=${encodeURIComponent(webRefLink)}&title=${encodeURIComponent('ИИSMM — Умный автопостинг и контент-генератор с ИИ')}`
           },
           wa: {
             channelName: 'WhatsApp',
-            text: `Привет! Нашел классный сервис ИИSMM для автоматического ведения соцсетей и создания постов нейросетью.\n\n🎁 Переходи по ссылке и забирай 300 ИИрок на баланс в подарок:\n📱 В Telegram: ${tgRefLink}\n🌐 В браузере: ${webRefLink}`,
-            shareUrl: `https://api.whatsapp.com/send?text=${encodeURIComponent(`Привет! Нашел классный сервис ИИSMM для автоматического ведения соцсетей и создания постов нейросетью. Переходи по ссылке и забирай 300 ИИрок на баланс в подарок:\n📱 В Telegram: ${tgRefLink}\n🌐 В браузере: ${webRefLink}`)}`
+            text: `Привет! Нашел классный сервис ИИSMM для автоматического ведения соцсетей и создания постов нейросетью.\n\n🎁 Переходи по ссылке и забирай 300 ИИрок на баланс в подарок:\n📱 В Telegram Mini App: ${tgRefLink}\n🌐 В браузере (веб-версия): ${webRefLink}`,
+            shareUrl: `https://api.whatsapp.com/send?text=${encodeURIComponent(`Привет! Нашел классный сервис ИИSMM для автоматического ведения соцсетей и создания постов нейросетью. Переходи по ссылке и забирай 300 ИИрок на баланс в подарок:\n📱 В Telegram Mini App: ${tgRefLink}\n🌐 В браузере (веб-версия): ${webRefLink}`)}`
           },
           setka: {
             channelName: 'Сетка',
-            text: `🚀 Автоматизируйте создание контента и кросспостинг с ИИSMM!\n\nИскусственный интеллект готовит регулярные посты, подбирает обложки и публикует в Сетку и Telegram.\n\n🎁 Регистрируйтесь и получайте +300 ИИрок на баланс:\n📱 В Telegram: ${tgRefLink}\n🌐 В веб-версии: ${webRefLink}`
+            text: `🚀 Автоматизируйте создание контента и кросспостинг с ИИSMM!\n\nИскусственный интеллект готовит регулярные посты, подбирает обложки и публикует в Сетку и Telegram.\n\n🎁 Регистрируйтесь и получайте +300 ИИрок на баланс:\n📱 В Telegram Mini App: ${tgRefLink}\n🌐 В браузере (веб-версия): ${webRefLink}`
           },
           ok: {
             channelName: 'Одноклассники',
-            text: `Друзья, делюсь сервисом ИИSMM для удобного ведения групп и каналов с помощью искусственного интеллекта.\n\n🎁 Попробуйте бесплатно, при регистрации дарят 300 ИИрок на баланс:\n📱 В Telegram: ${tgRefLink}\n🌐 В браузере: ${webRefLink}`,
+            text: `Друзья, делюсь сервисом ИИSMM для удобного ведения групп и каналов с помощью искусственного интеллекта.\n\n🎁 Попробуйте бесплатно, при регистрации дарят 300 ИИрок на баланс:\n📱 В Telegram Mini App: ${tgRefLink}\n🌐 В браузере (веб-версия): ${webRefLink}`,
             shareUrl: `https://connect.ok.ru/offer?url=${encodeURIComponent(webRefLink)}&title=${encodeURIComponent('ИИSMM — Автопостинг с ИИ')}`
           }
         };
@@ -3862,7 +3790,6 @@ export default function ProfileAndOnboarding({
                       <button
                         type="button"
                         onClick={() => {
-                          setActiveTab('channels');
                           window.history.pushState(null, '', '/channels');
                           window.dispatchEvent(new Event('popstate'));
                         }}
@@ -4850,16 +4777,15 @@ export default function ProfileAndOnboarding({
                   </span>
                 </div>
 
-                {/* Oferta Transparent Link */}
-                <a
-                  href="/oferta"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                {/* Oferta Transparent In-App Modal Link */}
+                <button
+                  type="button"
+                  onClick={() => setIsOfertaModalOpen(true)}
                   className="w-full py-2.5 px-3 bg-white/40 hover:bg-white/70 text-slate-800 text-xs font-bold rounded-xl border border-pink-300 flex items-center justify-center gap-1.5 transition-all shadow-2xs backdrop-blur-xs text-center cursor-pointer"
                 >
                   <FileText className="w-3.5 h-3.5 text-pink-500" />
                   <span>Ознакомиться с договором публичной оферты и регламентом ИИрок 📄</span>
-                </a>
+                </button>
 
                 <div className="pt-2 flex gap-2">
                   <button 
@@ -4874,9 +4800,9 @@ export default function ProfileAndOnboarding({
                     onClick={() => {
                       const rub = Number(buyIirkyAmount) || 990;
                       setIsBuyIirkyCalcOpen(false);
-                      setRobokassaPlanName('Пополнение ИИрок');
-                      setRobokassaAmountRub(rub);
-                      setRobokassaModalOpen(true);
+                      const activeUserId = user.id || '16926299042';
+                      window.history.pushState(null, '', `/tarif/pay?amount=${rub}&userId=${encodeURIComponent(activeUserId)}`);
+                      window.dispatchEvent(new Event('popstate'));
                     }}
                     className="flex-1 py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold rounded-xl shadow-md cursor-pointer text-sm flex items-center justify-center gap-1.5"
                   >
@@ -5000,17 +4926,46 @@ export default function ProfileAndOnboarding({
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+        {/* In-App Oferta & Reglaments Modal */}
+        {isOfertaModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-xs">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-gradient-to-r from-sky-100/95 via-pink-100/95 via-orange-100/95 via-pink-100/95 to-sky-100/95 backdrop-blur-xl rounded-3xl p-6 max-w-3xl w-full border border-pink-300 shadow-2xl space-y-4 text-left max-h-[90vh] overflow-y-auto no-scrollbar"
+            >
+              <div className="flex justify-between items-center border-b border-pink-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-pink-600" />
+                  <h3 className="font-bold text-base text-slate-900">Договор публичной оферты и регламент ИИрок</h3>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setIsOfertaModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white/80 hover:bg-white text-slate-500 hover:text-slate-800 flex items-center justify-center border border-pink-200 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
 
-      {/* Robokassa Payment Modal */}
-      <RobokassaPaymentModal 
-        isOpen={robokassaModalOpen}
-        onClose={() => setRobokassaModalOpen(false)}
-        user={user}
-        onUpdateUser={onUpdateUser}
-        initialPlanName={robokassaPlanName}
-        initialAmountRub={robokassaAmountRub}
-      />
+              <div className="max-h-[65vh] overflow-y-auto no-scrollbar">
+                <OfertaModalContent />
+              </div>
+
+              <div className="pt-3 border-t border-pink-200/80 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsOfertaModalOpen(false)}
+                  className="px-6 py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold rounded-xl shadow-xs cursor-pointer text-sm"
+                >
+                  Понятно, закрыть
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

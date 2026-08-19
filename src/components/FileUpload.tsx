@@ -73,7 +73,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             <div 
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
-                className={`border-2 border-dashed border-slate-300 hover:border-indigo-500/80 rounded-xl p-4 text-center transition-all bg-slate-50/80 hover:bg-indigo-50/30 cursor-pointer ${className}`}
+                className={`border-2 border-dashed border-pink-300 hover:border-pink-400 rounded-2xl p-4 text-center transition-all bg-white/90 hover:bg-white cursor-pointer ${className}`}
                 onClick={() => inputRef.current?.click()}
             >
                 <input
@@ -88,12 +88,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 />
                 <div className="flex flex-col items-center justify-center space-y-2">
                     {uploading ? (
-                        <Loader2 className="animate-spin text-indigo-600" size={24} />
+                        <Loader2 className="animate-spin text-pink-600" size={24} />
                     ) : (
-                        <UploadCloud className="text-indigo-600" size={24} />
+                        <UploadCloud className="text-pink-600" size={24} />
                     )}
                     <span className="text-xs font-bold text-slate-800">
-                        {uploading ? 'Загрузка файла на сервер ИИSMM...' : buttonLabel}
+                        {uploading ? 'Загрузка файла на сервер...' : buttonLabel}
                     </span>
                     <span className="text-xs text-slate-500 font-mono">
                         Перетащите файл сюда или нажмите для выбора (картинки, видео, аудио, документы)
@@ -119,10 +119,10 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 />
                 <label 
                     htmlFor={uniqueId} 
-                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-indigo-600 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 border border-slate-200"
-                    title="Загрузить файл на ИИSMM"
+                    className="p-1.5 bg-gradient-to-r from-sky-50 via-pink-50 to-orange-50 hover:bg-white text-pink-700 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 border border-pink-200 shadow-2xs"
+                    title="Загрузить файл"
                 >
-                    {uploading ? <Loader2 className="animate-spin" size={14} /> : <Paperclip size={14} />}
+                    {uploading ? <Loader2 className="animate-spin text-pink-600" size={14} /> : <Paperclip size={14} className="text-pink-600" />}
                     <span className="text-xs">{uploading ? 'Загрузка...' : buttonLabel}</span>
                 </label>
                 {error && <span className="text-xs text-rose-600 ml-2 font-bold">{error}</span>}
@@ -144,12 +144,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             />
             <label 
                 htmlFor={uniqueId} 
-                className="flex items-center space-x-2 px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                className="flex items-center space-x-2 px-3.5 py-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
             >
                 {uploading ? <Loader2 className="animate-spin" size={14} /> : <Paperclip size={14} />}
-                <span>{uploading ? 'Загрузка на ИИSMM...' : buttonLabel}</span>
+                <span>{uploading ? 'Загрузка...' : buttonLabel}</span>
             </label>
-            {error && <div className="text-[10px] text-rose-400 mt-1">{error}</div>}
+            {error && <div className="text-[10px] text-rose-500 mt-1 font-bold">{error}</div>}
         </div>
     );
 };
