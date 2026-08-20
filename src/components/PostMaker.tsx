@@ -96,12 +96,12 @@ export default function PostMaker({
   const [modalNewDate, setModalNewDate] = useState('');
   const [modalNewStatus, setModalNewStatus] = useState<'scheduled' | 'published'>('scheduled');
 
-  // Telegram Special keyboard buttons with Color Pickers
+  // Telegram Special keyboard buttons with Telegram Bot API Style Pickers
   const [buttons, setButtons] = useState<InlineButton[]>([]);
   const [btnText, setBtnText] = useState('');
   const [btnUrl, setBtnUrl] = useState('');
   const [btnType, setBtnType] = useState<'link' | 'callback'>('link');
-  const [btnColor, setBtnColor] = useState<'blue' | 'purple' | 'pink' | 'emerald' | 'orange' | 'red'>('blue');
+  const [btnStyle, setBtnStyle] = useState<'default' | 'primary' | 'success' | 'danger'>('primary');
 
   // Drag and drop image upload
   const [imageFile, setImageFile] = useState<string | null>(null);
@@ -314,7 +314,7 @@ export default function PostMaker({
       id: Math.random().toString(),
       text: btnText,
       url: btnType === 'link' ? (btnUrl || 'https://t.me/') : `action_${Date.now()}`,
-      color: btnColor
+      style: btnStyle
     };
     setButtons([...buttons, newBtn]);
     setBtnText('');
@@ -1276,21 +1276,21 @@ export default function PostMaker({
 
                     <div className="flex justify-between items-center pt-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-slate-400 uppercase font-bold">Цвет кнопки в боте:</span>
+                        <span className="text-[10px] text-slate-500 uppercase font-bold">Стиль кнопки Telegram:</span>
                         <div className="flex gap-1">
-                          {['blue', 'purple', 'pink', 'emerald', 'orange', 'red'].map(clr => (
+                          {[
+                            { key: 'default', bg: 'bg-[#cfd6e0]', label: 'default (серая)' },
+                            { key: 'primary', bg: 'bg-[#2481cc]', label: 'primary (синяя)' },
+                            { key: 'success', bg: 'bg-[#2fa84f]', label: 'success (зелёная)' },
+                            { key: 'danger', bg: 'bg-[#e53935]', label: 'danger (красная)' }
+                          ].map(s => (
                             <button
-                              id={`btn-color-pick-${clr}`}
-                              key={clr}
+                              id={`btn-style-pick-${s.key}`}
+                              key={s.key}
                               type="button"
-                              onClick={() => setBtnColor(clr as any)}
-                              className={`w-4 h-4 rounded-full border transition-all ${
-                                clr === 'blue' ? 'bg-blue-500' :
-                                clr === 'purple' ? 'bg-purple-500' :
-                                clr === 'pink' ? 'bg-pink-500' :
-                                clr === 'emerald' ? 'bg-emerald-500' :
-                                clr === 'orange' ? 'bg-orange-500' : 'bg-red-500'
-                              } ${btnColor === clr ? 'ring-2 ring-indigo-650' : 'opacity-70'}`}
+                              title={s.label}
+                              onClick={() => setBtnStyle(s.key as any)}
+                              className={`w-4 h-4 rounded-full border transition-all ${s.bg} ${btnStyle === s.key ? 'ring-2 ring-pink-500 scale-110' : 'opacity-70'}`}
                             />
                           ))}
                         </div>
@@ -1300,29 +1300,30 @@ export default function PostMaker({
                         id="btn-add-tg-inline-btn"
                         type="button"
                         onClick={addColoredButton}
-                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-750 text-white text-[11px] font-black rounded"
+                        className="px-3 py-1 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white text-[11px] font-black rounded"
                       >
                         Добавить
                       </button>
                     </div>
 
                     {buttons.length > 0 && (
-                      <div className="pt-2 border-t border-indigo-100 flex flex-wrap gap-1.5">
-                        {buttons.map(btn => (
-                          <span 
-                            key={btn.id}
-                            className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border text-white font-extrabold ${
-                              btn.color === 'blue' ? 'bg-blue-600 border-blue-700' :
-                              btn.color === 'purple' ? 'bg-purple-600 border-purple-700' :
-                              btn.color === 'pink' ? 'bg-pink-600 border-pink-700' :
-                              btn.color === 'emerald' ? 'bg-emerald-600 border-emerald-700' :
-                              btn.color === 'orange' ? 'bg-orange-600 border-orange-700' : 'bg-red-650 border-red-750'
-                            }`}
-                          >
-                            <span>📎 {btn.text} ({btn.url.startsWith('action') ? 'Action' : 'Link'})</span>
-                            <button type="button" onClick={() => removeButton(btn.id)} className="text-white hover:text-slate-200">×</button>
-                          </span>
-                        ))}
+                      <div className="pt-2 border-t border-pink-200 flex flex-wrap gap-1.5">
+                        {buttons.map(btn => {
+                          const st = btn.style || 'default';
+                          const tagBg = st === 'primary' ? 'bg-[#2481cc] text-white border-[#1b6ca8]' :
+                            st === 'success' ? 'bg-[#2fa84f] text-white border-[#1f7836]' :
+                            st === 'danger' ? 'bg-[#e53935] text-white border-[#b71c1c]' :
+                            'bg-[#e5e9ef] text-[#1c242f] border-[#cbd3dd]';
+                          return (
+                            <span 
+                              key={btn.id}
+                              className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border font-extrabold shadow-2xs ${tagBg}`}
+                            >
+                              <span>📎 {btn.text} ({st})</span>
+                              <button type="button" onClick={() => removeButton(btn.id)} className="hover:opacity-75 font-black ml-0.5">×</button>
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1518,20 +1519,21 @@ export default function PostMaker({
                   {/* Keyboard buttons builder inline preview */}
                   {buttons.length > 0 && (
                     <div className="grid grid-cols-2 gap-1.5 max-w-[280px]">
-                      {buttons.map(btn => (
-                        <button
-                          key={btn.id}
-                          className={`w-full py-2 text-[10.5px] font-extrabold rounded-xl text-center text-white truncate shadow-3xs ${
-                            btn.color === 'blue' ? 'bg-blue-600 hover:bg-blue-750' :
-                            btn.color === 'purple' ? 'bg-purple-600 hover:bg-purple-750' :
-                            btn.color === 'pink' ? 'bg-pink-600 hover:bg-pink-750' :
-                            btn.color === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-750' :
-                            btn.color === 'orange' ? 'bg-orange-600 hover:bg-orange-750' : 'bg-red-650 hover:bg-red-750'
-                          }`}
-                        >
-                          {btn.text}
-                        </button>
-                      ))}
+                      {buttons.map(btn => {
+                        const st = btn.style || 'default';
+                        const btnCls = st === 'primary' ? 'bg-[#2481cc] hover:bg-[#1d70b3] text-white border border-[#1b6ca8]' :
+                          st === 'success' ? 'bg-[#2fa84f] hover:bg-[#258d41] text-white border border-[#1f7836]' :
+                          st === 'danger' ? 'bg-[#e53935] hover:bg-[#c62828] text-white border border-[#b71c1c]' :
+                          'bg-[#e5e9ef] hover:bg-[#d8dfe8] text-[#1c242f] border border-[#cbd3dd]';
+                        return (
+                          <button
+                            key={btn.id}
+                            className={`w-full py-2 text-[10.5px] font-bold rounded-xl text-center truncate shadow-2xs transition-all ${btnCls}`}
+                          >
+                            {btn.text}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

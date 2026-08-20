@@ -9,21 +9,412 @@
       "firstName": "Dr.White",
       "lastName": "SAV AI",
       "username": "shishkarnem",
-      "photoUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/photos/file_517.jpg",
-      "avatarUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/photos/file_517.jpg",
-      "bio": "",
+      "photoUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/photos/file_519.jpg",
+      "avatarUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/photos/file_519.jpg",
+      "bio": "@SAV_AIbot заказать ИИ-Продавца | @RentROP - Аренда РОПа | @SAV_AI Нейросети для бизнеса | @Rentrop_HR_bot Устроиться РОПом",
       "status": "Активный",
-      "tariff": "Старт",
-      "balance": 10000,
+      "tariff": "Космос",
+      "balance": 3870,
       "referredBy": 80926979801,
       "referralRewardBalance": 0,
-      "createdAt": "2026-08-14T01:06:20.058Z"
+      "createdAt": "2026-08-04T23:46:55.564Z"
     }
   ],
   "prompts": [],
-  "publications": [],
-  "dayRequests": [],
-  "publicationLogs": [],
+  "publications": [
+    {
+      "userId": "",
+      "promptTitle": "Ошибка тест",
+      "text": "Тестовое сообщение",
+      "channel": "@restreamsav",
+      "status": false,
+      "response": "Ошибка отправки. Ошибка для @non_existent_channel_123456789_xyz: Bad Request: chat not found",
+      "id": "pub_lisfjws0x",
+      "publishedAt": "2026-08-20T11:28:17.073Z"
+    },
+    {
+      "userId": "",
+      "promptTitle": "Rich пост с фото",
+      "text": "# Главный заголовок\n\nЭто текст в формате **Rich** с жирным текстом и ссылкой [SAV AI](https://t.me).",
+      "channel": "@restreamsav",
+      "messageId": "30",
+      "status": true,
+      "response": "Опубликовано",
+      "id": "pub_zqeuzblte",
+      "publishedAt": "2026-08-20T11:28:10.534Z"
+    },
+    {
+      "userId": "",
+      "promptTitle": "Тестовый пост с кнопками и медиа",
+      "text": "Проверка публикации: **Rich** / *V2* форматирование, медиа и кнопки.",
+      "channel": "@restreamsav",
+      "messageId": "29",
+      "status": true,
+      "response": "Опубликовано",
+      "id": "pub_3jhktp6jd",
+      "publishedAt": "2026-08-20T11:28:01.643Z"
+    },
+    {
+      "promptTitle": "[Тест в личку ID: 169262990] Новый пост без названия",
+      "text": "# 🚀 Обновление платформы\n\nМы подготовили для вас свежий релиз с новыми возможностями:\n\n- [x] Автоматический парсер Markdown V2\n- [x] Поддержка Rich HTML блоков\n- [ ] Интеграция с внешней аналитикой\n\n<tg-collage>\n![](https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500)\n![](https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=500)\n</tg-collage>",
+      "channel": "DM: 169262990",
+      "status": false,
+      "publishedAt": "2026-08-20T11:21:12.971Z",
+      "response": "Ошибкa для 169262990: Bad Request: can't parse entities: Unsupported start tag \"tg-collage\" at byte offset 339",
+      "id": "pub_c8jatiad6"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 🚀 Обновление платформы\n\nМы подготовили для вас свежий релиз с новыми возможностями:\n\n- [x] Автоматический парсер Markdown V2\n- [x] Поддержка Rich HTML блоков\n- [ ] Интеграция с внешней аналитикой\n\n<tg-collage>\n![](https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500)\n![](https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=500)\n</tg-collage>",
+      "channel": "@restreamsav",
+      "status": false,
+      "response": "Ошибка отправки. Ошибкa для @restreamsav: Bad Request: can't parse entities: Unsupported start tag \"tg-collage\" at byte offset 339",
+      "id": "pub_3sbb0hvei",
+      "publishedAt": "2026-08-20T11:20:32.826Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>![84JY0ROgMsYRZtKC09HjijDp.jpg](http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/16/84jy0rogmsyrztkc09hjijdp.jpg)![](http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/17/pnwozcvnu4ixeloo7fmsl8o5.jpg \"Анонс проекта\")\n",
+      "channel": "@restreamsav",
+      "status": false,
+      "response": "Ошибка отправки. Ошибкa для @restreamsav: Bad Request: wrong type of the web page content",
+      "id": "pub_f5xky9wjx",
+      "publishedAt": "2026-08-20T11:20:01.216Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>![84JY0ROgMsYRZtKC09HjijDp.jpg](http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/16/84jy0rogmsyrztkc09hjijdp.jpg)",
+      "channel": "@restreamsav",
+      "status": false,
+      "response": "Ошибка отправки. Ошибкa для @restreamsav: Bad Request: wrong type of the web page content",
+      "id": "pub_7i03d6lc0",
+      "publishedAt": "2026-08-20T11:18:24.574Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>![84JY0ROgMsYRZtKC09HjijDp.jpg](http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/16/84jy0rogmsyrztkc09hjijdp.jpg)",
+      "channel": "@restreamsav",
+      "status": false,
+      "response": "Ошибка отправки. Ошибкa для @restreamsav: Bad Request: wrong type of the web page content",
+      "id": "pub_hgb0ndcni",
+      "publishedAt": "2026-08-20T11:18:01.540Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>![84JY0ROgMsYRZtKC09HjijDp.jpg](http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/16/84jy0rogmsyrztkc09hjijdp.jpg)",
+      "channel": "@restreamsav",
+      "status": false,
+      "response": "Ошибка отправки. Ошибкa для @restreamsav: Bad Request: failed to get HTTP URL content",
+      "id": "pub_bl2otabfp",
+      "publishedAt": "2026-08-20T11:17:35.197Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "status": false,
+      "response": "Ошибка отправки. Ошибкa для @restreamsav: Bad Request: BUTTON_TYPE_INVALID",
+      "id": "pub_47u5xr3g3",
+      "publishedAt": "2026-08-20T11:15:28.488Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "messageId": "27",
+      "status": true,
+      "response": "Опубликовано",
+      "id": "pub_1hc7e5fne",
+      "publishedAt": "2026-08-20T11:15:16.555Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "messageId": "26",
+      "status": true,
+      "response": "Опубликовано",
+      "id": "pub_8583gyfyh",
+      "publishedAt": "2026-08-20T11:13:43.971Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "status": false,
+      "response": "Ошибка отправки. Ошибкa для @restreamsav: Bad Request: BUTTON_TYPE_INVALID",
+      "id": "pub_30c3molb8",
+      "publishedAt": "2026-08-20T11:13:29.579Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "status": false,
+      "response": "Ошибка отправки. Ошибкa для @restreamsav: Bad Request: BUTTON_TYPE_INVALID",
+      "id": "pub_lp30ngb7t",
+      "publishedAt": "2026-08-20T11:10:14.682Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "messageId": "25",
+      "status": true,
+      "response": "Опубликовано",
+      "id": "pub_3620gagda",
+      "publishedAt": "2026-08-20T11:10:01.699Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "status": false,
+      "response": "Ошибка отправки. Ошибкa для @restreamsav: Bad Request: BUTTON_TYPE_INVALID",
+      "id": "pub_3syzclrqc",
+      "publishedAt": "2026-08-20T11:09:33.672Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "messageId": "24",
+      "status": true,
+      "response": "Опубликовано",
+      "id": "pub_ozj1q0kzu",
+      "publishedAt": "2026-08-20T11:09:09.541Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "messageId": "23",
+      "status": true,
+      "response": "Опубликовано",
+      "id": "pub_h45j9hv0h",
+      "publishedAt": "2026-08-20T11:01:19.686Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "# 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "messageId": "22",
+      "status": true,
+      "response": "Опубликовано",
+      "id": "pub_yeljs75kh",
+      "publishedAt": "2026-08-20T11:00:38.277Z"
+    },
+    {
+      "userId": "16926299042",
+      "promptTitle": "Новый пост без названия",
+      "text": "## 📈 Еженедельный отчет о продукте\n\n> \"Качество и скорость развития — наши главные приоритеты.\"\n\n<details open><summary>Ключевые показатели недели</summary>\n\n| Метрика | Прошлый период | Текущий период |\n|:---|:---:|:---:|\n| Новые пользователи | 1 200 | 1 850 |\n| Удержание (D7) | 42% | 48% |\n</details>",
+      "channel": "@restreamsav",
+      "messageId": "21",
+      "status": true,
+      "response": "Опубликовано",
+      "id": "pub_amcujb8fr",
+      "publishedAt": "2026-08-20T11:00:07.980Z"
+    }
+  ],
+  "dayRequests": [
+    {
+      "id": "req_u202ysn5",
+      "status": "создается",
+      "userId": "16926299042",
+      "title": "Новый пост без названия",
+      "category": "общее",
+      "requestTemplate": "",
+      "postText": "# 🚀 Обновление платформы\n\nМы подготовили для вас свежий релиз с новыми возможностями:\n\n- [x] Автоматический парсер Markdown V2\n- [x] Поддержка Rich HTML блоков\n- [ ] Интеграция с внешней аналитикой\n\n<tg-collage>\n![](https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500)\n![](https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=500)\n</tg-collage>",
+      "channel": "@restreamsav",
+      "channels": [
+        "@restreamsav"
+      ],
+      "signature": "Присылайте полученные варианты в комментариях!",
+      "messageFormat": "rich",
+      "uppercaseHeader": true,
+      "attachmentType": "photo",
+      "attachmentUrl": "http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/17/pnwozcvnu4ixeloo7fmsl8o5.jpg",
+      "attachmentUrls": [
+        "http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/17/pnwozcvnu4ixeloo7fmsl8o5.jpg"
+      ],
+      "inlineButtons": [],
+      "uniquenessMemoryCount": 0,
+      "triggerSchedule": {
+        "frequency": "daily",
+        "intervalMinutes": 15,
+        "intervalHours": 2,
+        "time": "09:00",
+        "exactDateTime": "2026-12-31T18:00",
+        "timezone": "Europe/Moscow",
+        "daysOfWeek": [
+          "Пн",
+          "Ср",
+          "Пт"
+        ],
+        "dayOfMonth": 1,
+        "enabled": false,
+        "notifyUser": true
+      },
+      "imagePrompt": ""
+    }
+  ],
+  "publicationLogs": [
+    {
+      "publicationId": "pub_amcujb8fr",
+      "action": "PUBLISHED",
+      "details": "Публикация отправлена в Telegram",
+      "id": "log_t177v150j",
+      "timestamp": "2026-08-20T11:00:07.980Z"
+    },
+    {
+      "publicationId": "pub_yeljs75kh",
+      "action": "PUBLISHED",
+      "details": "Публикация отправлена в Telegram",
+      "id": "log_me7gdv6t8",
+      "timestamp": "2026-08-20T11:00:38.278Z"
+    },
+    {
+      "publicationId": "pub_h45j9hv0h",
+      "action": "PUBLISHED",
+      "details": "Публикация отправлена в Telegram",
+      "id": "log_4y4xcbgyl",
+      "timestamp": "2026-08-20T11:01:19.687Z"
+    },
+    {
+      "publicationId": "pub_ozj1q0kzu",
+      "action": "PUBLISHED",
+      "details": "Публикация отправлена в Telegram",
+      "id": "log_e44yw45hm",
+      "timestamp": "2026-08-20T11:09:09.542Z"
+    },
+    {
+      "publicationId": "pub_3syzclrqc",
+      "action": "FAILED",
+      "details": "Ошибкa для @restreamsav: Bad Request: BUTTON_TYPE_INVALID",
+      "id": "log_tyax3nv2i",
+      "timestamp": "2026-08-20T11:09:33.672Z"
+    },
+    {
+      "publicationId": "pub_3620gagda",
+      "action": "PUBLISHED",
+      "details": "Публикация отправлена в Telegram",
+      "id": "log_59omwuixc",
+      "timestamp": "2026-08-20T11:10:01.699Z"
+    },
+    {
+      "publicationId": "pub_lp30ngb7t",
+      "action": "FAILED",
+      "details": "Ошибкa для @restreamsav: Bad Request: BUTTON_TYPE_INVALID",
+      "id": "log_9mfq5tj17",
+      "timestamp": "2026-08-20T11:10:14.683Z"
+    },
+    {
+      "publicationId": "pub_30c3molb8",
+      "action": "FAILED",
+      "details": "Ошибкa для @restreamsav: Bad Request: BUTTON_TYPE_INVALID",
+      "id": "log_3q1zxck1u",
+      "timestamp": "2026-08-20T11:13:29.580Z"
+    },
+    {
+      "publicationId": "pub_8583gyfyh",
+      "action": "PUBLISHED",
+      "details": "Публикация отправлена в Telegram",
+      "id": "log_3iqnax03p",
+      "timestamp": "2026-08-20T11:13:43.971Z"
+    },
+    {
+      "publicationId": "pub_1hc7e5fne",
+      "action": "PUBLISHED",
+      "details": "Публикация отправлена в Telegram",
+      "id": "log_44ze105um",
+      "timestamp": "2026-08-20T11:15:16.555Z"
+    },
+    {
+      "publicationId": "pub_47u5xr3g3",
+      "action": "FAILED",
+      "details": "Ошибкa для @restreamsav: Bad Request: BUTTON_TYPE_INVALID",
+      "id": "log_833wt7hnj",
+      "timestamp": "2026-08-20T11:15:28.489Z"
+    },
+    {
+      "publicationId": "pub_bl2otabfp",
+      "action": "FAILED",
+      "details": "Ошибкa для @restreamsav: Bad Request: failed to get HTTP URL content",
+      "id": "log_t95tjls9i",
+      "timestamp": "2026-08-20T11:17:35.198Z"
+    },
+    {
+      "publicationId": "pub_hgb0ndcni",
+      "action": "FAILED",
+      "details": "Ошибкa для @restreamsav: Bad Request: wrong type of the web page content",
+      "id": "log_5hp2rx57g",
+      "timestamp": "2026-08-20T11:18:01.540Z"
+    },
+    {
+      "publicationId": "pub_7i03d6lc0",
+      "action": "FAILED",
+      "details": "Ошибкa для @restreamsav: Bad Request: wrong type of the web page content",
+      "id": "log_hjja42y91",
+      "timestamp": "2026-08-20T11:18:24.575Z"
+    },
+    {
+      "publicationId": "pub_f5xky9wjx",
+      "action": "FAILED",
+      "details": "Ошибкa для @restreamsav: Bad Request: wrong type of the web page content",
+      "id": "log_e24l6yaki",
+      "timestamp": "2026-08-20T11:20:01.217Z"
+    },
+    {
+      "publicationId": "pub_3sbb0hvei",
+      "action": "FAILED",
+      "details": "Ошибкa для @restreamsav: Bad Request: can't parse entities: Unsupported start tag \"tg-collage\" at byte offset 339",
+      "id": "log_q1cd7jhrs",
+      "timestamp": "2026-08-20T11:20:32.827Z"
+    },
+    {
+      "publicationId": "pub_c8jatiad6",
+      "action": "FAILED",
+      "details": "Ошибка отправки в личку TG ID 169262990: Ошибкa для 169262990: Bad Request: can't parse entities: Unsupported start tag \"tg-collage\" at byte offset 339",
+      "id": "log_mkpzmcn0f",
+      "timestamp": "2026-08-20T11:21:12.972Z"
+    },
+    {
+      "publicationId": "pub_3jhktp6jd",
+      "action": "PUBLISHED",
+      "details": "Публикация отправлена в Telegram",
+      "id": "log_krnk80fd6",
+      "timestamp": "2026-08-20T11:28:01.644Z"
+    },
+    {
+      "publicationId": "pub_zqeuzblte",
+      "action": "PUBLISHED",
+      "details": "Публикация отправлена в Telegram",
+      "id": "log_7n9w1dngf",
+      "timestamp": "2026-08-20T11:28:10.535Z"
+    },
+    {
+      "publicationId": "pub_lisfjws0x",
+      "action": "FAILED",
+      "details": "Ошибка для @non_existent_channel_123456789_xyz: Bad Request: chat not found",
+      "id": "log_84f7h873n",
+      "timestamp": "2026-08-20T11:28:17.073Z"
+    }
+  ],
   "settings": {
     "telegramBotToken": "8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o",
     "channelId": "",
@@ -40,7 +431,20 @@
       "isTest": true
     }
   },
-  "channels": [],
+  "channels": [
+    {
+      "userId": "16926299042",
+      "name": "Рестрим",
+      "username": "@restreamsav",
+      "isActive": true,
+      "subscribersCount": 4,
+      "inviteLink": "https://t.me/+5gpol9ddEpY2NDVi",
+      "telegramId": "-1003465156340",
+      "description": "Это тестовый канал",
+      "photoUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/profile_photos/file_523.jpg",
+      "id": "ch_p1h2ms8s9"
+    }
+  ],
   "templates": [
     {
       "id": "tpl_1",

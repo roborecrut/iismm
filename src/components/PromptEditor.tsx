@@ -836,7 +836,7 @@ function RichPreviewRenderer({
 
       {/* Formatted Signature */}
       {signature && (
-        <div className="text-[11px] text-pink-700 pt-2 border-t border-pink-200/80 font-bold whitespace-pre-wrap">
+        <div className="text-[11px] text-pink-700 font-bold whitespace-pre-wrap mt-2">
           {renderInlineMarkdown(signature)}
         </div>
       )}
@@ -1839,6 +1839,7 @@ export default function PromptEditor({
     setStatusMessage(null);
 
     const { url: activeUrl, urls: activeUrls } = getActiveAttachmentData();
+    const effectiveButtons = (messageFormat === 'v2' && attachmentType !== 'none') ? [] : inlineButtons;
 
     try {
       await onPublishToTelegram(title.trim(), postText, selectedId || 'req_1', {
@@ -1848,7 +1849,7 @@ export default function PromptEditor({
         attachmentType,
         attachmentUrl: activeUrl,
         attachmentUrls: activeUrls,
-        inlineButtons,
+        inlineButtons: effectiveButtons,
         channels: selectedChannels
       });
       setStatusMessage({ 
@@ -3160,152 +3161,189 @@ export default function PromptEditor({
       </div>
 
       {/* INLINE BUTTONS CONSTRUCTOR */}
-      <div className="iirky-card-block rounded-2xl p-6 space-y-5">
-        <div className="flex justify-between items-center border-b border-pink-200 pb-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-              <Smartphone size={16} className="text-pink-600" />
-              <span>Конструктор инлайн-кнопок</span>
-            </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">Добавляйте интерактивные кнопки под сообщением</p>
+      {messageFormat === 'v2' && attachmentType !== 'none' ? (
+        <div className="iirky-card-block rounded-2xl p-5 space-y-2 bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 shadow-2xs">
+          <div className="flex items-center space-x-2 text-xs font-bold text-slate-800">
+            <Smartphone size={16} className="text-pink-600 shrink-0" />
+            <span>Инлайн-кнопки отключены для медиафайлов в Markdown V2</span>
           </div>
-
-          <button
-            type="button"
-            onClick={handleAddButtonRow}
-            className="flex items-center space-x-1.5 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer shadow-2xs transition-all"
-          >
-            <Plus size={14} />
-            <span>Ряд кнопок</span>
-          </button>
+          <p className="text-[11px] text-slate-600">
+            В Telegram прикрепленные медиафайлы (фото, видео, кружочки, аудио, документы, альбомы) в формате Markdown V2 отправляются с подписью к медиа. Кнопки в этом режиме отключены. Для использования инлайн-кнопок выберите формат <strong>Markdown Rich</strong> или переключите вложение на <strong>Без медиа</strong>.
+          </p>
         </div>
+      ) : (
+        <div className="iirky-card-block rounded-2xl p-6 space-y-5">
+          <div className="flex justify-between items-center border-b border-pink-200 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                <Smartphone size={16} className="text-pink-600" />
+                <span>Конструктор инлайн-кнопок</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Добавляйте интерактивные кнопки под сообщением</p>
+            </div>
 
-        {/* Rows of Button Builders */}
-        {inlineButtons.length === 0 ? (
-          <div className="text-xs text-slate-700 italic bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 p-4 rounded-xl border border-pink-300 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
-            <span>Инлайн-кнопки по умолчанию выключены. Нажмите «Включить кнопки», чтобы добавить интерактивную клавиатуру под постом.</span>
             <button
               type="button"
               onClick={handleAddButtonRow}
-              className="bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 cursor-pointer shadow-2xs hover:opacity-95 transition-all"
+              className="flex items-center space-x-1.5 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer shadow-2xs transition-all"
             >
-              Включить кнопки
+              <Plus size={14} />
+              <span>Ряд кнопок</span>
             </button>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {inlineButtons.map((row, rIdx) => (
-              <div key={rIdx} className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 p-4 rounded-xl border border-pink-300 space-y-3 shadow-2xs">
-                <div className="flex justify-between items-center text-xs text-slate-600 border-b border-pink-200/80 pb-2">
-                  <span className="font-mono font-bold text-slate-800">Ряд #{rIdx + 1}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleAddButtonToRow(rIdx)}
-                    className="text-pink-600 hover:text-pink-700 font-bold text-[11px] cursor-pointer"
-                  >
-                    + Кнопка в ряд
-                  </button>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {row.map((btn, bIdx) => (
-                    <div key={btn.id || bIdx} className="bg-white/90 p-3 rounded-xl border border-pink-200 space-y-2 relative shadow-2xs">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveButton(rIdx, bIdx)}
-                        className="absolute right-2 top-2 text-rose-500 hover:text-rose-600 p-1 cursor-pointer"
-                        title="Удалить кнопку"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase">Текст кнопки</label>
-                        <input
-                          type="text"
-                          value={btn.text}
-                          onChange={(e) => handleUpdateButton(rIdx, bIdx, 'text', e.target.value)}
-                          className="w-full bg-transparent border border-pink-200 rounded px-2 py-1 text-xs text-slate-900 font-semibold"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[9px] font-mono text-slate-500 uppercase">Тип</label>
-                          <select
-                            value={btn.type}
-                            onChange={(e) => handleUpdateButton(rIdx, bIdx, 'type', e.target.value as any)}
-                            className="w-full bg-transparent border border-pink-200 rounded px-2 py-1 text-[11px] text-slate-900 font-semibold"
-                          >
-                            <option value="url">Ссылка (URL)</option>
-                            <option value="callback">Callback</option>
-                            <option value="webapp">Web App</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-[9px] font-mono text-slate-500 uppercase">Цветовой стиль</label>
-                          <select
-                            value={btn.style || 'default'}
-                            onChange={(e) => handleUpdateButton(rIdx, bIdx, 'style', e.target.value as any)}
-                            className="w-full bg-transparent border border-pink-200 rounded px-2 py-1 text-[11px] text-slate-900 font-semibold"
-                          >
-                            <option value="default">Дефолтный (Светлый)</option>
-                            <option value="primary">Градиент (Primary)</option>
-                            <option value="success">Розовый (Акцент)</option>
-                            <option value="danger">Оранжевый (Danger)</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase">Ссылка / Callback</label>
-                        <input
-                          type="text"
-                          value={btn.url || btn.callbackData || ''}
-                          onChange={(e) => handleUpdateButton(rIdx, bIdx, btn.type === 'url' || btn.type === 'webapp' ? 'url' : 'callbackData', e.target.value)}
-                          className="w-full bg-transparent border border-pink-200 rounded px-2 py-1 text-[11px] text-slate-900 font-mono"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* LIVE BUTTONS KEYBOARD PREVIEW */}
-        {inlineButtons.length > 0 && (
-          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 p-4 rounded-xl border border-pink-300 space-y-2 shadow-2xs">
-            <span className="text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider block">
-              👁 Живой предпросмотр клавиатуры кнопок:
-            </span>
-            <div className="space-y-2 max-w-xl mx-auto">
+          {/* Rows of Button Builders */}
+          {inlineButtons.length === 0 ? (
+            <div className="text-xs text-slate-700 italic bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 p-4 rounded-xl border border-pink-300 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+              <span>Инлайн-кнопки по умолчанию выключены. Нажмите «Включить кнопки», чтобы добавить интерактивную клавиатуру под постом.</span>
+              <button
+                type="button"
+                onClick={handleAddButtonRow}
+                className="bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 cursor-pointer shadow-2xs hover:opacity-95 transition-all"
+              >
+                Включить кнопки
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
               {inlineButtons.map((row, rIdx) => (
-                <div key={rIdx} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}>
-                  {row.map((btn, bIdx) => {
-                    const styleKey = btn.style || 'default';
-                    let btnColorClasses = 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white shadow-2xs border border-white/40';
-                    if (styleKey === 'primary') btnColorClasses = 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white shadow-2xs border border-white/40';
-                    if (styleKey === 'success') btnColorClasses = 'bg-gradient-to-r from-pink-400 via-orange-400 to-pink-500 text-white shadow-2xs border border-white/40';
-                    if (styleKey === 'danger') btnColorClasses = 'bg-gradient-to-r from-orange-400 via-pink-500 to-sky-400 text-white shadow-2xs border border-white/40';
+                <div key={rIdx} className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 p-4 rounded-xl border border-pink-300 space-y-3 shadow-2xs">
+                  <div className="flex justify-between items-center text-xs text-slate-600 border-b border-pink-200/80 pb-2">
+                    <span className="font-mono font-bold text-slate-800">Ряд #{rIdx + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleAddButtonToRow(rIdx)}
+                      className="text-pink-600 hover:text-pink-700 font-bold text-[11px] cursor-pointer"
+                    >
+                      + Кнопка в ряд
+                    </button>
+                  </div>
 
-                    return (
-                      <div
-                        key={btn.id || bIdx}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold text-center truncate cursor-pointer transition-all ${btnColorClasses}`}
-                      >
-                        {btn.text || 'Кнопка'}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {row.map((btn, bIdx) => (
+                      <div key={btn.id || bIdx} className="bg-white/90 p-3 rounded-xl border border-pink-200 space-y-2 relative shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveButton(rIdx, bIdx)}
+                          className="absolute right-2 top-2 text-rose-500 hover:text-rose-600 p-1 cursor-pointer"
+                          title="Удалить кнопку"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+
+                        <div>
+                          <label className="block text-[9px] font-mono text-slate-500 uppercase">Текст кнопки</label>
+                          <input
+                            type="text"
+                            value={btn.text}
+                            onChange={(e) => handleUpdateButton(rIdx, bIdx, 'text', e.target.value)}
+                            className="w-full bg-transparent border border-pink-200 rounded px-2 py-1 text-xs text-slate-900 font-semibold"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase">Тип</label>
+                            <select
+                              value={btn.type}
+                              onChange={(e) => handleUpdateButton(rIdx, bIdx, 'type', e.target.value as any)}
+                              className="w-full bg-transparent border border-pink-200 rounded px-2 py-1 text-[11px] text-slate-900 font-semibold"
+                            >
+                              <option value="url">Ссылка (URL)</option>
+                              <option value="callback">Callback</option>
+                              <option value="webapp">Web App</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase">Цветовой стиль (Telegram Bot API)</label>
+                            <select
+                              value={btn.style || 'default'}
+                              onChange={(e) => handleUpdateButton(rIdx, bIdx, 'style', e.target.value as any)}
+                              className="w-full bg-transparent border border-pink-200 rounded px-2 py-1 text-[11px] text-slate-900 font-semibold"
+                            >
+                              <option value="default">default — Серая (Стандартная)</option>
+                              <option value="primary">primary — Синяя (Меню / Навигация)</option>
+                              <option value="success">success — Зелёная (Оплата / Действие)</option>
+                              <option value="danger">danger — Красная (Удаление / Отмена)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-mono text-slate-500 uppercase">Ссылка / Callback</label>
+                          <input
+                            type="text"
+                            value={btn.url || btn.callbackData || ''}
+                            onChange={(e) => handleUpdateButton(rIdx, bIdx, btn.type === 'url' || btn.type === 'webapp' ? 'url' : 'callbackData', e.target.value)}
+                            className="w-full bg-transparent border border-pink-200 rounded px-2 py-1 text-[11px] text-slate-900 font-mono"
+                          />
+                        </div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-      </div>
+          )}
+
+          {/* LIVE BUTTONS KEYBOARD PREVIEW */}
+          {inlineButtons.length > 0 && (
+            <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 p-4 rounded-xl border border-pink-300 space-y-2 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider block">
+                  👁 Живой предпросмотр клавиатуры кнопок:
+                </span>
+                <div className="flex items-center space-x-3 text-[10px] text-slate-600 font-mono">
+                  <span className="flex items-center space-x-1"><span className="text-pink-600 font-bold">↗</span><span>Ссылка (URL)</span></span>
+                  <span className="flex items-center space-x-1"><span className="text-sky-600 font-bold">⊞</span><span>Web App (Mini App)</span></span>
+                  <span className="flex items-center space-x-1"><span className="text-amber-600 font-bold">⚡</span><span>Callback</span></span>
+                </div>
+              </div>
+              <div className="space-y-2 max-w-xl mx-auto">
+                {inlineButtons.map((row, rIdx) => (
+                  <div key={rIdx} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}>
+                    {row.map((btn, bIdx) => {
+                      const styleKey = btn.style || 'default';
+                      let btnColorClasses = 'bg-[#e5e9ef] hover:bg-[#d8dfe8] text-[#1c242f] shadow-2xs border border-[#cbd3dd]';
+                      if (styleKey === 'primary') {
+                        btnColorClasses = 'bg-[#2481cc] hover:bg-[#1d70b3] text-white shadow-2xs border border-[#1b6ca8]';
+                      } else if (styleKey === 'success') {
+                        btnColorClasses = 'bg-[#2fa84f] hover:bg-[#258d41] text-white shadow-2xs border border-[#1f7836]';
+                      } else if (styleKey === 'danger') {
+                        btnColorClasses = 'bg-[#e53935] hover:bg-[#c62828] text-white shadow-2xs border border-[#b71c1c]';
+                      }
+
+                      const isWebApp = btn.type === 'webapp';
+                      const isUrl = btn.type === 'url' || (!btn.type && Boolean(btn.url));
+                      const isCallback = btn.type === 'callback';
+
+                      return (
+                        <div
+                          key={btn.id || bIdx}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold text-center truncate cursor-pointer transition-all flex items-center justify-center space-x-1.5 ${btnColorClasses}`}
+                          title={isWebApp ? `Web App: ${btn.url || 'https://...'}` : isUrl ? `Ссылка: ${btn.url || 'https://...'}` : `Callback: ${btn.callbackData || btn.text}`}
+                        >
+                          {isWebApp && (
+                            <span className="text-xs font-bold shrink-0 opacity-90" title="Web App">⊞</span>
+                          )}
+                          <span className="truncate">{btn.text || 'Кнопка'}</span>
+                          {isUrl && !isWebApp && (
+                            <span className="text-[11px] font-bold shrink-0 opacity-80" title="Внешняя ссылка">↗</span>
+                          )}
+                          {isCallback && (
+                            <span className="text-[10px] font-bold shrink-0 opacity-70" title="Callback действие">⚡</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* AI Text Generation Field */}
       <div className="iirky-card-block rounded-2xl p-6 space-y-4">
@@ -3627,7 +3665,7 @@ export default function PromptEditor({
 
           {/* Formatted Signature if present in V2 */}
           {messageFormat === 'v2' && signature && (
-            <div className="text-[11px] text-pink-700 pt-2 border-t border-pink-200/80 font-bold whitespace-pre-wrap">
+            <div className="text-[11px] text-pink-700 font-bold whitespace-pre-wrap mt-2">
               {renderFormattedText(signature, 'v2')}
             </div>
           )}
@@ -3639,16 +3677,24 @@ export default function PromptEditor({
           </div>
 
           {/* Inline Keyboard Buttons */}
-          {inlineButtons.length > 0 && (
+          {inlineButtons.length > 0 && !(messageFormat === 'v2' && attachmentType !== 'none') && (
             <div className="pt-2 space-y-1.5 border-t border-pink-200">
               {inlineButtons.map((row, rIdx) => (
                 <div key={rIdx} className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}>
                   {row.map((btn, bIdx) => {
                     const styleKey = btn.style || 'default';
-                    let btnColorClasses = 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border border-white/40 shadow-2xs';
-                    if (styleKey === 'primary') btnColorClasses = 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border border-white/40 shadow-2xs';
-                    if (styleKey === 'success') btnColorClasses = 'bg-gradient-to-r from-pink-400 via-orange-400 to-pink-500 text-white border border-white/40 shadow-2xs';
-                    if (styleKey === 'danger') btnColorClasses = 'bg-gradient-to-r from-orange-400 via-pink-500 to-sky-400 text-white border border-white/40 shadow-2xs';
+                    let btnColorClasses = 'bg-[#e5e9ef] hover:bg-[#d8dfe8] text-[#1c242f] border border-[#cbd3dd] shadow-2xs';
+                    if (styleKey === 'primary') {
+                      btnColorClasses = 'bg-[#2481cc] hover:bg-[#1d70b3] text-white border border-[#1b6ca8] shadow-2xs';
+                    } else if (styleKey === 'success') {
+                      btnColorClasses = 'bg-[#2fa84f] hover:bg-[#258d41] text-white border border-[#1f7836] shadow-2xs';
+                    } else if (styleKey === 'danger') {
+                      btnColorClasses = 'bg-[#e53935] hover:bg-[#c62828] text-white border border-[#b71c1c] shadow-2xs';
+                    }
+
+                    const isWebApp = btn.type === 'webapp';
+                    const isUrl = btn.type === 'url' || (!btn.type && Boolean(btn.url));
+                    const isCallback = btn.type === 'callback';
 
                     return (
                       <a
@@ -3656,9 +3702,19 @@ export default function PromptEditor({
                         href={btn.url || '#'}
                         target="_blank"
                         rel="noreferrer"
-                        className={`px-2.5 py-2 rounded-xl text-[11px] font-bold text-center truncate block transition-all ${btnColorClasses}`}
+                        className={`px-2.5 py-2 rounded-xl text-[11px] font-bold text-center truncate flex items-center justify-center space-x-1.5 transition-all ${btnColorClasses}`}
+                        title={isWebApp ? `Web App: ${btn.url || 'https://...'}` : isUrl ? `Ссылка: ${btn.url || 'https://...'}` : `Callback: ${btn.callbackData || btn.text}`}
                       >
-                        {btn.text || 'Кнопка'}
+                        {isWebApp && (
+                          <span className="text-xs font-bold shrink-0 opacity-90" title="Web App">⊞</span>
+                        )}
+                        <span className="truncate">{btn.text || 'Кнопка'}</span>
+                        {isUrl && !isWebApp && (
+                          <span className="text-[11px] font-bold shrink-0 opacity-80" title="Ссылка">↗</span>
+                        )}
+                        {isCallback && (
+                          <span className="text-[10px] font-bold shrink-0 opacity-70" title="Callback действие">⚡</span>
+                        )}
                       </a>
                     );
                   })}

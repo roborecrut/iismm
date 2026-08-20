@@ -50,6 +50,9 @@ function scheduleDailyBackup() {
 }
 
 import { getSQLiteDB as getModularSQLiteDB, saveDatabaseToDisk } from './db/index';
+import { DB } from './db';
+import { seedEssentialFiles } from './db/filesTable';
+import { initTeamsTable, seedDefaultTeams } from './db/teamsTable';
 
 export function normalizeUserId(userId?: string | number): string {
   if (!userId) return '16926299042';
@@ -971,7 +974,6 @@ function initSchema(db: Database) {
 
   // Ensure SQLite data is populated and synchronized from database.json if empty
   try {
-    const { DB } = require('./db');
     // Sync channels
     const channelsCheck = db.exec("SELECT COUNT(*) as cnt FROM channels");
     const channelsCount = Number(channelsCheck[0]?.values[0]?.[0] || 0);
@@ -1022,13 +1024,11 @@ function initSchema(db: Database) {
 
   // Ensure essential files are seeded
   try {
-    const { seedEssentialFiles } = require('./db/filesTable');
     seedEssentialFiles(db);
   } catch (e) {}
 
   // Ensure teams table is initialized and seeded
   try {
-    const { initTeamsTable, seedDefaultTeams } = require('./db/teamsTable');
     initTeamsTable(db);
     seedDefaultTeams(db);
   } catch (e) {}

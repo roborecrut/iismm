@@ -1,7 +1,7 @@
 import initSqlJs, { Database } from 'sql.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { initUsersTable, insertOrUpdateUserInDb, insertDefaultUserInDb } from './usersTable';
+import { initUsersTable, insertDefaultUserInDb } from './usersTable';
 import { initPostsTable } from './postsTable';
 import { initChannelsTable } from './channelsTable';
 import { initSceneriesTable } from './sceneriesTable';
@@ -19,9 +19,17 @@ import { initTeamsTable } from './teamsTable';
 import { DEFAULT_PARSED_USERS } from './defaultParsedUsers';
 
 let dbInstance: Database | null = null;
+let isInitializing = false;
+let initPromise: Promise<Database> | null = null;
+
 const dbFilePath = path.join(process.cwd(), 'app.sqlite');
+const backupDbFilePath = path.join(process.cwd(), 'app.sqlite.bak');
 const legacyDbFilePath = path.join(process.cwd(), 'database.sqlite');
+const backupsDir = path.join(process.cwd(), 'backups');
+
 let backupTimerInitialized = false;
+let isSaving = false;
+let saveQueued = false;
 
 function scheduleDailyBackup() {
   if (backupTimerInitialized) return;
@@ -39,14 +47,13 @@ function scheduleDailyBackup() {
         lastBackupDate = dateStr;
         saveDatabaseToDisk();
         
-        const backupDir = path.join(process.cwd(), 'backups');
-        if (!fs.existsSync(backupDir)) {
-          fs.mkdirSync(backupDir, { recursive: true });
+        if (!fs.existsSync(backupsDir)) {
+          fs.mkdirSync(backupsDir, { recursive: true });
         }
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const backupFileName = `app.sqlite.backup.${timestamp}`;
-        const backupPath = path.join(backupDir, backupFileName);
+        const backupPath = path.join(backupsDir, backupFileName);
 
         if (fs.existsSync(dbFilePath)) {
           fs.copyFileSync(dbFilePath, backupPath);
@@ -54,7 +61,7 @@ function scheduleDailyBackup() {
         }
       }
 
-      // Periodically check monthly tariff accruals (every hour)
+      // Periodically check monthly tariff accruals
       if (dbInstance) {
         checkAndApplyMonthlyTariffs(dbInstance);
       }
@@ -108,108 +115,170 @@ export function checkAndApplyMonthlyTariffs(db: Database) {
   }
 }
 
-export async function getSQLiteDB(): Promise<Database> {
-  if (dbInstance) return dbInstance;
-
-  const SQL = await initSqlJs();
-  const fileToLoad = fs.existsSync(dbFilePath) 
-    ? dbFilePath 
-    : (fs.existsSync(legacyDbFilePath) ? legacyDbFilePath : null);
-
-  if (fileToLoad) {
-    try {
-      const fileBuffer = fs.readFileSync(fileToLoad);
-      if (fileBuffer.length === 0) {
-        throw new Error('Database file is 0 bytes');
-      }
-      dbInstance = new SQL.Database(fileBuffer);
-      dbInstance.exec("PRAGMA integrity_check;");
-    } catch (e) {
-      console.error('[SQLite] Unreadable DB file, initializing fresh:', e);
-      try {
-        const timestamp = Date.now();
-        if (fs.existsSync(dbFilePath)) {
-          fs.renameSync(dbFilePath, `${dbFilePath}.corrupt.${timestamp}`);
-        }
-        if (fs.existsSync(legacyDbFilePath)) {
-          fs.renameSync(legacyDbFilePath, `${legacyDbFilePath}.corrupt.${timestamp}`);
-        }
-      } catch (renameErr) {
-        console.error('[SQLite] Failed to rename corrupt db file:', renameErr);
-      }
-      dbInstance = new SQL.Database();
-    }
-  } else {
-    dbInstance = new SQL.Database();
-  }
-
-  // 1. High performance PRAGMAs
-  try {
-    dbInstance.exec("PRAGMA busy_timeout = 5000;");
-    dbInstance.exec("PRAGMA cache_size = -64000;"); // 64MB memory cache
-    dbInstance.exec("PRAGMA temp_store = MEMORY;");
-  } catch (e) {}
-
-  // 2. Initialize modular tables
-  initUsersTable(dbInstance);
-  initTariffsTable(dbInstance);
-  initNotificationsTable(dbInstance);
-  initTransactionsTable(dbInstance);
-  initPostsTable(dbInstance);
-  initChannelsTable(dbInstance);
-  initSceneriesTable(dbInstance);
-  initPromptsTable(dbInstance);
-  initBlogPostsTable(dbInstance);
-  initCronTable(dbInstance);
-  initFilesTable(dbInstance);
-  initAIAgentsTable(dbInstance);
-  initTelegramBotTable(dbInstance);
-  initHistoryLogsTable(dbInstance);
-  initTeamsTable(dbInstance);
-
-  // 3. Seed default parsed Telegram users into users table
-  try {
-    for (const user of DEFAULT_PARSED_USERS) {
-      insertDefaultUserInDb(dbInstance, user);
-    }
-  } catch (e) {
-    console.error('[SQLite DB] Error seeding default parsed users:', e);
-  }
-
-  // 4. Seed essential permanent file_storage assets
-  try {
-    seedEssentialFiles(dbInstance);
-  } catch (e) {
-    console.error('[SQLite DB] Error seeding essential files:', e);
-  }
-
-  // 5. Initial monthly tariff check
-  try {
-    checkAndApplyMonthlyTariffs(dbInstance);
-  } catch (e) {}
-
-  saveDatabaseToDisk();
-  scheduleDailyBackup();
-
+export function getSyncSQLiteDB(): Database | null {
   return dbInstance;
 }
 
-export function saveDatabaseToDisk() {
+export async function getSQLiteDB(): Promise<Database> {
+  if (dbInstance) return dbInstance;
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    const SQL = await initSqlJs();
+    
+    // Collect potential candidates in order of preference
+    const candidatePaths: string[] = [
+      dbFilePath,
+      backupDbFilePath,
+      legacyDbFilePath
+    ];
+
+    // Also look inside backups directory if available
+    try {
+      if (fs.existsSync(backupsDir)) {
+        const files = fs.readdirSync(backupsDir)
+          .filter(f => f.startsWith('app.sqlite.backup.'))
+          .sort()
+          .reverse();
+        if (files.length > 0) {
+          candidatePaths.push(path.join(backupsDir, files[0]));
+        }
+      }
+    } catch (e) {}
+
+    let loadedDb: Database | null = null;
+
+    for (const candidate of candidatePaths) {
+      if (!fs.existsSync(candidate)) continue;
+      try {
+        const fileBuffer = fs.readFileSync(candidate);
+        if (fileBuffer.length < 512) continue; // SQLite header is 100 bytes + page
+        
+        const testDb = new SQL.Database(fileBuffer);
+        const check = testDb.exec("PRAGMA integrity_check;");
+        if (check && check[0]?.values?.[0]?.[0] === 'ok') {
+          console.log(`[SQLite] Successfully loaded valid database from: ${path.basename(candidate)}`);
+          loadedDb = testDb;
+          break;
+        }
+      } catch (err: any) {
+        console.warn(`[SQLite] Candidate ${path.basename(candidate)} failed validation: ${err.message}`);
+      }
+    }
+
+    if (loadedDb) {
+      dbInstance = loadedDb;
+    } else {
+      console.warn('[SQLite] No valid database file found, creating fresh database instance');
+      dbInstance = new SQL.Database();
+    }
+
+    // High performance PRAGMAs
+    try {
+      dbInstance.exec("PRAGMA busy_timeout = 5000;");
+      dbInstance.exec("PRAGMA cache_size = -64000;");
+      dbInstance.exec("PRAGMA temp_store = MEMORY;");
+    } catch (e) {}
+
+    // Initialize all modular tables safely
+    initUsersTable(dbInstance);
+    initTariffsTable(dbInstance);
+    initNotificationsTable(dbInstance);
+    initTransactionsTable(dbInstance);
+    initPostsTable(dbInstance);
+    initChannelsTable(dbInstance);
+    initSceneriesTable(dbInstance);
+    initPromptsTable(dbInstance);
+    initBlogPostsTable(dbInstance);
+    initCronTable(dbInstance);
+    initFilesTable(dbInstance);
+    initAIAgentsTable(dbInstance);
+    initTelegramBotTable(dbInstance);
+    initHistoryLogsTable(dbInstance);
+    initTeamsTable(dbInstance);
+
+    // Seed default parsed users only if users table has few rows
+    try {
+      const uCountRes = dbInstance.exec("SELECT COUNT(*) FROM users");
+      const uCount = uCountRes[0]?.values[0]?.[0] || 0;
+      if (Number(uCount) < 5) {
+        for (const user of DEFAULT_PARSED_USERS) {
+          insertDefaultUserInDb(dbInstance, user);
+        }
+      }
+    } catch (e) {
+      console.error('[SQLite DB] Error checking/seeding default users:', e);
+    }
+
+    // Seed essential files
+    try {
+      seedEssentialFiles(dbInstance);
+    } catch (e) {
+      console.error('[SQLite DB] Error seeding essential files:', e);
+    }
+
+    // Initial check
+    try {
+      checkAndApplyMonthlyTariffs(dbInstance);
+    } catch (e) {}
+
+    // Flush and start daily backup
+    saveDatabaseToDisk();
+    scheduleDailyBackup();
+
+    return dbInstance;
+  })();
+
+  return initPromise;
+}
+
+export function saveDatabaseToDisk(): void {
   if (!dbInstance) return;
-  try {
-    const data = dbInstance.export();
-    const buffer = Buffer.from(data);
 
-    // Save atomically to dbFilePath
-    const tmpPath = `${dbFilePath}.tmp`;
-    fs.writeFileSync(tmpPath, buffer);
-    fs.renameSync(tmpPath, dbFilePath);
-
-    // Save atomically to legacyDbFilePath
-    const tmpLegacyPath = `${legacyDbFilePath}.tmp`;
-    fs.writeFileSync(tmpLegacyPath, buffer);
-    fs.renameSync(tmpLegacyPath, legacyDbFilePath);
-  } catch (e) {
-    console.error('[SQLite] Error saving DB to disk:', e);
+  if (isSaving) {
+    saveQueued = true;
+    return;
   }
+
+  isSaving = true;
+
+  // Use setImmediate to ensure current event loop step / statements are completed
+  setImmediate(() => {
+    try {
+      if (!dbInstance) return;
+      const data = dbInstance.export();
+      const buffer = Buffer.from(data);
+
+      if (buffer.length < 512) {
+        console.error('[SQLite] Refusing to save corrupt/empty buffer, length:', buffer.length);
+        return;
+      }
+
+      // 1. Atomic write to random temp file
+      const randomSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const tmpPath = `${dbFilePath}.${randomSuffix}.tmp`;
+      fs.writeFileSync(tmpPath, buffer);
+
+      // 2. Atomic rename to primary db
+      fs.renameSync(tmpPath, dbFilePath);
+
+      // 3. Keep backup copies for absolute data protection
+      try {
+        fs.copyFileSync(dbFilePath, backupDbFilePath);
+      } catch (e) {}
+
+      try {
+        fs.copyFileSync(dbFilePath, legacyDbFilePath);
+      } catch (e) {}
+
+    } catch (e) {
+      console.error('[SQLite] Error saving DB to disk:', e);
+    } finally {
+      isSaving = false;
+      if (saveQueued) {
+        saveQueued = false;
+        saveDatabaseToDisk();
+      }
+    }
+  });
 }

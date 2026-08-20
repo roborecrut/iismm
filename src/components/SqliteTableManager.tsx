@@ -277,27 +277,28 @@ export default function SqliteTableManager({
       const res = await fetch('/api/db/tables');
       if (res.ok) {
         const data = await res.json();
-        if (data.tables) setTablesInfo(data.tables);
+        if (Array.isArray(data.tables)) setTablesInfo(data.tables);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Error fetching tables info:', e);
     }
   };
 
   // Fetch rows for selected table
   const fetchTableRows = async (table: string) => {
+    if (!table) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/db/table/${table}`);
+      const res = await fetch(`/api/db/table/${encodeURIComponent(table)}`);
       if (res.ok) {
         const data = await res.json();
         setTableData({ columns: data.columns || [], rows: data.rows || [] });
       } else {
         const err = await res.json();
-        triggerToast('error', err.error || 'Ошибка загрузки таблицы');
+        console.warn('Error loading table:', err);
       }
     } catch (e) {
-      triggerToast('error', 'Сетевая ошибка загрузки данных');
+      console.warn('Error fetching table rows:', e);
     } finally {
       setLoading(false);
     }
@@ -587,6 +588,9 @@ export default function SqliteTableManager({
     }
   };
 
+  // Combined dynamic tables list
+  const displayTables = Array.from(new Set([...TABLES, ...tablesInfo.map(t => t.tableName)]));
+
   // Filter rows
   const filteredRows = tableData.rows.filter(row => {
     if (!searchTerm.trim()) return true;
@@ -723,7 +727,7 @@ export default function SqliteTableManager({
 
         {/* Tables Grid Pills */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 pt-1">
-          {TABLES.map(tableName => {
+          {displayTables.map(tableName => {
             const info = tablesInfo.find(t => t.tableName === tableName);
             const isSelected = selectedTable === tableName;
             return (

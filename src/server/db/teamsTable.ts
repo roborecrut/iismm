@@ -48,12 +48,47 @@ export function initTeamsTable(db: Database) {
 }
 
 /**
+ * Helper to fetch a raw team row without triggering any sync/recursion.
+ */
+function getRawTeamRecord(db: Database, teamId: string): { id: string; ownerId: string; members: TeamMember[]; channels: string[] } | null {
+  try {
+    const cleanId = String(teamId || '').trim();
+    if (!cleanId) return null;
+    const res = db.exec(`SELECT id, owner_id, members, channels FROM teams WHERE id = '${cleanId}' OR id = 'team_${cleanId}' OR invite_code = '${cleanId}' LIMIT 1`);
+    if (!res || res.length === 0 || !res[0].values.length) return null;
+    const row = res[0].values[0];
+    const idVal = String(row[0] || '');
+    const ownerIdVal = String(row[1] || '');
+    let membersVal: TeamMember[] = [];
+    try {
+      if (row[2]) membersVal = typeof row[2] === 'string' ? JSON.parse(row[2] as string) : (row[2] as any);
+    } catch (e) {}
+    let channelsVal: string[] = [];
+    try {
+      if (row[3]) channelsVal = typeof row[3] === 'string' ? JSON.parse(row[3] as string) : (row[3] as any);
+    } catch (e) {}
+    return {
+      id: idVal,
+      ownerId: ownerIdVal,
+      members: membersVal,
+      channels: channelsVal
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
  * Synchronize channels for a team by fetching all channels registered in the 'channels' table
  * for the owner and all team members. Updates the 'channels' column in 'teams' table.
  */
-export function syncTeamChannelsFromDb(db: Database, teamId: string): string[] {
+export function syncTeamChannelsFromDb(
+  db: Database,
+  teamId: string,
+  preloadedTeam?: { id?: string; ownerId?: string; members?: TeamMember[]; channels?: string[] }
+): string[] {
   try {
-    const team = getTeamById(db, teamId);
+    const team = preloadedTeam || getRawTeamRecord(db, teamId);
     if (!team) return [];
 
     // Collect all participant user IDs
@@ -84,11 +119,14 @@ export function syncTeamChannelsFromDb(db: Database, teamId: string): string[] {
 
     const filteredChannels = actualChannels.filter(c => c !== '@shishkarnem' && c !== '@BorgheseClub' && c !== '@Rentrop_HR_bot');
 
-    // Update in database
-    db.run(
-      `UPDATE teams SET channels = ? WHERE id = ?`,
-      [JSON.stringify(filteredChannels), team.id]
-    );
+    const targetId = team.id || teamId;
+    if (targetId) {
+      // Update in database
+      db.run(
+        `UPDATE teams SET channels = ? WHERE id = ?`,
+        [JSON.stringify(filteredChannels), targetId]
+      );
+    }
 
     return filteredChannels;
   } catch (e) {
@@ -206,17 +244,22 @@ export function getTeamsByOwnerOrMember(db: Database, userId: string): TeamRecor
         obj[col] = row[idx];
       });
 
-      // Synchronize channels from channels table for all team members
-      const teamId = obj.id;
-      const syncedChannels = syncTeamChannelsFromDb(db, teamId);
+      const members = obj.members ? (typeof obj.members === 'string' ? JSON.parse(obj.members) : obj.members) : [];
+      const channels = obj.channels ? (typeof obj.channels === 'string' ? JSON.parse(obj.channels) : obj.channels) : [];
+      const syncedChannels = syncTeamChannelsFromDb(db, obj.id, {
+        id: obj.id,
+        ownerId: obj.owner_id,
+        members,
+        channels
+      });
 
       return {
         id: obj.id,
         ownerId: obj.owner_id,
         name: obj.name || 'Команда',
         inviteCode: obj.invite_code || obj.id || '',
-        members: obj.members ? (typeof obj.members === 'string' ? JSON.parse(obj.members) : obj.members) : [],
-        channels: syncedChannels.length > 0 ? syncedChannels : (obj.channels ? JSON.parse(obj.channels) : []),
+        members,
+        channels: syncedChannels.length > 0 ? syncedChannels : channels,
         createdAt: obj.created_at || new Date().toISOString()
       };
     });
@@ -263,7 +306,12 @@ export function addMemberToTeamInDb(db: Database, teamIdOrOwnerId: string, membe
     );
 
     // Sync channels with newly added member's channels
-    const syncedChannels = syncTeamChannelsFromDb(db, team.id);
+    const syncedChannels = syncTeamChannelsFromDb(db, team.id, {
+      id: team.id,
+      ownerId: team.ownerId,
+      members: existingMembers,
+      channels: team.channels
+    });
     team.channels = syncedChannels;
 
     return team;
@@ -296,7 +344,12 @@ export function removeMemberFromTeamInDb(db: Database, teamIdOrOwnerId: string, 
     );
 
     // Sync channels after removal
-    const syncedChannels = syncTeamChannelsFromDb(db, team.id);
+    const syncedChannels = syncTeamChannelsFromDb(db, team.id, {
+      id: team.id,
+      ownerId: team.ownerId,
+      members: newMembers,
+      channels: team.channels
+    });
     team.channels = syncedChannels;
 
     return team;
@@ -319,15 +372,22 @@ export function getAllTeamsFromDb(db: Database): TeamRecord[] {
         obj[col] = row[idx];
       });
 
-      const syncedChannels = syncTeamChannelsFromDb(db, obj.id);
+      const members = obj.members ? (typeof obj.members === 'string' ? JSON.parse(obj.members) : obj.members) : [];
+      const channels = obj.channels ? (typeof obj.channels === 'string' ? JSON.parse(obj.channels) : obj.channels) : [];
+      const syncedChannels = syncTeamChannelsFromDb(db, obj.id, {
+        id: obj.id,
+        ownerId: obj.owner_id,
+        members,
+        channels
+      });
 
       return {
         id: obj.id,
         ownerId: obj.owner_id,
         name: obj.name || 'Команда',
         inviteCode: obj.invite_code || obj.id || '',
-        members: obj.members ? (typeof obj.members === 'string' ? JSON.parse(obj.members) : obj.members) : [],
-        channels: syncedChannels.length > 0 ? syncedChannels : (obj.channels ? JSON.parse(obj.channels) : []),
+        members,
+        channels: syncedChannels.length > 0 ? syncedChannels : channels,
         createdAt: obj.created_at || new Date().toISOString()
       };
     });
@@ -349,15 +409,22 @@ export function getTeamById(db: Database, id: string): TeamRecord | null {
       obj[col] = row[idx];
     });
 
-    const syncedChannels = syncTeamChannelsFromDb(db, obj.id);
+    const members = obj.members ? (typeof obj.members === 'string' ? JSON.parse(obj.members) : obj.members) : [];
+    const channels = obj.channels ? (typeof obj.channels === 'string' ? JSON.parse(obj.channels) : obj.channels) : [];
+    const syncedChannels = syncTeamChannelsFromDb(db, obj.id, {
+      id: obj.id,
+      ownerId: obj.owner_id,
+      members,
+      channels
+    });
 
     return {
       id: obj.id,
       ownerId: obj.owner_id,
       name: obj.name || 'Команда',
       inviteCode: obj.invite_code || obj.id || '',
-      members: obj.members ? (typeof obj.members === 'string' ? JSON.parse(obj.members) : obj.members) : [],
-      channels: syncedChannels.length > 0 ? syncedChannels : (obj.channels ? JSON.parse(obj.channels) : []),
+      members,
+      channels: syncedChannels.length > 0 ? syncedChannels : channels,
       createdAt: obj.created_at || new Date().toISOString()
     };
   } catch (e) {

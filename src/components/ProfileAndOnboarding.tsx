@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserAccount } from '../types';
 import { 
   Sparkles, Wallet, ShieldCheck, Trophy, BadgeInfo, Play, ChevronRight, HelpCircle, Key, 
@@ -6,7 +6,7 @@ import {
   TrendingUp, MousePointer, BarChart3, Radio, Link, LayoutGrid, Award, ArrowUpRight, Plus, 
   DollarSign, User, Volume2, Lock, FileText, Users, Shield, BookOpen, Crown, Cpu, Copy, LogOut,
   CreditCard, Camera, Mail, Upload, Trash2, Edit2, Edit3, X, CheckSquare, Square, UserPlus, UserMinus, ShieldAlert,
-  Info, Flag, Ban, UserX, ExternalLink, AlertTriangle
+  Info, Flag, Ban, UserX, ExternalLink, AlertTriangle, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFileUpload } from '../hooks/useFileUpload';
@@ -923,6 +923,51 @@ export default function ProfileAndOnboarding({
   const [memberToRevoke, setMemberToRevoke] = useState<any | null>(null);
   const [isDeleteTeamModalOpen, setIsDeleteTeamModalOpen] = useState(false);
   const [inviteHandle, setInviteHandle] = useState('');
+  const [inviteUserCheckLoading, setInviteUserCheckLoading] = useState(false);
+  const [inviteFoundUser, setInviteFoundUser] = useState<any | null>(null);
+  const [inviteUserChecked, setInviteUserChecked] = useState(false);
+  const [inviteCheckError, setInviteCheckError] = useState<string | null>(null);
+
+  // Live validation for adding team member
+  useEffect(() => {
+    const clean = inviteHandle.trim();
+    if (!clean) {
+      setInviteFoundUser(null);
+      setInviteUserChecked(false);
+      setInviteCheckError(null);
+      setInviteUserCheckLoading(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setInviteUserCheckLoading(true);
+      setInviteCheckError(null);
+      try {
+        const res = await fetch(`/api/teams/check-user?handle=${encodeURIComponent(clean)}`);
+        const data = await res.json();
+        setInviteUserChecked(true);
+        if (data.success && data.found && data.user) {
+          setInviteFoundUser(data.user);
+          if (!data.user.allowInvites) {
+            setInviteCheckError(`Пользователь ${data.user.username || clean} отключил приглашения в команду.`);
+          } else {
+            setInviteCheckError(null);
+          }
+        } else {
+          setInviteFoundUser(null);
+          setInviteCheckError(`Пользователь ${clean.startsWith('@') ? clean : '@' + clean} не найден в базе данных сервиса.`);
+        }
+      } catch (e: any) {
+        setInviteUserChecked(true);
+        setInviteFoundUser(null);
+        setInviteCheckError('Ошибка проверки пользователя в базе');
+      } finally {
+        setInviteUserCheckLoading(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [inviteHandle]);
 
   const showTeamToast = (type: 'success' | 'error' | 'info', message: string) => {
     setTeamNotification({ type, message });
@@ -1399,13 +1444,29 @@ export default function ProfileAndOnboarding({
 
   const handleInviteCoworker = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteHandle) return;
-    const cleanHandle = inviteHandle.startsWith('@') ? inviteHandle : '@' + inviteHandle;
+    if (!inviteHandle.trim()) {
+      showTeamToast('error', 'Укажите @username или ID пользователя');
+      return;
+    }
+    if (!inviteFoundUser) {
+      showTeamToast('error', 'Пользователь не найден в базе данных. Нельзя добавить незарегистрированного пользователя.');
+      return;
+    }
+    if (inviteCheckError) {
+      showTeamToast('error', inviteCheckError);
+      return;
+    }
+    const cleanHandle = inviteFoundUser.username || (inviteHandle.startsWith('@') ? inviteHandle : '@' + inviteHandle);
     try {
       const res = await fetch('/api/teams/members', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ownerId: user.id || '16926299042', handle: cleanHandle })
+        body: JSON.stringify({ 
+          ownerId: user.id || '16926299042', 
+          handle: cleanHandle,
+          username: cleanHandle,
+          teamId: teamData?.id
+        })
       });
       const data = await res.json();
       if (data.success && data.team) {
@@ -1420,7 +1481,9 @@ export default function ProfileAndOnboarding({
           joinedAt: m.joinedAt
         })));
         setInviteHandle('');
-        showTeamToast('success', `Пользователь ${cleanHandle} успешно добавлен в команду и базу данных!`);
+        setInviteFoundUser(null);
+        setInviteUserChecked(false);
+        showTeamToast('success', `Пользователь ${cleanHandle} успешно добавлен в команду!`);
       } else {
         showTeamToast('error', data.error || 'Ошибка добавления участника');
       }
@@ -2687,31 +2750,86 @@ export default function ProfileAndOnboarding({
                 <span className="text-sm text-slate-900 font-bold block">Пригласить в команду</span>
               </div>
 
-              <form onSubmit={handleInviteCoworker} className="space-y-3.5">
+              <form onSubmit={handleInviteCoworker} className="space-y-3">
                 <div className="space-y-1.5">
                   <label className="text-sm text-slate-700 font-bold block">
                     Telegram имя пользователя (@username или ID)
                   </label>
-                  <input 
-                    type="text" 
-                    value={inviteHandle} 
-                    onChange={e => setInviteHandle(e.target.value)}
-                    placeholder="@ivan_smm_pro" 
-                    className="w-full bg-white/90 border border-pink-200 p-2.5 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-pink-400"
-                    required
-                  />
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      value={inviteHandle} 
+                      onChange={e => setInviteHandle(e.target.value)}
+                      placeholder="@ivan_smm_pro" 
+                      className="w-full bg-white/90 border border-pink-200 p-2.5 pr-9 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-pink-400"
+                      required
+                    />
+                    {inviteUserCheckLoading && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <Loader2 className="w-4 h-4 animate-spin text-pink-500" />
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="p-3 bg-gradient-to-r from-sky-50 via-pink-50 to-orange-50 border border-pink-200/70 rounded-xl space-y-1">
-                  <p className="text-sm text-slate-900 font-bold">Уровень доступа команды:</p>
-                  <p className="text-sm text-slate-700 leading-relaxed font-normal">
-                    Все добавленные участники получают доступ к публикации и планированию постов на привязанных каналах команды. Баланс списывается с владельца команды.
-                  </p>
-                </div>
+                {/* Verification result card */}
+                {inviteFoundUser && (
+                  <div className="p-3 bg-gradient-to-r from-sky-50 via-pink-50 to-orange-50 border border-pink-300 rounded-xl space-y-1.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-pink-700 flex items-center gap-1">
+                        <CheckCircle2 size={13} className="text-pink-600" />
+                        <span>Найден в базе данных</span>
+                      </span>
+                      <span className="text-xs font-bold text-slate-600 font-mono">
+                        ID: {inviteFoundUser.id}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2.5 pt-0.5">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs overflow-hidden">
+                        {inviteFoundUser.photoUrl ? (
+                          <img src={inviteFoundUser.photoUrl} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          (inviteFoundUser.displayName || inviteFoundUser.username || '?')[0].toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-900 truncate">
+                          {inviteFoundUser.displayName}
+                        </div>
+                        <div className="text-xs text-slate-600 truncate font-mono">
+                          {inviteFoundUser.username} {inviteFoundUser.tariff ? `• Тариф: ${inviteFoundUser.tariff}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {inviteUserChecked && !inviteFoundUser && !inviteUserCheckLoading && (
+                  <div className="p-3 bg-rose-50/90 border border-rose-200 rounded-xl space-y-1 text-left">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700">
+                      <AlertCircle size={14} className="shrink-0 text-rose-500" />
+                      <span>Пользователь не найден</span>
+                    </div>
+                    <p className="text-xs text-rose-600 leading-snug">
+                      Нельзя добавить пользователя, которого нет в базе. Пользователь должен предварительно зарегистрироваться на сервисе или запустить Telegram-бота.
+                    </p>
+                  </div>
+                )}
+
+                {inviteCheckError && inviteFoundUser && (
+                  <div className="p-2.5 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium">
+                    {inviteCheckError}
+                  </div>
+                )}
 
                 <button 
                   type="submit"
-                  className="w-full py-2.5 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 hover:opacity-95 text-white font-bold rounded-xl text-sm shadow-md cursor-pointer border border-pink-300 transition-all flex items-center justify-center gap-2 active:scale-95"
+                  disabled={!inviteFoundUser || inviteUserCheckLoading || !!inviteCheckError}
+                  className={`w-full py-2.5 bg-gradient-to-r from-sky-400 via-pink-400 via-orange-400 via-pink-400 to-sky-400 text-white font-bold rounded-xl text-sm shadow-md border border-pink-300 transition-all flex items-center justify-center gap-2 active:scale-95 ${
+                    !inviteFoundUser || inviteUserCheckLoading || !!inviteCheckError
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:opacity-95 cursor-pointer'
+                  }`}
                 >
                   <UserPlus size={16} />
                   <span>Добавить участника</span>

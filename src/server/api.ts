@@ -2207,13 +2207,22 @@ apiRouter.post('/publications/publish', async (req: Request, res: Response) => {
       details: result.error || 'Публикация отправлена в Telegram'
     });
 
-    res.json({
-      success: true,
-      publication,
-      simulated: result.simulated,
-      error: result.error,
-      updatedBalance
-    });
+    if (result.ok) {
+      res.json({
+        success: true,
+        publication,
+        simulated: result.simulated,
+        fallbackNotice: result.fallbackNotice,
+        updatedBalance
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        publication,
+        error: result.error || 'Не удалось отправить публикацию в Telegram',
+        updatedBalance
+      });
+    }
   } catch (error: any) {
     console.error('Error in publication endpoint:', error);
     res.status(500).json({ error: error.message || 'Ошибка при публикации' });
