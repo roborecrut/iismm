@@ -754,16 +754,29 @@ export default function ProfileAndOnboarding({
       const data = await res.json();
       if (res.ok && data.success) {
         alert(data.message || `Тариф успешно изменен на «${planName}»!`);
-        if (data.user && onUpdateUser) {
-          onUpdateUser({
-            ...user,
+        if (data.user) {
+          setLiveProfile(prev => ({
+            ...prev,
+            ...data.user,
             tariff: data.user.tariff,
             tariff_expires_at: data.user.tariff_expires_at,
-            premiumUntil: data.user.tariff_expires_at ? new Date(data.user.tariff_expires_at).toLocaleDateString('ru-RU') : user.premiumUntil,
+            tarif_date: data.user.tarif_date,
             balance: data.user.balance,
             balance_pay: data.user.balance_pay,
             balance_free: data.user.balance_free
-          });
+          }));
+          if (onUpdateUser) {
+            onUpdateUser({
+              ...user,
+              ...data.user,
+              tariff: data.user.tariff,
+              tariff_expires_at: data.user.tariff_expires_at,
+              premiumUntil: data.user.tariff_expires_at ? new Date(data.user.tariff_expires_at).toLocaleDateString('ru-RU') : user.premiumUntil,
+              balance: data.user.balance,
+              balance_pay: data.user.balance_pay,
+              balance_free: data.user.balance_free
+            });
+          }
         }
         await fetchTransactions();
         await fetchLiveProfile();
@@ -4707,9 +4720,43 @@ export default function ProfileAndOnboarding({
         {/* Tariff Transition Confirmation Modal */}
         {tariffConfirmModal && tariffConfirmModal.isOpen && (() => {
           const totalBalance = (Number(liveProfile.balance_pay || 0) + Number(liveProfile.balance_free || 0));
-          const neededAmount = tariffConfirmModal.amountRub || 0;
-          const isAffordable = totalBalance >= neededAmount;
+          const isFreePlan = (tariffConfirmModal.planName || '').toLowerCase().includes('старт') ||
+                             (tariffConfirmModal.planName || '').toLowerCase().includes('бесплатн') ||
+                             tariffConfirmModal.amountRub === 0;
+          const neededAmount = isFreePlan ? 0 : (tariffConfirmModal.amountRub || 0);
+          const isAffordable = isFreePlan || totalBalance >= neededAmount;
           const deficit = neededAmount - totalBalance;
+
+          // Format current expiry date
+          let currentExpiryStr = 'Бессрочно (базовый тариф)';
+          const activeExpiry = liveProfile.tariff_expires_at || user.tariff_expires_at;
+          if (activeExpiry) {
+            const d = new Date(activeExpiry);
+            if (!isNaN(d.getTime())) {
+              currentExpiryStr = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            }
+          } else if (user.premiumUntil && user.premiumUntil !== 'Бессрочно' && user.premiumUntil !== 'Не ограничен') {
+            currentExpiryStr = user.premiumUntil;
+          }
+
+          // Calculate projected new expiry date
+          let newExpiryDate: Date | null = null;
+          if (!isFreePlan) {
+            const now = new Date();
+            let baseDate = now;
+            if (activeExpiry) {
+              const d = new Date(activeExpiry);
+              if (!isNaN(d.getTime()) && d.getTime() > now.getTime()) {
+                baseDate = d;
+              }
+            }
+            const daysToAdd = (tariffConfirmModal.periodMonths || 1) * 30;
+            newExpiryDate = new Date(baseDate.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+          }
+
+          const projectedExpiryStr = newExpiryDate 
+            ? newExpiryDate.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            : 'Бессрочно';
 
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
@@ -4722,7 +4769,9 @@ export default function ProfileAndOnboarding({
                 <div className="flex justify-between items-center border-b border-pink-200/80 pb-3">
                   <div className="flex items-center gap-2">
                     <Crown className="w-5 h-5 text-pink-600" />
-                    <h3 className="font-bold text-base text-slate-900">Подключение тарифа «{tariffConfirmModal.planName}»</h3>
+                    <h3 className="font-bold text-base text-slate-900">
+                      {isFreePlan ? 'Переход на тариф «Старт»' : `Подключение тарифа «${tariffConfirmModal.planName}»`}
+                    </h3>
                   </div>
                   <button 
                     type="button"
@@ -4733,27 +4782,56 @@ export default function ProfileAndOnboarding({
                   </button>
                 </div>
 
-                <div className="p-4 bg-white/90 rounded-2xl border border-pink-200 space-y-3 shadow-inner">
-                  <div className="flex justify-between items-center text-sm font-semibold">
-                    <span className="text-slate-600">Период подписки:</span>
-                    <span className="text-slate-900 font-bold">
-                      {tariffConfirmModal.periodMonths} {tariffConfirmModal.periodMonths === 1 ? 'месяц' : tariffConfirmModal.periodMonths < 5 ? 'месяца' : 'месяцев'}
-                      {tariffConfirmModal.discountPercent > 0 && (
-                        <span className="ml-1.5 px-2 py-0.5 rounded-md bg-pink-100 text-pink-700 text-xs font-black">
-                          -{tariffConfirmModal.discountPercent}%
+                <div className="p-4 bg-white/90 rounded-2xl border border-pink-200 space-y-3 shadow-inner text-sm">
+                  {/* Current Active Expiry */}
+                  <div className="flex justify-between items-center font-medium">
+                    <span className="text-slate-600">Текущий тариф действует до:</span>
+                    <span className="text-slate-900 font-bold font-mono">
+                      {currentExpiryStr}
+                    </span>
+                  </div>
+
+                  {!isFreePlan && (
+                    <>
+                      {/* Selected Period */}
+                      <div className="flex justify-between items-center font-medium border-t border-pink-100 pt-2">
+                        <span className="text-slate-600">Период продления:</span>
+                        <span className="text-slate-900 font-bold">
+                          {tariffConfirmModal.periodMonths} {tariffConfirmModal.periodMonths === 1 ? 'месяц' : tariffConfirmModal.periodMonths < 5 ? 'месяца' : 'месяцев'}
+                          {tariffConfirmModal.discountPercent > 0 && (
+                            <span className="ml-1.5 px-2 py-0.5 rounded-md bg-pink-100 text-pink-700 text-xs font-black">
+                              -{tariffConfirmModal.discountPercent}%
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </span>
-                  </div>
+                      </div>
 
-                  <div className="flex justify-between items-center text-sm font-semibold border-t border-pink-100 pt-2">
-                    <span className="text-slate-600">Сумма к списанию:</span>
-                    <span className="text-pink-600 font-black font-mono text-base">
-                      {neededAmount.toLocaleString('ru-RU')} ИИрок 🪙
-                    </span>
-                  </div>
+                      {/* Projected Expiry */}
+                      <div className="flex justify-between items-center font-medium border-t border-pink-100 pt-2 bg-gradient-to-r from-sky-50 to-pink-50 p-2 rounded-xl border border-pink-200">
+                        <span className="text-slate-700 font-semibold">Тариф будет действовать до:</span>
+                        <span className="text-pink-600 font-black font-mono text-base">
+                          {projectedExpiryStr} 📅
+                        </span>
+                      </div>
 
-                  <div className="flex justify-between items-center text-sm font-semibold border-t border-pink-100 pt-2">
+                      {/* Cost to Deduct */}
+                      <div className="flex justify-between items-center font-semibold border-t border-pink-100 pt-2">
+                        <span className="text-slate-600">Сумма к списанию:</span>
+                        <span className="text-pink-600 font-black font-mono text-base">
+                          {neededAmount.toLocaleString('ru-RU')} ИИрок 🪙
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {isFreePlan && (
+                    <div className="p-3 bg-sky-50 rounded-xl border border-sky-200 text-xs text-sky-900">
+                      Переход на бесплатный базовый тариф «Старт». Оплата не требуется, списания с баланса не производятся.
+                    </div>
+                  )}
+
+                  {/* Available Balance */}
+                  <div className="flex justify-between items-center font-semibold border-t border-pink-100 pt-2">
                     <span className="text-slate-600">Ваш доступный баланс:</span>
                     <span className="text-slate-900 font-mono font-bold">
                       {totalBalance.toLocaleString('ru-RU')} ИИрок
@@ -4783,7 +4861,11 @@ export default function ProfileAndOnboarding({
                   </div>
                 ) : (
                   <div className="p-3 bg-sky-50/80 border border-sky-200 rounded-2xl text-xs text-sky-900 font-medium space-y-1">
-                    <p>💡 После подтверждения {neededAmount.toLocaleString('ru-RU')} ИИрок спишутся с баланса, и тариф мгновенно обновится.</p>
+                    {isFreePlan ? (
+                      <p>💡 После подтверждения тариф мгновенно обновится на «Старт».</p>
+                    ) : (
+                      <p>💡 После подтверждения {neededAmount.toLocaleString('ru-RU')} ИИрок спишутся с баланса, и тариф продлится до {projectedExpiryStr}.</p>
+                    )}
                   </div>
                 )}
 
@@ -4811,7 +4893,7 @@ export default function ProfileAndOnboarding({
                     onClick={handleConfirmTariffChange}
                     className="flex-1 py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 hover:opacity-95 text-white font-bold rounded-xl shadow-md cursor-pointer text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Подтвердить переход ⚡
+                    {isFreePlan ? 'Перейти на Старт' : 'Подтвердить подключение ⚡'}
                   </button>
                 </div>
               </motion.div>

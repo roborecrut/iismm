@@ -144,48 +144,9 @@ export function initUsersTable(db: Database) {
     `);
   } catch (e) {}
 
-  // Triggers to automatically track tariff changes and keep expiration dates in sync
-  try {
-    db.run(`
-      CREATE TRIGGER IF NOT EXISTS trg_users_insert_tarif_date
-      AFTER INSERT ON users
-      FOR EACH ROW
-      BEGIN
-        UPDATE users
-        SET 
-          tarif_date = COALESCE(NEW.tarif_date, NEW.tariff_assigned_at, NEW.created_at, datetime('now')),
-          tariff_assigned_at = COALESCE(NEW.tariff_assigned_at, NEW.tarif_date, NEW.created_at, datetime('now')),
-          tariff_duration_days = COALESCE(NEW.tariff_duration_days, 30),
-          tariff_expires_at = COALESCE(NEW.tariff_expires_at, datetime(COALESCE(NEW.tarif_date, NEW.created_at, datetime('now')), '+' || COALESCE(NEW.tariff_duration_days, 30) || ' days')),
-          balance_time = COALESCE(NEW.balance_time, datetime(COALESCE(NEW.tarif_date, NEW.created_at, datetime('now')), '+' || COALESCE(NEW.tariff_duration_days, 30) || ' days'))
-        WHERE id = NEW.id;
-      END;
-    `);
-  } catch (e) {}
-
-  try {
-    db.run(`
-      CREATE TRIGGER IF NOT EXISTS trg_users_update_tariff
-      AFTER UPDATE OF tariff, tarif_date, tariff_duration_days ON users
-      FOR EACH ROW
-      WHEN (NEW.tariff != OLD.tariff OR NEW.tarif_date != OLD.tarif_date OR NEW.tariff_duration_days != OLD.tariff_duration_days)
-      BEGIN
-        UPDATE users
-        SET 
-          tarif_date = CASE WHEN NEW.tariff != OLD.tariff AND (NEW.tarif_date = OLD.tarif_date OR NEW.tarif_date IS NULL) THEN datetime('now') ELSE COALESCE(NEW.tarif_date, datetime('now')) END,
-          tariff_assigned_at = CASE WHEN NEW.tariff != OLD.tariff AND (NEW.tariff_assigned_at = OLD.tariff_assigned_at OR NEW.tariff_assigned_at IS NULL) THEN datetime('now') ELSE COALESCE(NEW.tariff_assigned_at, datetime('now')) END,
-          tariff_expires_at = datetime(
-            CASE WHEN NEW.tariff != OLD.tariff AND (NEW.tarif_date = OLD.tarif_date OR NEW.tarif_date IS NULL) THEN datetime('now') ELSE COALESCE(NEW.tarif_date, datetime('now')) END,
-            '+' || COALESCE(NEW.tariff_duration_days, 30) || ' days'
-          ),
-          balance_time = datetime(
-            CASE WHEN NEW.tariff != OLD.tariff AND (NEW.tarif_date = OLD.tarif_date OR NEW.tarif_date IS NULL) THEN datetime('now') ELSE COALESCE(NEW.tarif_date, datetime('now')) END,
-            '+' || COALESCE(NEW.tariff_duration_days, 30) || ' days'
-          )
-        WHERE id = NEW.id;
-      END;
-    `);
-  } catch (e) {}
+  // Drop recursive triggers that might overwrite explicitly set expiration dates
+  try { db.run("DROP TRIGGER IF EXISTS trg_users_update_tariff;"); } catch (e) {}
+  try { db.run("DROP TRIGGER IF EXISTS trg_users_insert_tarif_date;"); } catch (e) {}
 
   // Recalculate and migrate legacy balances for existing users: balance_admin contributes to balance_free
   try {

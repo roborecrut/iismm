@@ -271,6 +271,7 @@ export interface Prompt {
   messageFormat?: 'v2' | 'rich' | 'markdown' | 'html';
   uppercaseHeader?: boolean;
   signature?: string;
+  linkPreviewEnabled?: boolean;
   attachmentType?: 'none' | 'photo' | 'document' | 'video' | 'audio' | 'album' | 'video_note';
   attachmentUrl?: string;
   attachmentUrls?: string[];
@@ -308,6 +309,7 @@ export interface DayRequest {
   attachmentUrls?: string[];
   attachmentType?: string;
   signature?: string;
+  linkPreviewEnabled?: boolean;
   requestTemplate?: string;
   imagePrompt?: string;
   postText?: string;

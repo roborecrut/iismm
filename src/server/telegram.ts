@@ -1,7 +1,81 @@
 import FormData from 'form-data';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
+import util from 'util';
+import { execFile } from 'child_process';
 import { DB, DayRequest } from './db';
 import { getBotTokenFromSQLite, getSQLiteDB } from './sqlite';
 import { InlineButton } from '../types';
+
+const execFileAsync = util.promisify(execFile);
+
+// Helper to auto-crop video to square 1:1, max 60s, H.264/AAC for Telegram Video Note
+export async function convertVideoToTelegramVideoNote(inputBuffer: Buffer): Promise<Buffer> {
+  const tmpDir = os.tmpdir();
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const inputPath = path.join(tmpDir, `vn_in_${id}.bin`);
+  const outputPath = path.join(tmpDir, `vn_out_${id}.mp4`);
+
+  try {
+    await fs.promises.writeFile(inputPath, inputBuffer);
+    await execFileAsync('ffmpeg', [
+      '-y',
+      '-i', inputPath,
+      '-vf', "crop='min(iw,ih)':'min(iw,ih)',scale=480:480:flags=lanczos",
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      '-r', '30',
+      '-c:a', 'aac',
+      '-b:a', '64k',
+      '-movflags', '+faststart',
+      '-t', '60',
+      outputPath
+    ], { timeout: 30000 });
+
+    if (fs.existsSync(outputPath)) {
+      const outBuffer = await fs.promises.readFile(outputPath);
+      return outBuffer;
+    }
+  } catch (err: any) {
+    console.warn('[convertVideoToTelegramVideoNote] ffmpeg conversion warning, using raw video note:', err.message);
+  } finally {
+    try { if (fs.existsSync(inputPath)) await fs.promises.unlink(inputPath); } catch (e) {}
+    try { if (fs.existsSync(outputPath)) await fs.promises.unlink(outputPath); } catch (e) {}
+  }
+  return inputBuffer;
+}
+
+// Helper to convert audio to OGG Opus for Telegram Voice Message
+export async function convertAudioToTelegramVoice(inputBuffer: Buffer): Promise<Buffer> {
+  const tmpDir = os.tmpdir();
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const inputPath = path.join(tmpDir, `voice_in_${id}.bin`);
+  const outputPath = path.join(tmpDir, `voice_out_${id}.ogg`);
+
+  try {
+    await fs.promises.writeFile(inputPath, inputBuffer);
+    await execFileAsync('ffmpeg', [
+      '-y',
+      '-i', inputPath,
+      '-c:a', 'libopus',
+      '-b:a', '32k',
+      '-vbr', 'on',
+      outputPath
+    ], { timeout: 30000 });
+
+    if (fs.existsSync(outputPath)) {
+      const outBuffer = await fs.promises.readFile(outputPath);
+      return outBuffer;
+    }
+  } catch (err: any) {
+    console.warn('[convertAudioToTelegramVoice] ffmpeg conversion warning, using raw audio:', err.message);
+  } finally {
+    try { if (fs.existsSync(inputPath)) await fs.promises.unlink(inputPath); } catch (e) {}
+    try { if (fs.existsSync(outputPath)) await fs.promises.unlink(outputPath); } catch (e) {}
+  }
+  return inputBuffer;
+}
 
 interface TelegramSendResponse {
   ok: boolean;
@@ -10,6 +84,18 @@ interface TelegramSendResponse {
   error?: string;
   simulated?: boolean;
   fallbackNotice?: string;
+}
+
+// Helper to strip HTML tags if fallback to plain text is needed
+export function stripHTML(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 // Helper to format Markdown tables into aligned monospace blocks for Telegram
@@ -27,7 +113,6 @@ function formatMarkdownTableForTelegram(tableStr: string): string {
 
   if (rows.length === 0) return tableStr;
 
-  // Calculate column widths
   const colCount = Math.max(...rows.map(r => r.length));
   const colWidths = new Array(colCount).fill(0);
 
@@ -37,7 +122,6 @@ function formatMarkdownTableForTelegram(tableStr: string): string {
     });
   });
 
-  // Build aligned text table inside <pre>
   const formattedRows = rows.map(r => {
     return r.map((cell, idx) => {
       const w = colWidths[idx] || 10;
@@ -48,169 +132,213 @@ function formatMarkdownTableForTelegram(tableStr: string): string {
   return `<pre>\n${formattedRows.join('\n')}\n</pre>`;
 }
 
-// Convert rich markdown text to Telegram HTML for Rich mode
-export function convertRichToTelegramHTML(text: string): string {
+// Convert rich/v2 markdown text to flawless Telegram HTML
+export function convertToTelegramHTML(text: string, format: string = 'v2'): string {
   if (!text) return '';
 
-  let html = text;
+  const codeBlocks: string[] = [];
+  const inlineCodes: string[] = [];
 
-  // 1. Custom Emoji: ![alt](tg://emoji?id=12345) -> <tg-emoji emoji-id="12345">alt</tg-emoji>
-  html = html.replace(/!\[(.*?)\]\(tg:\/\/emoji\?id=(\d+)\)/gi, (_, alt, id) => {
-    return `<tg-emoji emoji-id="${id}">${alt || '✨'}</tg-emoji>`;
+  let str = text;
+
+  // 1. Triple backtick code blocks: ```lang\ncode\n``` or ```code```
+  str = str.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = codeBlocks.length;
+    const escapedCode = code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    if (lang) {
+      codeBlocks.push(`<pre><code class="language-${lang}">${escapedCode}</code></pre>`);
+    } else {
+      codeBlocks.push(`<pre>${escapedCode}</pre>`);
+    }
+    return `\uE000CB${idx}\uE001`;
   });
 
-  // 2. Telegram Time: <tg-time unix="123" format="wDT">Label</tg-time> -> keep label
-  html = html.replace(/<tg-time.*?unix=["'](\d+)["'].*?>(.*?)<\/tg-time>/gi, '$2');
+  // 2. Inline code: `code`
+  str = str.replace(/`([^`\n]+)`/g, (_, code) => {
+    const idx = inlineCodes.length;
+    const escapedCode = code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    inlineCodes.push(`<code>${escapedCode}</code>`);
+    return `\uE000IC${idx}\uE001`;
+  });
 
-  // 3. Collapsible / Details: <details><summary>S</summary>C</details>
-  html = html.replace(/<details.*?>\s*<summary>(.*?)<\/summary>([\s\S]*?)<\/details>/gi, '<b>$1</b>\n<blockquote expandable>$2</blockquote>');
+  // 3. Custom Emoji: ![alt](tg://emoji?id=12345) -> <tg-emoji emoji-id="12345">alt</tg-emoji>
+  const customEmojis: string[] = [];
+  str = str.replace(/!\[(.*?)\]\(tg:\/\/emoji\?id=(\d+)\)/gi, (_, alt, id) => {
+    const idx = customEmojis.length;
+    customEmojis.push(`<tg-emoji emoji-id="${id}">${alt || '✨'}</tg-emoji>`);
+    return `\uE000EM${idx}\uE001`;
+  });
 
-  // 4. Tables in Markdown (Rich mode)
-  html = html.replace(/(?:^|\n)(\|.+?\|\n\|[\s\-:|]+\|\n(?:\|.+?\|(?:\n|$))+)/g, (match) => {
+  // 4. Telegram Time: <tg-time unix="123" format="wDT">Label</tg-time> -> keep label
+  str = str.replace(/<tg-time.*?unix=["'](\d+)["'].*?>(.*?)<\/tg-time>/gi, '$2');
+
+  // 5. Collapsible / Details: <details><summary>S</summary>C</details>
+  str = str.replace(/<details.*?>\s*<summary>(.*?)<\/summary>([\s\S]*?)<\/details>/gi, '<b>$1</b>\n<blockquote expandable>$2</blockquote>');
+
+  // 6. Markdown Tables
+  str = str.replace(/(?:^|\n)(\|.+?\|\n\|[\s\-:|]+\|\n(?:\|.+?\|(?:\n|$))+)/g, (match) => {
     return '\n' + formatMarkdownTableForTelegram(match) + '\n';
   });
 
-  // 5. Code blocks: ```lang\ncode\n``` -> <pre><code class="language-lang">code</code></pre>
-  html = html.replace(/```([a-zA-Z0-9_\-]+)?\n([\s\S]*?)```/g, (_, lang, code) => {
-    const cleanCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return lang ? `<pre><code class="language-${lang}">${cleanCode}</code></pre>` : `<pre>${cleanCode}</pre>`;
+  // 7. Checklists
+  str = str.replace(/^[\-\*]\s+\[\s*\]\s+(.+)$/gim, '☐ $1');
+  str = str.replace(/^[\-\*]\s+\[[xX]\]\s+(.+)$/gim, '✓ <s>$1</s>');
+
+  // 8. Escape HTML special characters in the rest of the text
+  str = str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // 9. Expandable blockquotes: >> quote
+  str = str.replace(/^&gt;&gt;\s?(.*$)/gim, '<blockquote expandable>$1</blockquote>');
+
+  // 10. Standard blockquotes: > quote
+  str = str.replace(/^&gt;\s?(.*$)/gim, '<blockquote>$1</blockquote>');
+
+  // 11. Headings: # Heading -> <b>Heading</b>
+  str = str.replace(/^#{1,6}\s+(.*$)/gim, '<b>$1</b>');
+
+  // 12. Spoilers: ||spoiler|| -> <span class="tg-spoiler">spoiler</span>
+  str = str.replace(/\|\|([\s\S]+?)\|\|/g, '<span class="tg-spoiler">$1</span>');
+
+  // 13. Underline: __text__ -> <u>text</u>
+  str = str.replace(/__([^_]+)__/g, '<u>$1</u>');
+
+  // 14. Bold, Italic, Strikethrough according to format
+  if (format === 'rich' || format === 'html') {
+    // Bold: **text**
+    str = str.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+    // Strikethrough: ~~text~~
+    str = str.replace(/~~([^~\n]+)~~/g, '<s>$1</s>');
+    // Italic: *text* or _text_
+    str = str.replace(/\*([^*\n]+)\*/g, '<i>$1</i>');
+    str = str.replace(/_([^_]+)_/g, '<i>$1</i>');
+  } else {
+    // V2 / Standard Markdown:
+    // Bold: **text** or *text*
+    str = str.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+    str = str.replace(/\*([^*\n]+)\*/g, '<b>$1</b>');
+    // Strikethrough: ~~text~~ or ~text~
+    str = str.replace(/~~([^~\n]+)~~/g, '<s>$1</s>');
+    str = str.replace(/~([^~\n]+)~/g, '<s>$1</s>');
+    // Italic: _text_
+    str = str.replace(/_([^_]+)_/g, '<i>$1</i>');
+  }
+
+  // 15. Links: [label](url) -> <a href="url">label</a>
+  str = str.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+    const cleanUrl = url.replace(/&amp;/g, '&');
+    return `<a href="${cleanUrl}">${label}</a>`;
   });
 
-  // 6. Spoilers: ||text|| -> <tg-spoiler>text</tg-spoiler>
-  html = html.replace(/\|\|([\s\S]+?)\|\|/g, '<tg-spoiler>$1</tg-spoiler>');
+  // 16. Restore Custom Emojis
+  str = str.replace(/\uE000EM(\d+)\uE001/g, (_, idx) => customEmojis[Number(idx)] || '');
 
-  // 7. Checklists & Lists
-  html = html.replace(/^[\-\*]\s+\[\s*\]\s+(.+)$/gim, '☐ $1');
-  html = html.replace(/^[\-\*]\s+\[[xX]\]\s+(.+)$/gim, '✓ <s>$1</s>');
-  html = html.replace(/^[\-\*]\s+(.+)$/gim, '• $1');
+  // 17. Restore Inline Code
+  str = str.replace(/\uE000IC(\d+)\uE001/g, (_, idx) => inlineCodes[Number(idx)] || '');
 
-  // 8. Headings: # Heading -> <b>HEADING</b>
-  html = html.replace(/^####\s+(.+)$/gim, '<b>$1</b>');
-  html = html.replace(/^###\s+(.+)$/gim, '<b>$1</b>');
-  html = html.replace(/^##\s+(.+)$/gim, '<b>$1</b>');
-  html = html.replace(/^#\s+(.+)$/gim, '<b>$1</b>');
+  // 18. Restore Code Blocks
+  str = str.replace(/\uE000CB(\d+)\uE001/g, (_, idx) => codeBlocks[Number(idx)] || '');
 
-  // Underline: __text__ or <u>text</u>
-  html = html.replace(/__([^_]+)__/g, '<u>$1</u>');
-  // Bold: **text**
-  html = html.replace(/\*\*([^\*\n]+)\*\*/g, '<b>$1</b>');
-  // Strikethrough: ~~text~~
-  html = html.replace(/~~([^~\n]+)~~/g, '<s>$1</s>');
-  // Italic: *text* or _text_
-  html = html.replace(/\*([^\*\n]+)\*/g, '<i>$1</i>');
-  html = html.replace(/_([^_\n]+)_/g, '<i>$1</i>');
-
-  // Links: [label](url) -> <a href="url">label</a>
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-
-  // Code inline: `code` -> <code>code</code>
-  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-
-  // Blockquotes: > quote -> <blockquote>quote</blockquote>
-  html = html.replace(/^>\s?(.*$)/gim, '<blockquote>$1</blockquote>');
-
-  return html;
+  return str;
 }
 
-// Convert/Validate text for Telegram HTML (Rich/HTML mode) or MarkdownV2
-export function convertToTelegramHTML(text: string, format: string = 'v2'): string {
-  if (format === 'rich' || format === 'html') {
-    return convertRichToTelegramHTML(text);
-  }
-  return text;
+export function convertRichToTelegramHTML(text: string): string {
+  return convertToTelegramHTML(text, 'rich');
 }
 
-// Auto-escape unescaped Markdown V2 characters
+// Auto-escape unescaped Markdown V2 punctuation for Telegram (kept for backwards compatibility)
 export function sanitizeMarkdownV2(text: string): string {
   if (!text) return '';
-  // Escapes reserved chars that are not already preceded by a backslash
   return text.replace(/(?<!\\)([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
 }
 
-// Strip HTML tags for fallback
-function stripHTML(html: string): string {
-  if (!html) return '';
-  return html.replace(/<[^>]*>?/gm, '');
+// Prepare MarkdownV2 text (kept for backwards compatibility)
+export function prepareTelegramMarkdownV2(text: string): string {
+  return convertToTelegramHTML(text, 'v2');
 }
 
-// Helper to fetch media file into buffer
-export async function fetchMediaBuffer(urlStr: string): Promise<{ buffer: Buffer; filename: string; contentType: string } | null> {
+// Helper to fetch media from local storage, pro-talk or external URL into Buffer
+export async function fetchMediaBuffer(
+  urlStr: string
+): Promise<{ buffer: Buffer; filename: string; contentType: string } | null> {
   if (!urlStr || typeof urlStr !== 'string') return null;
-  const trimmed = urlStr.trim();
-  if (!trimmed) return null;
 
   try {
-    // 1. Data URI
-    if (trimmed.startsWith('data:')) {
-      const commaIdx = trimmed.indexOf(',');
-      if (commaIdx !== -1) {
-        const meta = trimmed.substring(0, commaIdx);
-        const base64Data = trimmed.substring(commaIdx + 1);
-        const mimeMatch = meta.match(/data:(.*?);/);
-        const contentType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-        const buffer = Buffer.from(base64Data, 'base64');
-        const ext = contentType.split('/')[1]?.split('+')[0] || 'bin';
-        return { buffer, filename: `file.${ext}`, contentType };
-      }
-    }
+    let fetchUrl = urlStr.trim();
+    const trimmed = fetchUrl;
 
-    // 2. Resolve short URLs or SQLite URLs
-    let fetchUrl = trimmed;
+    // Resolve local storage short urls or file keys
     try {
       const db = await getSQLiteDB();
       if (db) {
-        const match = trimmed.match(/f\/([a-zA-Z0-9_-]+)/) || trimmed.match(/file\/([a-zA-Z0-9_-]+)/);
-        const searchKey = match ? match[1] : trimmed;
-        const res = db.exec("SELECT original_url, name, mime_type FROM file_storage WHERE file_key = ? OR short_url LIKE ? OR name = ? LIMIT 1", [searchKey, `%${searchKey}%`, searchKey]);
-        if (res.length > 0 && res[0].values.length > 0) {
-          const row = res[0].values[0];
-          if (row[0] && typeof row[0] === 'string' && (row[0].startsWith('http://') || row[0].startsWith('https://'))) {
-            fetchUrl = row[0];
+        const match = trimmed.match(/\/file\/([a-zA-Z0-9_-]+)/) || 
+                      trimmed.match(/\/f\/([a-zA-Z0-9_-]+)/) ||
+                      trimmed.match(/file\/([a-zA-Z0-9_-]+)/) ||
+                      trimmed.match(/f\/([a-zA-Z0-9_-]+)/);
+        const searchKey = match ? match[1] : path.basename(trimmed);
+        const stmt = db.prepare(`
+          SELECT original_url, name, mime_type FROM file_storage 
+          WHERE file_key = ? OR short_url LIKE ? OR name = ? OR slug_name = ? OR id = ? 
+          LIMIT 1
+        `);
+        stmt.bind([searchKey, `%${searchKey}%`, searchKey, searchKey, parseInt(searchKey, 10) || -1]);
+        if (stmt.step()) {
+          const row = stmt.getAsObject() as any;
+          if (row.original_url && typeof row.original_url === 'string' && (row.original_url.startsWith('http://') || row.original_url.startsWith('https://'))) {
+            fetchUrl = row.original_url;
           }
         }
+        stmt.free();
       }
     } catch (e) {}
 
-    // If still relative path (e.g. /file/... or /api/...), prefix with localhost
-    if (fetchUrl.startsWith('/')) {
-      fetchUrl = `http://127.0.0.1:3000${fetchUrl}`;
+    // If relative path on server
+    if (fetchUrl.startsWith('/') || fetchUrl.startsWith('./')) {
+      const port = 3000;
+      fetchUrl = `http://127.0.0.1:${port}${fetchUrl.startsWith('/') ? '' : '/'}${fetchUrl}`;
     }
 
-    // Download via fetch
     const response = await fetch(fetchUrl, {
       headers: {
-        'User-Agent': 'TelegramBot (like TwitterBot)',
-        'Accept': '*/*'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       },
       signal: AbortSignal.timeout(15000)
     });
 
     if (!response.ok) {
-      console.warn(`[fetchMediaBuffer] HTTP ${response.status} from ${fetchUrl}`);
+      console.warn(`[fetchMediaBuffer] HTTP ${response.status} fetching media from ${fetchUrl}`);
       return null;
     }
 
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    if (contentType.includes('text/html')) {
+      console.warn(`[fetchMediaBuffer] Received HTML instead of media binary from ${fetchUrl}`);
+      return null;
+    }
+
     const arrayBuf = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuf);
 
-    // Determine filename
     let filename = 'media.bin';
     try {
-      const urlObj = new URL(fetchUrl);
-      const pathname = urlObj.pathname;
-      const lastPart = pathname.split('/').pop();
-      if (lastPart && lastPart.includes('.')) {
-        filename = decodeURIComponent(lastPart);
-      } else {
-        const ext = contentType.includes('png') ? 'png' :
-                    contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' :
-                    contentType.includes('gif') ? 'gif' :
-                    contentType.includes('mp4') ? 'mp4' :
-                    contentType.includes('webm') ? 'webm' :
-                    contentType.includes('audio') || contentType.includes('mp3') ? 'mp3' :
-                    contentType.includes('ogg') ? 'ogg' :
-                    contentType.includes('pdf') ? 'pdf' : 'bin';
+      const parsed = new URL(fetchUrl);
+      filename = path.basename(parsed.pathname) || 'media.bin';
+      if (!filename.includes('.')) {
+        const ext = contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' :
+                     contentType.includes('png') ? 'png' :
+                     contentType.includes('webp') ? 'webp' :
+                     contentType.includes('mp4') ? 'mp4' :
+                     contentType.includes('mp3') ? 'mp3' :
+                     contentType.includes('ogg') ? 'ogg' :
+                     contentType.includes('pdf') ? 'pdf' : 'bin';
         filename = `file_${Date.now()}.${ext}`;
       }
     } catch (e) {
@@ -224,8 +352,8 @@ export async function fetchMediaBuffer(urlStr: string): Promise<{ buffer: Buffer
   }
 }
 
-// Build reply_markup for inline keyboard
-function buildReplyMarkup(
+// Build reply_markup for inline keyboard WITHOUT injecting extra emoji circles
+export function buildReplyMarkup(
   inlineButtons: any,
   fallbackWebappToUrl: boolean = false
 ): { inline_keyboard: any[][] } | undefined {
@@ -252,18 +380,19 @@ function buildReplyMarkup(
       if (!text) continue;
 
       let btnUrl = String(btn.url || btn.webAppUrl || '').trim();
+      // Strip accidentally duplicated or invalid protocol prefixes
+      btnUrl = btnUrl.replace(/^(?:https?:\/\/)?(?:action)?(?:https?:\/\/)+/i, 'https://');
       if (btnUrl && !btnUrl.startsWith('http://') && !btnUrl.startsWith('https://') && !btnUrl.startsWith('tg://')) {
         btnUrl = `https://${btnUrl}`;
       }
 
       const btnObj: any = { text };
 
-      if (btn.type === 'webapp') {
+      if (btn.type === 'webapp' || btn.webAppUrl) {
         const validWebUrl = btnUrl || 'https://t.me';
         if (fallbackWebappToUrl) {
           btnObj.url = validWebUrl;
         } else {
-          // Standard Telegram Mini App format
           btnObj.web_app = { url: validWebUrl };
         }
       } else if (btn.type === 'url' || btnUrl) {
@@ -290,6 +419,7 @@ export async function sendPromptToTelegram(
     messageFormat?: 'v2' | 'rich' | 'markdown' | 'html';
     uppercaseHeader?: boolean;
     signature?: string;
+    linkPreviewEnabled?: boolean;
     attachmentType?: 'none' | 'photo' | 'document' | 'video' | 'audio' | 'album' | 'video_note';
     attachmentUrl?: string;
     attachmentUrls?: string[];
@@ -307,10 +437,10 @@ export async function sendPromptToTelegram(
 
   // Extract option settings or apply defaults
   const format = options?.messageFormat || dayRequest.messageFormat || 'v2';
-  const isV2 = format === 'v2';
-  const isRich = format === 'rich' || format === 'html';
   const uppercaseHeader = options?.uppercaseHeader !== false;
-  const signature = options?.signature || dayRequest.signature || '';
+  const linkPreviewEnabled = options?.linkPreviewEnabled !== undefined 
+    ? options.linkPreviewEnabled 
+    : (dayRequest.linkPreviewEnabled !== false);
   const attachmentType = options?.attachmentType || dayRequest.attachmentType || 'none';
   
   const rawAttachmentUrl = (options?.attachmentUrl || dayRequest.attachmentUrl || '').trim();
@@ -324,13 +454,8 @@ export async function sendPromptToTelegram(
     rawText = formattedTitle;
   }
 
-  if (signature && signature.trim()) {
-    rawText = `${rawText}\n\n${signature.trim()}`;
-  }
-
-  // Determine parseMode and formatted text based on format
-  const parseMode = isV2 ? 'MarkdownV2' : 'HTML';
-  const formattedText = isRich ? convertRichToTelegramHTML(rawText) : rawText;
+  // Convert raw formatted text to Telegram HTML
+  const fullHtmlText = convertToTelegramHTML(rawText, format);
 
   // Check if token is provided
   if (!token || token.trim() === '') {
@@ -375,8 +500,8 @@ export async function sendPromptToTelegram(
       let sendSuccess = false;
       let resultData: any = null;
 
-      const hasShortCaption = formattedText.length <= 1024;
-      const captionToSend = hasShortCaption ? formattedText : '';
+      const hasShortCaption = fullHtmlText.length <= 1024;
+      const captionToSend = hasShortCaption ? fullHtmlText : '';
 
       // -------------------------------------------------------------
       // 1. ALBUM ATTACHMENTS (Multiple Photos / Videos)
@@ -398,7 +523,7 @@ export async function sendPromptToTelegram(
               type: isVideo ? 'video' : 'photo',
               media: `attach://${fieldName}`,
               caption: idx === 0 && hasShortCaption ? captionToSend : undefined,
-              parse_mode: idx === 0 && hasShortCaption ? parseMode : undefined
+              parse_mode: idx === 0 && hasShortCaption ? 'HTML' : undefined
             };
           });
 
@@ -411,34 +536,8 @@ export async function sendPromptToTelegram(
           });
           resultData = await res.json();
 
-          // Retry with sanitized caption if entity error
-          if (!resultData.ok && (resultData.description?.includes('can\'t parse entities') || resultData.description?.includes('entity'))) {
-            const plainCaption = isV2 ? sanitizeMarkdownV2(captionToSend) : stripHTML(captionToSend);
-            const retryForm = new FormData();
-            retryForm.append('chat_id', channel);
-            const retryMediaArray = validBuffers.map((item, idx) => {
-              const fieldName = `file_${idx}`;
-              retryForm.append(fieldName, item.buffer, { filename: item.filename, contentType: item.contentType });
-              const isVideo = item.filename.match(/\.(mp4|mov|avi|webm)$/i) || item.contentType.includes('video');
-              return {
-                type: isVideo ? 'video' : 'photo',
-                media: `attach://${fieldName}`,
-                caption: idx === 0 && plainCaption ? plainCaption : undefined,
-                parse_mode: idx === 0 && plainCaption ? parseMode : undefined
-              };
-            });
-            retryForm.append('media', JSON.stringify(retryMediaArray));
-            const retryRes = await fetch(`https://api.telegram.org/bot${token}/sendMediaGroup`, {
-              method: 'POST',
-              headers: retryForm.getHeaders(),
-              body: retryForm.getBuffer()
-            });
-            resultData = await retryRes.json();
-          }
-
           if (resultData.ok) {
             sendSuccess = true;
-            // Send follow-up message if text > 1024 chars or if inline buttons exist (sendMediaGroup does not support inline keyboards directly)
             if (!hasShortCaption || (replyMarkup && replyMarkup.inline_keyboard.length > 0)) {
               try {
                 await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -446,8 +545,8 @@ export async function sendPromptToTelegram(
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     chat_id: channel,
-                    text: formattedText || 'Подробнее:',
-                    parse_mode: parseMode,
+                    text: fullHtmlText || 'Подробнее:',
+                    parse_mode: 'HTML',
                     reply_markup: replyMarkup
                   })
                 });
@@ -464,7 +563,7 @@ export async function sendPromptToTelegram(
               type: isVideo ? 'video' : 'photo',
               media: u,
               caption: idx === 0 && hasShortCaption ? captionToSend : undefined,
-              parse_mode: idx === 0 && hasShortCaption ? parseMode : undefined
+              parse_mode: idx === 0 && hasShortCaption ? 'HTML' : undefined
             };
           });
 
@@ -486,8 +585,8 @@ export async function sendPromptToTelegram(
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     chat_id: channel,
-                    text: formattedText || 'Подробнее:',
-                    parse_mode: parseMode,
+                    text: fullHtmlText || 'Подробнее:',
+                    parse_mode: 'HTML',
                     reply_markup: replyMarkup
                   })
                 });
@@ -510,7 +609,7 @@ export async function sendPromptToTelegram(
           form.append('photo', mediaFile.buffer, { filename: mediaFile.filename, contentType: mediaFile.contentType });
           if (captionToSend) {
             form.append('caption', captionToSend);
-            form.append('parse_mode', parseMode);
+            form.append('parse_mode', 'HTML');
           }
           if (hasShortCaption && replyMarkup) {
             form.append('reply_markup', JSON.stringify(replyMarkup));
@@ -531,7 +630,7 @@ export async function sendPromptToTelegram(
             retryForm.append('photo', mediaFile.buffer, { filename: mediaFile.filename, contentType: mediaFile.contentType });
             if (captionToSend) {
               retryForm.append('caption', captionToSend);
-              retryForm.append('parse_mode', parseMode);
+              retryForm.append('parse_mode', 'HTML');
             }
             if (hasShortCaption && urlFallbackMarkup) {
               retryForm.append('reply_markup', JSON.stringify(urlFallbackMarkup));
@@ -544,15 +643,14 @@ export async function sendPromptToTelegram(
             resultData = await retryRes.json();
           }
 
-          // Retry if entity parse error
+          // Retry with stripped plain text if entity error
           if (!resultData.ok && (resultData.description?.includes('can\'t parse entities') || resultData.description?.includes('tag'))) {
-            const safeCaption = isV2 ? sanitizeMarkdownV2(captionToSend) : stripHTML(captionToSend);
+            const safeCaption = stripHTML(captionToSend);
             const retryForm = new FormData();
             retryForm.append('chat_id', channel);
             retryForm.append('photo', mediaFile.buffer, { filename: mediaFile.filename, contentType: mediaFile.contentType });
             if (safeCaption) {
               retryForm.append('caption', safeCaption);
-              retryForm.append('parse_mode', parseMode);
             }
             if (hasShortCaption && replyMarkup) {
               retryForm.append('reply_markup', JSON.stringify(replyMarkup));
@@ -567,11 +665,18 @@ export async function sendPromptToTelegram(
 
           if (resultData.ok) {
             sendSuccess = true;
-            if (!hasShortCaption && formattedText) {
+            if (!hasShortCaption && fullHtmlText) {
               await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: channel, text: formattedText, parse_mode: parseMode, reply_markup: replyMarkup })
+                body: JSON.stringify({
+                  chat_id: channel,
+                  text: fullHtmlText,
+                  parse_mode: 'HTML',
+                  reply_markup: replyMarkup,
+                  disable_web_page_preview: !linkPreviewEnabled,
+                  link_preview_options: { is_disabled: !linkPreviewEnabled }
+                })
               });
             }
           }
@@ -586,7 +691,7 @@ export async function sendPromptToTelegram(
               chat_id: channel,
               photo: targetUrl,
               caption: captionToSend || undefined,
-              parse_mode: captionToSend ? parseMode : undefined,
+              parse_mode: captionToSend ? 'HTML' : undefined,
               reply_markup: (hasShortCaption && replyMarkup) ? replyMarkup : undefined
             })
           });
@@ -601,7 +706,7 @@ export async function sendPromptToTelegram(
                 chat_id: channel,
                 photo: targetUrl,
                 caption: captionToSend || undefined,
-                parse_mode: captionToSend ? parseMode : undefined,
+                parse_mode: captionToSend ? 'HTML' : undefined,
                 reply_markup: (hasShortCaption && urlFallbackMarkup) ? urlFallbackMarkup : undefined
               })
             });
@@ -625,7 +730,7 @@ export async function sendPromptToTelegram(
           form.append('video', mediaFile.buffer, { filename: mediaFile.filename, contentType: mediaFile.contentType });
           if (captionToSend) {
             form.append('caption', captionToSend);
-            form.append('parse_mode', parseMode);
+            form.append('parse_mode', 'HTML');
           }
           if (hasShortCaption && replyMarkup) {
             form.append('reply_markup', JSON.stringify(replyMarkup));
@@ -645,7 +750,7 @@ export async function sendPromptToTelegram(
             retryForm.append('video', mediaFile.buffer, { filename: mediaFile.filename, contentType: mediaFile.contentType });
             if (captionToSend) {
               retryForm.append('caption', captionToSend);
-              retryForm.append('parse_mode', parseMode);
+              retryForm.append('parse_mode', 'HTML');
             }
             if (hasShortCaption && urlFallbackMarkup) {
               retryForm.append('reply_markup', JSON.stringify(urlFallbackMarkup));
@@ -660,11 +765,18 @@ export async function sendPromptToTelegram(
 
           if (resultData.ok) {
             sendSuccess = true;
-            if (!hasShortCaption && formattedText) {
+            if (!hasShortCaption && fullHtmlText) {
               await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: channel, text: formattedText, parse_mode: parseMode, reply_markup: replyMarkup })
+                body: JSON.stringify({
+                  chat_id: channel,
+                  text: fullHtmlText,
+                  parse_mode: 'HTML',
+                  reply_markup: replyMarkup,
+                  disable_web_page_preview: !linkPreviewEnabled,
+                  link_preview_options: { is_disabled: !linkPreviewEnabled }
+                })
               });
             }
           }
@@ -678,7 +790,7 @@ export async function sendPromptToTelegram(
               chat_id: channel,
               video: targetUrl,
               caption: captionToSend || undefined,
-              parse_mode: captionToSend ? parseMode : undefined,
+              parse_mode: captionToSend ? 'HTML' : undefined,
               reply_markup: (hasShortCaption && replyMarkup) ? replyMarkup : undefined
             })
           });
@@ -688,33 +800,53 @@ export async function sendPromptToTelegram(
       }
 
       // -------------------------------------------------------------
-      // 4. AUDIO ATTACHMENT
+      // 4. VOICE MESSAGE ATTACHMENT (Telegram Voice OGG Opus)
       // -------------------------------------------------------------
-      else if (attachmentType === 'audio' && (rawAttachmentUrl || rawAttachmentUrls.length > 0)) {
+      else if (((attachmentType as string) === 'voice' || (attachmentType === 'audio' && ((options as any)?.audioFormat === 'voice' || (dayRequest as any)?.audioFormat === 'voice' || (dayRequest as any)?.audio_format === 'voice'))) && (rawAttachmentUrl || rawAttachmentUrls.length > 0)) {
         const targetUrl = rawAttachmentUrl || rawAttachmentUrls[0];
         const mediaFile = await fetchMediaBuffer(targetUrl);
 
         if (mediaFile) {
+          // Auto-convert to OGG Opus via ffmpeg
+          const voiceBuffer = await convertAudioToTelegramVoice(mediaFile.buffer);
+
           const form = new FormData();
           form.append('chat_id', channel);
-          form.append('audio', mediaFile.buffer, { filename: mediaFile.filename, contentType: mediaFile.contentType });
+          form.append('voice', voiceBuffer, { filename: 'voice.ogg', contentType: 'audio/ogg' });
           if (captionToSend) {
             form.append('caption', captionToSend);
-            form.append('parse_mode', parseMode);
+            form.append('parse_mode', 'HTML');
           }
           if (hasShortCaption && replyMarkup) {
             form.append('reply_markup', JSON.stringify(replyMarkup));
           }
 
-          const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
+          const res = await fetch(`https://api.telegram.org/bot${token}/sendVoice`, {
             method: 'POST',
             headers: form.getHeaders(),
             body: form.getBuffer()
           });
           resultData = await res.json();
-          if (resultData.ok) sendSuccess = true;
+          if (resultData.ok) {
+            sendSuccess = true;
+            if (!hasShortCaption && fullHtmlText) {
+              try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: channel,
+                    text: fullHtmlText,
+                    parse_mode: 'HTML',
+                    reply_markup: replyMarkup
+                  })
+                });
+              } catch (e) {}
+            }
+          }
         }
 
+        // Fallback to sendAudio if sendVoice fails
         if (!sendSuccess) {
           const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
             method: 'POST',
@@ -723,7 +855,7 @@ export async function sendPromptToTelegram(
               chat_id: channel,
               audio: targetUrl,
               caption: captionToSend || undefined,
-              parse_mode: captionToSend ? parseMode : undefined,
+              parse_mode: captionToSend ? 'HTML' : undefined,
               reply_markup: (hasShortCaption && replyMarkup) ? replyMarkup : undefined
             })
           });
@@ -733,19 +865,198 @@ export async function sendPromptToTelegram(
       }
 
       // -------------------------------------------------------------
-      // 5. DOCUMENT ATTACHMENT
+      // 5. AUDIO ATTACHMENT (Multiple up to 10 or Single)
       // -------------------------------------------------------------
-      else if (attachmentType === 'document' && (rawAttachmentUrl || rawAttachmentUrls.length > 0)) {
-        const targetUrl = rawAttachmentUrl || rawAttachmentUrls[0];
-        const mediaFile = await fetchMediaBuffer(targetUrl);
+      else if (attachmentType === 'audio' && (rawAttachmentUrl || rawAttachmentUrls.length > 0)) {
+        const urlsToProcess = rawAttachmentUrls.length > 0 ? rawAttachmentUrls : [rawAttachmentUrl];
+        const mediaBuffers = await Promise.all(urlsToProcess.slice(0, 10).map(u => fetchMediaBuffer(u)));
+        const validBuffers = mediaBuffers.filter(b => b !== null) as { buffer: Buffer; filename: string; contentType: string }[];
 
-        if (mediaFile) {
+        // If multiple audio tracks (2..10), send via sendMediaGroup
+        if (validBuffers.length >= 2) {
           const form = new FormData();
           form.append('chat_id', channel);
-          form.append('document', mediaFile.buffer, { filename: mediaFile.filename, contentType: mediaFile.contentType });
+
+          const mediaArray = validBuffers.map((item, idx) => {
+            const fieldName = `audio_${idx}`;
+            form.append(fieldName, item.buffer, { 
+              filename: item.filename || `track_${idx + 1}.mp3`, 
+              contentType: item.contentType || 'audio/mpeg' 
+            });
+            return {
+              type: 'audio',
+              media: `attach://${fieldName}`,
+              caption: idx === 0 && hasShortCaption ? captionToSend : undefined,
+              parse_mode: idx === 0 && hasShortCaption ? 'HTML' : undefined
+            };
+          });
+
+          form.append('media', JSON.stringify(mediaArray));
+
+          const res = await fetch(`https://api.telegram.org/bot${token}/sendMediaGroup`, {
+            method: 'POST',
+            headers: form.getHeaders(),
+            body: form.getBuffer()
+          });
+          resultData = await res.json();
+
+          if (resultData.ok) {
+            sendSuccess = true;
+            if (!hasShortCaption || (replyMarkup && replyMarkup.inline_keyboard.length > 0)) {
+              try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: channel,
+                    text: fullHtmlText || 'Аудиозаписи:',
+                    parse_mode: 'HTML',
+                    reply_markup: replyMarkup
+                  })
+                });
+              } catch (e) {}
+            }
+          }
+        }
+
+        // If single audio or fallback
+        if (!sendSuccess && validBuffers.length > 0) {
+          const firstAudio = validBuffers[0];
+          const form = new FormData();
+          form.append('chat_id', channel);
+          form.append('audio', firstAudio.buffer, { filename: firstAudio.filename, contentType: firstAudio.contentType });
           if (captionToSend) {
             form.append('caption', captionToSend);
-            form.append('parse_mode', parseMode);
+            form.append('parse_mode', 'HTML');
+          }
+          if (hasShortCaption && replyMarkup) {
+            form.append('reply_markup', JSON.stringify(replyMarkup));
+          }
+
+          const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
+            method: 'POST',
+            headers: form.getHeaders(),
+            body: form.getBuffer()
+          });
+          resultData = await res.json();
+          if (resultData.ok) {
+            sendSuccess = true;
+            // Send remaining audio files if any
+            for (let i = 1; i < validBuffers.length; i++) {
+              try {
+                const extraForm = new FormData();
+                extraForm.append('chat_id', channel);
+                extraForm.append('audio', validBuffers[i].buffer, { 
+                  filename: validBuffers[i].filename, 
+                  contentType: validBuffers[i].contentType 
+                });
+                await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
+                  method: 'POST',
+                  headers: extraForm.getHeaders(),
+                  body: extraForm.getBuffer()
+                });
+              } catch (e) {}
+            }
+            if (!hasShortCaption && fullHtmlText) {
+              try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: channel,
+                    text: fullHtmlText,
+                    parse_mode: 'HTML',
+                    reply_markup: replyMarkup
+                  })
+                });
+              } catch (e) {}
+            }
+          }
+        }
+
+        // Direct URL fallback
+        if (!sendSuccess) {
+          const targetUrl = urlsToProcess[0];
+          const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: channel,
+              audio: targetUrl,
+              caption: captionToSend || undefined,
+              parse_mode: captionToSend ? 'HTML' : undefined,
+              reply_markup: (hasShortCaption && replyMarkup) ? replyMarkup : undefined
+            })
+          });
+          resultData = await res.json();
+          if (resultData.ok) sendSuccess = true;
+        }
+      }
+
+      // -------------------------------------------------------------
+      // 6. DOCUMENT ATTACHMENT (Multiple up to 10 or Single)
+      // -------------------------------------------------------------
+      else if (attachmentType === 'document' && (rawAttachmentUrl || rawAttachmentUrls.length > 0)) {
+        const urlsToProcess = rawAttachmentUrls.length > 0 ? rawAttachmentUrls : [rawAttachmentUrl];
+        const mediaBuffers = await Promise.all(urlsToProcess.slice(0, 10).map(u => fetchMediaBuffer(u)));
+        const validBuffers = mediaBuffers.filter(b => b !== null) as { buffer: Buffer; filename: string; contentType: string }[];
+
+        // If multiple documents (2..10), send via sendMediaGroup
+        if (validBuffers.length >= 2) {
+          const form = new FormData();
+          form.append('chat_id', channel);
+
+          const mediaArray = validBuffers.map((item, idx) => {
+            const fieldName = `doc_${idx}`;
+            form.append(fieldName, item.buffer, { 
+              filename: item.filename || `document_${idx + 1}.bin`, 
+              contentType: item.contentType || 'application/octet-stream' 
+            });
+            return {
+              type: 'document',
+              media: `attach://${fieldName}`,
+              caption: idx === 0 && hasShortCaption ? captionToSend : undefined,
+              parse_mode: idx === 0 && hasShortCaption ? 'HTML' : undefined
+            };
+          });
+
+          form.append('media', JSON.stringify(mediaArray));
+
+          const res = await fetch(`https://api.telegram.org/bot${token}/sendMediaGroup`, {
+            method: 'POST',
+            headers: form.getHeaders(),
+            body: form.getBuffer()
+          });
+          resultData = await res.json();
+
+          if (resultData.ok) {
+            sendSuccess = true;
+            if (!hasShortCaption || (replyMarkup && replyMarkup.inline_keyboard.length > 0)) {
+              try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: channel,
+                    text: fullHtmlText || 'Документы и файлы:',
+                    parse_mode: 'HTML',
+                    reply_markup: replyMarkup
+                  })
+                });
+              } catch (e) {}
+            }
+          }
+        }
+
+        // If single document or fallback
+        if (!sendSuccess && validBuffers.length > 0) {
+          const firstDoc = validBuffers[0];
+          const form = new FormData();
+          form.append('chat_id', channel);
+          form.append('document', firstDoc.buffer, { filename: firstDoc.filename, contentType: firstDoc.contentType });
+          if (captionToSend) {
+            form.append('caption', captionToSend);
+            form.append('parse_mode', 'HTML');
           }
           if (hasShortCaption && replyMarkup) {
             form.append('reply_markup', JSON.stringify(replyMarkup));
@@ -757,10 +1068,44 @@ export async function sendPromptToTelegram(
             body: form.getBuffer()
           });
           resultData = await res.json();
-          if (resultData.ok) sendSuccess = true;
+          if (resultData.ok) {
+            sendSuccess = true;
+            // Send remaining files sequentially
+            for (let i = 1; i < validBuffers.length; i++) {
+              try {
+                const extraForm = new FormData();
+                extraForm.append('chat_id', channel);
+                extraForm.append('document', validBuffers[i].buffer, { 
+                  filename: validBuffers[i].filename, 
+                  contentType: validBuffers[i].contentType 
+                });
+                await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+                  method: 'POST',
+                  headers: extraForm.getHeaders(),
+                  body: extraForm.getBuffer()
+                });
+              } catch (e) {}
+            }
+            if (!hasShortCaption && fullHtmlText) {
+              try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: channel,
+                    text: fullHtmlText,
+                    parse_mode: 'HTML',
+                    reply_markup: replyMarkup
+                  })
+                });
+              } catch (e) {}
+            }
+          }
         }
 
+        // Direct URL fallback
         if (!sendSuccess) {
+          const targetUrl = urlsToProcess[0];
           const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -768,7 +1113,7 @@ export async function sendPromptToTelegram(
               chat_id: channel,
               document: targetUrl,
               caption: captionToSend || undefined,
-              parse_mode: captionToSend ? parseMode : undefined,
+              parse_mode: captionToSend ? 'HTML' : undefined,
               reply_markup: (hasShortCaption && replyMarkup) ? replyMarkup : undefined
             })
           });
@@ -778,14 +1123,18 @@ export async function sendPromptToTelegram(
       }
 
       // -------------------------------------------------------------
-      // 6. VIDEO NOTE (Кружок)
+      // 7. VIDEO NOTE (Кружок с ffmpeg авто-кропом 1:1)
       // -------------------------------------------------------------
-      else if (attachmentType === 'video_note' && rawAttachmentUrl) {
-        const mediaFile = await fetchMediaBuffer(rawAttachmentUrl);
+      else if (attachmentType === 'video_note' && (rawAttachmentUrl || rawAttachmentUrls.length > 0)) {
+        const targetUrl = rawAttachmentUrl || rawAttachmentUrls[0];
+        const mediaFile = await fetchMediaBuffer(targetUrl);
         if (mediaFile) {
+          // Auto crop to 1:1 square MP4 H.264
+          const convertedVideoNoteBuffer = await convertVideoToTelegramVideoNote(mediaFile.buffer);
+
           const form = new FormData();
           form.append('chat_id', channel);
-          form.append('video_note', mediaFile.buffer, { filename: mediaFile.filename, contentType: mediaFile.contentType });
+          form.append('video_note', convertedVideoNoteBuffer, { filename: 'video_note.mp4', contentType: 'video/mp4' });
           if (replyMarkup) {
             form.append('reply_markup', JSON.stringify(replyMarkup));
           }
@@ -795,31 +1144,66 @@ export async function sendPromptToTelegram(
             body: form.getBuffer()
           });
           resultData = await res.json();
+
+          // Fallback: If Telegram rejects video_note (e.g. format restriction), send as video
+          if (!resultData.ok) {
+            console.warn('[sendVideoNote] Telegram rejected video note, falling back to sendVideo:', resultData.description);
+            const fallbackForm = new FormData();
+            fallbackForm.append('chat_id', channel);
+            fallbackForm.append('video', mediaFile.buffer, { filename: mediaFile.filename || 'video.mp4', contentType: 'video/mp4' });
+            if (captionToSend) {
+              fallbackForm.append('caption', captionToSend);
+              fallbackForm.append('parse_mode', 'HTML');
+            }
+            if (hasShortCaption && replyMarkup) {
+              fallbackForm.append('reply_markup', JSON.stringify(replyMarkup));
+            }
+            const fbRes = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
+              method: 'POST',
+              headers: fallbackForm.getHeaders(),
+              body: fallbackForm.getBuffer()
+            });
+            resultData = await fbRes.json();
+          }
+
           if (resultData.ok) {
             sendSuccess = true;
-            if (formattedText && formattedText.trim()) {
-              await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: channel, text: formattedText, parse_mode: parseMode, reply_markup: replyMarkup })
-              });
+            if (fullHtmlText && fullHtmlText.trim()) {
+              try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: channel,
+                    text: fullHtmlText,
+                    parse_mode: 'HTML',
+                    reply_markup: replyMarkup,
+                    disable_web_page_preview: !linkPreviewEnabled,
+                    link_preview_options: { is_disabled: !linkPreviewEnabled }
+                  })
+                });
+              } catch (e) {}
             }
           }
         }
       }
 
       // -------------------------------------------------------------
-      // 7. STANDARD TEXT MESSAGE (Only for text posts or if media is not used)
+      // 7. STANDARD TEXT MESSAGE (Only for text posts or fallback)
       // -------------------------------------------------------------
-      if (!sendSuccess && (attachmentType === 'none' || !resultData?.ok)) {
+      if (!sendSuccess && attachmentType === 'none') {
         const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: channel,
-            text: formattedText || 'Новая публикация',
-            parse_mode: parseMode,
-            reply_markup: replyMarkup
+            text: fullHtmlText || 'Новая публикация',
+            parse_mode: 'HTML',
+            reply_markup: replyMarkup,
+            disable_web_page_preview: !linkPreviewEnabled,
+            link_preview_options: {
+              is_disabled: !linkPreviewEnabled
+            }
           })
         });
         resultData = await res.json();
@@ -832,55 +1216,48 @@ export async function sendPromptToTelegram(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: channel,
-              text: formattedText || 'Новая публикация',
-              parse_mode: parseMode,
-              reply_markup: urlFallbackMarkup
+              text: fullHtmlText || 'Новая публикация',
+              parse_mode: 'HTML',
+              reply_markup: urlFallbackMarkup,
+              disable_web_page_preview: !linkPreviewEnabled,
+              link_preview_options: {
+                is_disabled: !linkPreviewEnabled
+              }
             })
           });
           resultData = await retryRes.json();
         }
 
-        // If parse error in MarkdownV2 or HTML, retry with safe text
+        // If parse error in HTML, retry with stripped plain text
         if (!resultData.ok && (resultData.description?.includes('can\'t parse entities') || resultData.description?.includes('tag'))) {
-          const fallbackText = isV2 ? sanitizeMarkdownV2(rawText) : (stripHTML(rawText) || 'Новая публикация');
+          const fallbackText = stripHTML(rawText) || 'Новая публикация';
           const plainRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: channel,
               text: fallbackText,
-              parse_mode: isV2 ? 'MarkdownV2' : undefined,
-              reply_markup: replyMarkup
+              reply_markup: replyMarkup,
+              disable_web_page_preview: !linkPreviewEnabled,
+              link_preview_options: {
+                is_disabled: !linkPreviewEnabled
+              }
             })
           });
           resultData = await plainRes.json();
-
-          // Last plain text fallback
-          if (!resultData.ok) {
-            const rawPlainRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: channel,
-                text: stripHTML(rawText) || 'Новая публикация',
-                reply_markup: replyMarkup
-              })
-            });
-            resultData = await rawPlainRes.json();
-          }
         }
 
-        if (resultData.ok) {
-          sendSuccess = true;
-        }
+        if (resultData.ok) sendSuccess = true;
       }
 
       if (sendSuccess && resultData?.ok) {
-        lastMessageId = Array.isArray(resultData.result) ? resultData.result[0]?.message_id?.toString() : resultData.result?.message_id?.toString() || '1';
+        lastMessageId = Array.isArray(resultData.result) 
+          ? resultData.result[0]?.message_id?.toString() 
+          : resultData.result?.message_id?.toString() || '1';
         successChannels.push(channel);
       } else {
-        const errMsg = resultData?.description || resultData?.error || 'Неизвестная ошибка Telegram API';
-        errors.push(`Ошибка для ${channel}: ${errMsg}`);
+        const errorDesc = resultData?.description || 'Ошибка Telegram API';
+        errors.push(`Ошибка для ${channel}: ${errorDesc}`);
       }
     } catch (err: any) {
       errors.push(`Ошибка сети для ${channel}: ${err.message || err}`);
@@ -933,5 +1310,3 @@ export async function sendPrivateTelegramNotification(
     return false;
   }
 }
-
-

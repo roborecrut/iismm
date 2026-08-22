@@ -746,9 +746,13 @@ function initSchema(db: Database) {
         ]
       );
     } else {
-      // Ensure admin 16926299042 has referred_by = 80926979801
+      // Ensure admin 16926299042 has admin credentials and referred_by without resetting custom tariff
       db.run(
-        `UPDATE users SET email = 'shishkarnem@gmail.com', password_hash = 'wkL35eTm', role = 'admin', tariff = 'Космос', referred_by = 80926979801 WHERE id = '169262990' OR id = '16926299042' OR telegram_id = 169262990`
+        `UPDATE users SET email = 'shishkarnem@gmail.com', password_hash = 'wkL35eTm', role = 'admin', referred_by = 80926979801 WHERE (id = '169262990' OR id = '16926299042' OR telegram_id = 169262990) AND (email IS NULL OR email = '')`
+      );
+      // Ensure account 16926299042 connected to Разгон
+      db.run(
+        `UPDATE users SET tariff = 'Разгон' WHERE (id = '16926299042' OR telegram_id = 169262990) AND (tariff = 'Космос' OR tariff IS NULL)`
       );
     }
     // Ensure 16187387221 has referred_by = 16926299042

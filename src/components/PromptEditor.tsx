@@ -49,11 +49,14 @@ import {
   Calculator,
   Hash,
   Anchor,
-  Heart
+  Heart,
+  Mic
 } from 'lucide-react';
 import { DayRequest, PostTemplate, User, InlineButton, Channel } from '../types';
 import { FileUpload } from './FileUpload';
 import { getUploadService } from '../services/FileUploadService';
+import { TelegramAlbumCollage } from './TelegramAlbumCollage';
+import { VoiceRecorderModal } from './VoiceRecorderModal';
 
 interface PromptEditorProps {
   dayRequests: DayRequest[];
@@ -77,6 +80,76 @@ interface PromptEditorProps {
 export function escapeMarkdownV2(str: string): string {
   return str.replace(/(?<!\\)([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
 }
+
+export interface ExtractedUrlInfo {
+  url: string;
+  title?: string;
+  domain: string;
+}
+
+export function extractFirstUrl(text: string): ExtractedUrlInfo | null {
+  if (!text) return null;
+  // Match markdown link [title](url)
+  const mdMatch = text.match(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/i);
+  if (mdMatch) {
+    try {
+      const parsed = new URL(mdMatch[2]);
+      return { url: mdMatch[2], title: mdMatch[1], domain: parsed.hostname.replace(/^www\./, '') };
+    } catch (e) {
+      return { url: mdMatch[2], title: mdMatch[1], domain: mdMatch[2] };
+    }
+  }
+
+  // Match standard URL
+  const rawMatch = text.match(/(https?:\/\/[^\s<>"'\)]+)/i);
+  if (rawMatch) {
+    const cleanUrl = rawMatch[1].replace(/[.,;:!?]+$/, '');
+    try {
+      const parsed = new URL(cleanUrl);
+      return { url: cleanUrl, domain: parsed.hostname.replace(/^www\./, '') };
+    } catch (e) {
+      return { url: cleanUrl, domain: cleanUrl };
+    }
+  }
+
+  // Match t.me link
+  const tgMatch = text.match(/(t\.me\/[^\s<>"'\)]+)/i);
+  if (tgMatch) {
+    const cleanUrl = `https://${tgMatch[1].replace(/[.,;:!?]+$/, '')}`;
+    try {
+      const parsed = new URL(cleanUrl);
+      return { url: cleanUrl, domain: parsed.hostname.replace(/^www\./, '') };
+    } catch (e) {
+      return { url: cleanUrl, domain: 't.me' };
+    }
+  }
+
+  return null;
+}
+
+// Telegram Link Preview Component for Phone Mockup & Editor
+export const TelegramLinkPreviewMockup: React.FC<{
+  urlInfo?: ExtractedUrlInfo | null;
+  link?: ExtractedUrlInfo | null;
+  enabled?: boolean;
+}> = ({ urlInfo, link, enabled = true }) => {
+  const activeInfo = urlInfo || link;
+  if (!enabled || !activeInfo) return null;
+
+  return (
+    <div className="mt-2.5 rounded-xl border-l-[3px] border-sky-400 bg-white/80 p-2.5 shadow-xs transition-all">
+      <div className="text-[11px] font-bold text-sky-700 uppercase tracking-wide">
+        {activeInfo.domain || 'Сайт'}
+      </div>
+      <div className="text-xs font-bold text-slate-900 line-clamp-1 mt-0.5">
+        {activeInfo.title || activeInfo.domain}
+      </div>
+      <div className="text-[11px] text-slate-500 truncate mt-0.5">
+        {activeInfo.url}
+      </div>
+    </div>
+  );
+};
 
 // 20 Post Styles for AI Generation
 const POST_STYLES = [
@@ -308,6 +381,48 @@ function RenderMathPreview({ formula }: { formula: string; key?: React.Key }) {
   );
 }
 
+// Copyable Code Block component for Telegram Preview
+function TelegramCodeBlock({ code }: { code: string; key?: React.Key }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="my-2 rounded-xl border border-pink-300 bg-white/95 overflow-hidden shadow-2xs">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 to-sky-100 border-b border-pink-200 text-[10px] font-mono text-slate-700 font-bold">
+        <span className="flex items-center space-x-1">
+          <Code size={12} className="text-pink-600" />
+          <span>КОД</span>
+        </span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center space-x-1 text-pink-600 hover:text-pink-700 font-semibold cursor-pointer px-1.5 py-0.5 rounded hover:bg-white/80 transition-colors"
+        >
+          {copied ? (
+            <>
+              <Check size={11} className="text-emerald-600" />
+              <span className="text-emerald-600">Скопировано</span>
+            </>
+          ) : (
+            <>
+              <Copy size={11} />
+              <span>Копировать</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="p-3 text-xs font-mono text-slate-900 overflow-x-auto whitespace-pre-wrap select-all bg-white">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
 // Universal Telegram Formatting Renderer for both V2 and Rich modes
 export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'): React.ReactNode {
   if (!text) return null;
@@ -317,9 +432,20 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
     cleanedText = cleanedText.replace(/\\([_*\[\]()~`>#+\-=|{}.!\\])/g, '$1');
   }
 
-  const regex = format === 'v2' 
-    ? /(\|\|[\s\S]+?\|\||\*[^\*\n]+\*|_[^_\n]+_|\~[^\~\n]+\~|`[^`\n]+`|\[[^\]]+\]\([^\)]+\)|\$[^\$\n]+\$)/g
-    : /(\|\|[\s\S]+?\|\||\*\*[^\*\n]+\*\*|\*[^\*\n]+\*|~~[^\~\n]+~~|<u>[\s\S]+?<\/u>|<b>[\s\S]+?<\/b>|<i>[\s\S]+?<\/i>|`[^`\n]+`|\[[^\]]+\]\([^\)]+\)|<tg-time[\s\S]+?<\/tg-time>|\$[^\$\n]+\$)/g;
+  // Regex ordered strictly by specificity:
+  // 1. Code blocks (```...```)
+  // 2. Inline code (`...`)
+  // 3. Spoilers (||...||)
+  // 4. Underline (__...__ or <u>...</u>)
+  // 5. Bold (**...** or *...* or <b>...</b>)
+  // 6. Strikethrough (~~...~~ or ~...~ or <s>...</s>)
+  // 7. Italic (_..._ or <i>...</i>)
+  // 8. Links ([...](...))
+  // 9. Time tags (<tg-time...>)
+  // 10. Math formulas ($...$)
+  const regex = format === 'v2'
+    ? /(```[\s\S]*?```|`[^`\n]+`|\|\|[\s\S]+?\|\||__[^_\n]+__|(?:\*\*[^*\n]+\*\*|\*[^*\n]+\*)|(?:~~[^~\n]+~~|~[^~\n]+~)|_[^_\n]+_|\[[^\]]+\]\([^\)]+\)|\$[^\$\n]+\$)/g
+    : /(```[\s\S]*?```|`[^`\n]+`|\|\|[\s\S]+?\|\||__[^_\n]+__|<u>[\s\S]+?<\/u>|(?:\*\*[^*\n]+\*\*|\*[^*\n]+\*)|<b>[\s\S]+?<\/b>|(?:~~[^~\n]+~~|~[^~\n]+~)|<s>[\s\S]+?<\/s>|_[^_\n]+_|<i>[\s\S]+?<\/i>|\[[^\]]+\]\([^\)]+\)|<tg-time[\s\S]+?<\/tg-time>|\$[^\$\n]+\$)/g;
 
   const parts = cleanedText.split(regex);
 
@@ -328,6 +454,23 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
       {parts.map((part, index) => {
         if (!part) return null;
 
+        // 1. Code Blocks ```code```
+        if (part.startsWith('```') && part.endsWith('```') && part.length >= 6) {
+          const rawCode = part.slice(3, -3).replace(/^\n/, '');
+          return <TelegramCodeBlock key={index} code={rawCode} />;
+        }
+
+        // 2. Inline Code `code`
+        if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+          const content = part.slice(1, -1);
+          return (
+            <code key={index} className="bg-white/95 text-pink-700 font-mono text-[11px] px-1.5 py-0.5 rounded border border-pink-300 shadow-2xs select-all">
+              {content}
+            </code>
+          );
+        }
+
+        // 3. Spoilers ||spoiler||
         if (part.startsWith('||') && part.endsWith('||') && part.length >= 4) {
           const content = part.slice(2, -2);
           return (
@@ -341,42 +484,49 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           );
         }
 
+        // 4. Underline __text__ or <u>text</u>
         if (
-          (format === 'rich' && part.startsWith('**') && part.endsWith('**') && part.length >= 4) ||
-          (format === 'v2' && part.startsWith('*') && part.endsWith('*') && part.length >= 2) ||
-          (part.startsWith('<b>') && part.endsWith('</b>'))
+          (part.startsWith('__') && part.endsWith('__') && part.length >= 4) ||
+          (part.startsWith('<u>') && part.endsWith('</u>'))
+        ) {
+          const content = part.startsWith('<u>') ? part.slice(3, -4) : part.slice(2, -2);
+          return (
+            <span key={index} className="underline decoration-pink-500 font-medium">
+              {renderFormattedText(content, format)}
+            </span>
+          );
+        }
+
+        // 5. Bold **text**, *text*, <b>text</b>
+        if (
+          (part.startsWith('**') && part.endsWith('**') && part.length >= 4) ||
+          (part.startsWith('<b>') && part.endsWith('</b>')) ||
+          (part.startsWith('*') && part.endsWith('*') && part.length >= 2)
         ) {
           const content = part.startsWith('<b>') ? part.slice(3, -4) : (part.startsWith('**') ? part.slice(2, -2) : part.slice(1, -1));
           return <strong key={index} className="font-bold text-slate-950">{renderFormattedText(content, format)}</strong>;
         }
 
+        // 6. Strikethrough ~~text~~, ~text~, <s>text</s>
         if (
-          (format === 'rich' && part.startsWith('*') && part.endsWith('*') && part.length >= 2) ||
-          (format === 'v2' && part.startsWith('_') && part.endsWith('_') && part.length >= 2) ||
+          (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) ||
+          (part.startsWith('<s>') && part.endsWith('</s>')) ||
+          (part.startsWith('~') && part.endsWith('~') && part.length >= 2)
+        ) {
+          const content = part.startsWith('<s>') ? part.slice(3, -4) : (part.startsWith('~~') ? part.slice(2, -2) : part.slice(1, -1));
+          return <del key={index} className="line-through text-slate-500">{renderFormattedText(content, format)}</del>;
+        }
+
+        // 7. Italic _text_, <i>text</i>
+        if (
+          (part.startsWith('_') && part.endsWith('_') && part.length >= 2) ||
           (part.startsWith('<i>') && part.endsWith('</i>'))
         ) {
           const content = part.startsWith('<i>') ? part.slice(3, -4) : part.slice(1, -1);
           return <em key={index} className="italic text-slate-800">{renderFormattedText(content, format)}</em>;
         }
 
-        if (
-          (format === 'rich' && part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) ||
-          (format === 'v2' && part.startsWith('~') && part.endsWith('~') && part.length >= 2)
-        ) {
-          const content = part.startsWith('~~') ? part.slice(2, -2) : part.slice(1, -1);
-          return <del key={index} className="line-through text-slate-500">{renderFormattedText(content, format)}</del>;
-        }
-
-        if (part.startsWith('<u>') && part.endsWith('</u>')) {
-          const content = part.slice(3, -4);
-          return <span key={index} className="underline decoration-pink-400">{renderFormattedText(content, format)}</span>;
-        }
-
-        if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
-          const content = part.slice(1, -1);
-          return <code key={index} className="bg-white/90 text-pink-700 font-mono text-[11px] px-1.5 py-0.5 rounded border border-pink-200">{content}</code>;
-        }
-
+        // 8. Links [label](url)
         if (part.startsWith('[') && part.includes('](') && part.endsWith(')')) {
           const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
           if (linkMatch) {
@@ -401,6 +551,7 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           }
         }
 
+        // 9. Time tags <tg-time...>
         if (part.includes('<tg-time')) {
           const timeMatch = part.match(/<tg-time.*?unix=["'](\d+)["'].*?>(.*?)<\/tg-time>/i);
           if (timeMatch) {
@@ -414,6 +565,7 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           }
         }
 
+        // 10. Math formulas $...$
         if (part.startsWith('$') && part.endsWith('$') && part.length >= 2) {
           const formula = part.slice(1, -1);
           return <RenderMathPreview key={index} formula={formula} />;
@@ -434,12 +586,14 @@ function RichPreviewRenderer({
   postText,
   signature,
   attachmentType,
-  attachmentUrl
+  attachmentUrl,
+  linkPreviewEnabled = true
 }: {
   postText: string;
-  signature: string;
+  signature?: string;
   attachmentType: string;
   attachmentUrl: string;
+  linkPreviewEnabled?: boolean;
 }) {
   const [slideshowIndices, setSlideshowIndices] = useState<{ [key: number]: number }>({});
 
@@ -834,11 +988,12 @@ function RichPreviewRenderer({
         );
       })}
 
-      {/* Formatted Signature */}
-      {signature && (
-        <div className="text-[11px] text-pink-700 font-bold whitespace-pre-wrap mt-2">
-          {renderInlineMarkdown(signature)}
-        </div>
+      {/* Telegram Link Preview inside Message Bubble */}
+      {linkPreviewEnabled && (
+        <TelegramLinkPreviewMockup
+          urlInfo={extractFirstUrl(postText)}
+          enabled={linkPreviewEnabled}
+        />
       )}
     </div>
   );
@@ -936,10 +1091,12 @@ export default function PromptEditor({
   const [richToolbarTab, setRichToolbarTab] = useState<'text' | 'headers' | 'media' | 'table' | 'emoji' | 'anchors'>('text');
   const [selectedDraftId, setSelectedDraftId] = useState<string>('rich_full');
   const [showDraftsMenu, setShowDraftsMenu] = useState<boolean>(false);
-  const [autoEscapeV2, setAutoEscapeV2] = useState<boolean>(true);
+  const [linkPreviewEnabled, setLinkPreviewEnabled] = useState<boolean>(true);
 
   // Attachments (dedicated state per media type)
   const [attachmentType, setAttachmentType] = useState<'none' | 'photo' | 'document' | 'video' | 'audio' | 'album' | 'video_note'>('none');
+  const [audioFormat, setAudioFormat] = useState<'audio' | 'voice'>('audio');
+  const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState<boolean>(false);
   const [photoUrl, setPhotoUrl] = useState<string>('');
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [videoNoteUrl, setVideoNoteUrl] = useState<string>('');
@@ -972,7 +1129,7 @@ export default function PromptEditor({
       url = valid[0] || '';
     }
 
-    return { url, urls };
+    return { url, urls, audioFormat: attachmentType === 'audio' ? audioFormat : undefined };
   };
 
   // Content fields
@@ -1060,7 +1217,6 @@ export default function PromptEditor({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const applyFormatToTitle = (openTag: string, closeTag: string) => {
     const input = titleInputRef.current;
@@ -1082,33 +1238,6 @@ export default function PromptEditor({
     } else {
       const updated = val.substring(0, start) + openTag + closeTag + val.substring(start);
       setTitle(updated);
-      setTimeout(() => {
-        input.focus();
-        input.setSelectionRange(start + openTag.length, start + openTag.length);
-      }, 30);
-    }
-  };
-
-  const applyFormatToSignature = (openTag: string, closeTag: string) => {
-    const input = signatureInputRef.current;
-    if (!input) {
-      setSignature(prev => `${openTag}${prev || 'Подписаться'}${closeTag}`);
-      return;
-    }
-    const start = input.selectionStart ?? 0;
-    const end = input.selectionEnd ?? 0;
-    const val = input.value;
-    const selected = val.substring(start, end);
-    if (selected) {
-      const updated = val.substring(0, start) + openTag + selected + closeTag + val.substring(end);
-      setSignature(updated);
-      setTimeout(() => {
-        input.focus();
-        input.setSelectionRange(start, start + openTag.length + selected.length + closeTag.length);
-      }, 30);
-    } else {
-      const updated = val.substring(0, start) + openTag + closeTag + val.substring(start);
-      setSignature(updated);
       setTimeout(() => {
         input.focus();
         input.setSelectionRange(start + openTag.length, start + openTag.length);
@@ -1185,6 +1314,7 @@ export default function PromptEditor({
       setPostText(activeRequest.postText !== undefined && activeRequest.postText !== null ? activeRequest.postText : '');
       setMessageFormat(activeRequest.messageFormat === 'rich' ? 'rich' : 'v2');
       setUppercaseHeader(activeRequest.uppercaseHeader !== false);
+      setLinkPreviewEnabled(activeRequest.linkPreviewEnabled !== false);
 
       const mainUrl = activeRequest.attachmentUrl || '';
       const urlsArr = activeRequest.attachmentUrls && activeRequest.attachmentUrls.length > 0 
@@ -1194,6 +1324,14 @@ export default function PromptEditor({
       let type = activeRequest.attachmentType || 'none';
       if (type === 'none' && mainUrl) {
         type = 'photo';
+      }
+      if (type === 'voice') {
+        type = 'audio';
+        setAudioFormat('voice');
+      } else if (activeRequest.audioFormat === 'voice') {
+        setAudioFormat('voice');
+      } else {
+        setAudioFormat('audio');
       }
       setAttachmentType(type as any);
 
@@ -1258,12 +1396,13 @@ export default function PromptEditor({
         id: selectedId,
         category: topic.slice(0, 15),
         title,
-        signature,
+        signature: '',
         requestTemplate,
         imagePrompt,
         postText,
         messageFormat,
         uppercaseHeader,
+        linkPreviewEnabled,
         channel: selectedChannels[0] || '@SAV_AI',
         channels: selectedChannels,
         attachmentType,
@@ -1290,12 +1429,12 @@ export default function PromptEditor({
   }, [
     title,
     topic,
-    signature,
     requestTemplate,
     imagePrompt,
     postText,
     messageFormat,
     uppercaseHeader,
+    linkPreviewEnabled,
     selectedChannels,
     attachmentType,
     photoUrl,
@@ -1329,7 +1468,7 @@ export default function PromptEditor({
     return len;
   };
 
-  const totalPostCharCount = postText.length + signature.length + calcButtonsTextLength();
+  const totalPostCharCount = postText.length + calcButtonsTextLength();
 
   const isMediaAttached = attachmentType !== 'none';
   const maxAllowedCharLimit = messageFormat === 'rich' 
@@ -1601,35 +1740,6 @@ export default function PromptEditor({
     setStatusMessage({ type: 'success', text: `Шаблон «${draft.title}» применен!` });
   };
 
-  // Escape V2 characters manually
-  const handleEscapeV2Click = () => {
-    const escaped = escapeMarkdownV2(postText);
-    setPostText(escaped);
-    setStatusMessage({ type: 'success', text: 'Спецсимволы Markdown V2 успешно экранированы!' });
-  };
-
-  // Handle Paste event for V2 Auto-escaping
-  const handleTextareaPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (messageFormat === 'v2' && autoEscapeV2) {
-      const pastedText = e.clipboardData.getData('text/plain');
-      if (pastedText) {
-        e.preventDefault();
-        const escaped = escapeMarkdownV2(pastedText);
-        const textarea = textareaRef.current;
-        if (!textarea) return;
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const fullText = textarea.value;
-        const updated = fullText.substring(0, start) + escaped + fullText.substring(end);
-        setPostText(updated);
-        setTimeout(() => {
-          textarea.focus();
-          textarea.setSelectionRange(start + escaped.length, start + escaped.length);
-        }, 30);
-      }
-    }
-  };
-
   // Inline Button Constructor logic
   const handleAddButtonRow = () => {
     setInlineButtons(prev => [...prev, [
@@ -1704,7 +1814,6 @@ export default function PromptEditor({
           currentText: postText || '',
           maxChars: maxCharsLimit,
           messageFormat,
-          escapeMode: autoEscapeV2,
           postStyle: styleObj?.title || selectedPostStyle,
           styleDesc: styleObj?.desc || '',
           uniquenessMemoryCount,
@@ -1794,12 +1903,13 @@ export default function PromptEditor({
         id: selectedId,
         category: topic.slice(0, 15),
         title,
-        signature,
+        signature: '',
         requestTemplate,
         imagePrompt,
         postText,
         messageFormat,
         uppercaseHeader,
+        linkPreviewEnabled,
         channel: selectedChannels[0] || '@SAV_AI',
         channels: selectedChannels,
         attachmentType,
@@ -1845,7 +1955,8 @@ export default function PromptEditor({
       await onPublishToTelegram(title.trim(), postText, selectedId || 'req_1', {
         messageFormat,
         uppercaseHeader,
-        signature,
+        signature: '',
+        linkPreviewEnabled,
         attachmentType,
         attachmentUrl: activeUrl,
         attachmentUrls: activeUrls,
@@ -1875,8 +1986,9 @@ export default function PromptEditor({
           telegramId: telegramId || 169262990,
           title,
           content: postText,
-          signature,
+          signature: '',
           messageFormat,
+          linkPreviewEnabled,
           attachmentType,
           attachmentUrl: getActiveAttachmentData().url
         })
@@ -1890,7 +2002,8 @@ export default function PromptEditor({
               id: selectedId,
               title,
               postText,
-              signature,
+              signature: '',
+              linkPreviewEnabled,
               category: topic.slice(0, 15)
             });
           }
@@ -2625,13 +2738,130 @@ export default function PromptEditor({
             setAlbumUrls
           )}
 
-          {/* Audio Multi-File Manager */}
-          {attachmentType === 'audio' && renderMultiFileManager(
-            'Аудиозаписи:',
-            'аудиофайла',
-            'audio/*,.mp3,.wav,.ogg,.m4a',
-            audioUrls,
-            setAudioUrls
+          {/* Audio Multi-File or Voice Message Manager */}
+          {attachmentType === 'audio' && (
+            <div className="space-y-4 pt-2 border-t border-pink-200/80">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="block text-sm font-bold text-slate-800">
+                  Формат отправки аудио:
+                </label>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsVoiceRecorderOpen(true)}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white text-sm font-bold shadow-2xs hover:opacity-95 transition-all cursor-pointer"
+                    title="Записать голосовое сообщение с микрофона"
+                  >
+                    <Mic size={16} />
+                    <span>Записать голос</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Format Switcher */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAudioFormat('audio')}
+                  className={`flex items-center justify-center space-x-2 p-2.5 rounded-xl border text-sm font-bold transition-all cursor-pointer ${
+                    audioFormat === 'audio'
+                      ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-xs'
+                      : 'bg-transparent border-pink-200 text-slate-700 hover:bg-pink-50/50'
+                  }`}
+                >
+                  <Volume2 size={16} />
+                  <span>Аудиофайл (до 10 файлов)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAudioFormat('voice')}
+                  className={`flex items-center justify-center space-x-2 p-2.5 rounded-xl border text-sm font-bold transition-all cursor-pointer ${
+                    audioFormat === 'voice'
+                      ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-xs'
+                      : 'bg-transparent border-pink-200 text-slate-700 hover:bg-pink-50/50'
+                  }`}
+                >
+                  <Mic size={16} />
+                  <span>Голосовое сообщение (OGG Opus)</span>
+                </button>
+              </div>
+
+              {/* Voice Message View */}
+              {audioFormat === 'voice' ? (
+                <div className="space-y-3 p-3.5 bg-gradient-to-r from-sky-50/70 via-pink-50/70 to-orange-50/70 border border-pink-200/80 rounded-2xl">
+                  <div className="flex items-center justify-between text-sm text-slate-700 font-semibold">
+                    <span>Ссылка на аудиофайл для голосового:</span>
+                    <span className="text-xs text-slate-500">Автоконвертация в OGG Telegram</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="url"
+                      value={audioUrls[0] || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAudioUrls(prev => {
+                          const copy = [...prev];
+                          copy[0] = val;
+                          return copy;
+                        });
+                      }}
+                      placeholder="https://... ссылка на аудио или запишите голос"
+                      className="flex-1 bg-white/90 border border-pink-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-pink-500 font-mono shadow-2xs"
+                    />
+                    <CopyButton value={audioUrls[0] || ''} />
+                    <FileUpload
+                      variant="compact"
+                      buttonLabel="Загрузить"
+                      accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac"
+                      onUploaded={(key, url) => {
+                        setAudioUrls(prev => {
+                          const copy = [...prev];
+                          copy[0] = url;
+                          return copy;
+                        });
+                        setAudioFormat('voice');
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsVoiceRecorderOpen(true)}
+                      className="p-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white rounded-xl shadow-2xs hover:opacity-90 transition-all cursor-pointer shrink-0"
+                      title="Записать голос через микрофон"
+                    >
+                      <Mic size={16} />
+                    </button>
+                    {audioUrls[0] && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAudioUrls(prev => {
+                            const copy = [...prev];
+                            copy[0] = '';
+                            return copy;
+                          });
+                        }}
+                        className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                        title="Очистить"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    💡 Голосовое сообщение: аудиофайл будет автоматически сконвертирован сервером в формат OGG Opus и отправлен как настоящее голосовое сообщение Telegram.
+                  </p>
+                </div>
+              ) : (
+                /* Multi-Audio Track Manager */
+                renderMultiFileManager(
+                  'Аудиозаписи (до 10 файлов):',
+                  'аудиофайла',
+                  'audio/*,.mp3,.wav,.ogg,.m4a',
+                  audioUrls,
+                  setAudioUrls
+                )
+              )}
+            </div>
           )}
 
           {/* Document Multi-File Manager */}
@@ -2738,43 +2968,21 @@ export default function PromptEditor({
 
         {/* Notice Banner */}
         {messageFormat === 'v2' ? (
-          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 p-3.5 rounded-xl flex items-center justify-between gap-3 text-xs text-slate-800 shadow-2xs">
-            <div className="flex items-start space-x-2.5">
-              <AlertCircle size={16} className="text-pink-600 shrink-0 mt-0.5" />
+          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 p-3 rounded-xl flex items-center justify-between gap-3 text-xs text-slate-800 shadow-2xs">
+            <div className="flex items-center space-x-2">
+              <Sparkles size={16} className="text-pink-600 shrink-0" />
               <div className="leading-relaxed">
-                <span className="font-extrabold text-pink-700">Markdown V2 Режим: </span>
-                Спецсимволы (<code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-pink-700 border border-pink-200">. - ! ( ) _ * [ ] ~ ` # + = | {"{ }"} {">"}</code>) подлежат экранированию <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-pink-700 border border-pink-200">\</code>.
+                <span className="font-bold text-pink-700">Режим Markdown V2: </span>
+                Текст отправляется в Telegram с точным форматированием (жирный, курсив, спойлеры, ссылки).
               </div>
-            </div>
-
-            <div className="flex items-center space-x-2 shrink-0">
-              <label className="flex items-center space-x-1.5 text-[11px] text-slate-700 cursor-pointer bg-white/80 px-2.5 py-1 rounded-lg border border-pink-200 shadow-2xs">
-                <input
-                  type="checkbox"
-                  checked={autoEscapeV2}
-                  onChange={(e) => setAutoEscapeV2(e.target.checked)}
-                  className="rounded border-slate-300 text-pink-500 h-3.5 w-3.5"
-                />
-                <span>Авто-экранирование</span>
-              </label>
-
-              <button
-                type="button"
-                onClick={handleEscapeV2Click}
-                className="flex items-center space-x-1 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-2.5 py-1 rounded-lg font-bold text-[11px] cursor-pointer transition-all shadow-2xs"
-                title="Автоматически добавить обратные слэши перед спецсимволами"
-              >
-                <Shield size={12} />
-                <span>Экранировать V2</span>
-              </button>
             </div>
           </div>
         ) : (
-          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 p-3.5 rounded-xl flex items-start space-x-2.5 text-xs text-slate-800 shadow-2xs">
+          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 p-3 rounded-xl flex items-start space-x-2.5 text-xs text-slate-800 shadow-2xs">
             <Sparkles size={16} className="text-pink-600 shrink-0 mt-0.5" />
             <div className="leading-relaxed">
-              <span className="font-extrabold text-pink-700">Режим Telegram Rich Message: </span>
-              Экранирование символов <b>НЕ ТРЕБУЕТСЯ</b>! Поддерживается объем до 32 768 символов, заголовки <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-pink-700 border border-pink-200">#</code>, спойлеры <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-pink-700 border border-pink-200">||</code>, блоки <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-pink-700 border border-pink-200">&lt;details&gt;</code>, коллажи <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-pink-700 border border-pink-200">&lt;tg-collage&gt;</code>, таблицы и кастомные эмодзи.
+              <span className="font-bold text-pink-700">Режим Telegram Rich Message: </span>
+              Поддерживается объем до 32 768 символов, заголовки <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-pink-700 border border-pink-200">#</code>, спойлеры <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-pink-700 border border-pink-200">||</code>, таблицы, коллажи и кастомные эмодзи.
             </div>
           </div>
         )}
@@ -2844,9 +3052,18 @@ export default function PromptEditor({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => insertRichTag('`', '`')}
                 className="p-1.5 hover:bg-white/80 rounded-lg text-pink-600 font-mono text-xs cursor-pointer"
-                title="Код (`код`)"
+                title="Моно код (`код`)"
               >
                 <Code size={14} />
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => insertRichTag('```\n', '\n```')}
+                className="p-1.5 hover:bg-white/80 rounded-lg text-indigo-600 font-mono font-bold text-xs cursor-pointer flex items-center space-x-0.5"
+                title="Блок кода (```\nкод\n```)"
+              >
+                <span className="text-[10px] font-mono leading-none">&lt;/&gt;</span>
               </button>
               <button
                 type="button"
@@ -3073,88 +3290,58 @@ export default function PromptEditor({
           onSelect={handleTextareaSelection}
           onKeyUp={handleTextareaSelection}
           onMouseUp={handleTextareaSelection}
-          onPaste={handleTextareaPaste}
           placeholder="Введите текст сообщения..."
           className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-mono text-slate-800 focus:outline-none focus:border-blue-500 leading-relaxed"
         />
 
-        {/* Signature input */}
-        <div>
-          <div className="flex justify-between items-center mb-1">
-            <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider">
-              Подпись / Копирайт канала ({messageFormat === 'v2' ? 'Markdown V2' : 'Markdown Rich'}):
+        {/* Link Preview Control & Card */}
+        <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-xl p-3.5 space-y-2 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <label className="flex items-center space-x-2 text-xs font-bold text-slate-800 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={linkPreviewEnabled}
+                onChange={(e) => setLinkPreviewEnabled(e.target.checked)}
+                className="rounded border-pink-300 text-pink-500 h-4 w-4 cursor-pointer"
+              />
+              <span>Предпросмотр ссылки в Telegram</span>
             </label>
-            <div className="flex space-x-1 text-[10px]">
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyFormatToSignature(messageFormat === 'v2' ? '*' : '**', messageFormat === 'v2' ? '*' : '**')}
-                className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
-                title="Жирный"
-              >
-                B
-              </button>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyFormatToSignature(messageFormat === 'v2' ? '_' : '*', messageFormat === 'v2' ? '_' : '*')}
-                className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 text-slate-700 italic cursor-pointer"
-                title="Курсив"
-              >
-                I
-              </button>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyFormatToSignature(messageFormat === 'v2' ? '__' : '<u>', messageFormat === 'v2' ? '__' : '</u>')}
-                className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 text-slate-700 underline cursor-pointer"
-                title="Подчеркнутый"
-              >
-                U
-              </button>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyFormatToSignature(messageFormat === 'v2' ? '~' : '~~', messageFormat === 'v2' ? '~' : '~~')}
-                className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 text-slate-700 line-through cursor-pointer"
-                title="Зачеркнутый"
-              >
-                S
-              </button>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyFormatToSignature('||', '||')}
-                className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 text-amber-700 font-mono cursor-pointer"
-                title="Спойлер"
-              >
-                ||
-              </button>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applyFormatToSignature('[', '](https://t.me/SAV_AI)')}
-                className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded hover:bg-slate-200 text-blue-600 font-semibold cursor-pointer"
-                title="Ссылка"
-              >
-                🔗
-              </button>
-            </div>
+            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border ${
+              linkPreviewEnabled 
+                ? 'bg-sky-100 text-sky-800 border-sky-300' 
+                : 'bg-slate-100 text-slate-600 border-slate-300'
+            }`}>
+              {linkPreviewEnabled ? 'Включен' : 'Выключен'}
+            </span>
           </div>
-          <input
-            ref={signatureInputRef}
-            type="text"
-            value={signature}
-            onChange={(e) => setSignature(e.target.value)}
-            placeholder="Подписывайтесь на @SAV_AI"
-            className="w-full bg-transparent border border-pink-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-pink-500 font-mono shadow-2xs"
-          />
+
+          {linkPreviewEnabled ? (
+            extractFirstUrl(postText) ? (
+              <div className="bg-white/80 border border-sky-200 rounded-lg p-2.5 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-sky-700 font-bold">
+                  <span>Обнаружена ссылка для превью:</span>
+                  <span className="font-mono text-slate-600">{extractFirstUrl(postText)?.domain}</span>
+                </div>
+                <div className="text-xs text-slate-800 font-medium truncate">
+                  {extractFirstUrl(postText)?.url}
+                </div>
+              </div>
+            ) : (
+              <div className="text-[11px] text-slate-600 leading-relaxed">
+                В тексте поста пока нет ссылок. Вставьте ссылку (например, https://...), и Telegram автоматически сформирует сниппет предпросмотра при публикации.
+              </div>
+            )
+          ) : (
+            <div className="text-[11px] text-slate-600 leading-relaxed">
+              Предпросмотр ссылок отключен. При отправке в Telegram сниппеты сайтов и ссылок не будут отображаться под сообщением.
+            </div>
+          )}
         </div>
 
         {/* Character Counter */}
-        <div className="flex justify-between items-center text-[10px] font-mono pt-2 border-t border-pink-200">
-          <span className="text-slate-500">Символов поста с подписью:</span>
-          <span className={isLimitExceeded ? 'text-rose-600 font-bold' : 'text-slate-700'}>
+        <div className="flex justify-between items-center text-xs font-mono pt-2 border-t border-pink-200">
+          <span className="text-slate-600">Символов поста:</span>
+          <span className={isLimitExceeded ? 'text-rose-600 font-bold' : 'text-slate-800 font-bold'}>
             {totalPostCharCount} / {maxAllowedCharLimit}
           </span>
         </div>
@@ -3617,18 +3804,7 @@ export default function PromptEditor({
               )}
 
               {attachmentType === 'album' && (
-                <div className="w-full h-64 grid grid-cols-2 gap-1 overflow-hidden rounded-lg">
-                  {albumUrls.filter(u => u && u.trim()).length > 0 ? (
-                    albumUrls.filter(u => u && u.trim()).slice(0, 4).map((u, i) => (
-                      <img key={i} src={u} alt={`album-${i}`} className="w-full h-full object-cover rounded-md" />
-                    ))
-                  ) : (
-                    <div className="col-span-2 flex flex-col items-center justify-center text-xs text-slate-500">
-                      <Layers size={24} className="text-pink-500" />
-                      <span>[Альбом пуст]</span>
-                    </div>
-                  )}
-                </div>
+                <TelegramAlbumCollage urls={albumUrls} />
               )}
 
               {attachmentType === 'audio' && (
@@ -3648,27 +3824,26 @@ export default function PromptEditor({
           )}
 
           {/* Body text rendering */}
-          <div className="text-xs leading-relaxed font-sans text-slate-900 font-medium">
+          <div className="text-xs leading-relaxed font-sans text-slate-900 font-medium space-y-2">
             {messageFormat === 'v2' ? (
-              <div className="whitespace-pre-wrap font-sans text-slate-900">
-                {renderFormattedText(postText, 'v2') || <span className="italic text-slate-500">Текст вашего сообщения появится здесь...</span>}
-              </div>
+              <>
+                <div className="whitespace-pre-wrap font-sans text-slate-900">
+                  {renderFormattedText(postText, 'v2') || <span className="italic text-slate-500">Текст вашего сообщения появится здесь...</span>}
+                </div>
+                {linkPreviewEnabled && extractFirstUrl(postText) && (
+                  <TelegramLinkPreviewMockup link={extractFirstUrl(postText)!} />
+                )}
+              </>
             ) : (
               <RichPreviewRenderer
                 postText={postText}
-                signature={signature}
+                signature=""
+                linkPreviewEnabled={linkPreviewEnabled}
                 attachmentType={attachmentType}
                 attachmentUrl={getActiveAttachmentData().url}
               />
             )}
           </div>
-
-          {/* Formatted Signature if present in V2 */}
-          {messageFormat === 'v2' && signature && (
-            <div className="text-[11px] text-pink-700 font-bold whitespace-pre-wrap mt-2">
-              {renderFormattedText(signature, 'v2')}
-            </div>
-          )}
 
           {/* Timestamp footer with Telegram double checkmark */}
           <div className="flex justify-end items-center space-x-1 text-[10px] text-slate-500 pt-1 border-t border-pink-200/60">
@@ -4706,6 +4881,29 @@ export default function PromptEditor({
           </div>
         </div>
       )}
+
+      {/* Voice Recorder Modal */}
+      <VoiceRecorderModal
+        isOpen={isVoiceRecorderOpen}
+        onClose={() => setIsVoiceRecorderOpen(false)}
+        onVoiceProcessed={(result) => {
+          if (result && result.url) {
+            setAudioUrls(prev => {
+              const copy = [...prev];
+              copy[0] = result.url;
+              return copy;
+            });
+            setAudioFormat('voice');
+            setAttachmentType('audio');
+            setStatusMessage({
+              type: 'success',
+              text: 'Голосовое сообщение успешно записано, выгружено в галерею и прикреплено к посту!'
+            });
+          }
+          setIsVoiceRecorderOpen(false);
+        }}
+        activeFriendName="Голосовое сообщение"
+      />
     </div>
   );
 }

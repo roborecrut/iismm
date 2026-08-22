@@ -2148,7 +2148,8 @@ apiRouter.post('/publications/publish', async (req: Request, res: Response) => {
     attachmentUrls,
     inlineButtons,
     channels,
-    userId
+    userId,
+    linkPreviewEnabled
   } = req.body;
   
   if (!title) {
@@ -2164,7 +2165,8 @@ apiRouter.post('/publications/publish', async (req: Request, res: Response) => {
     requestTemplate: '',
     channel: '@SAV_AI',
     title,
-    signature: signature || ''
+    signature: signature || '',
+    linkPreviewEnabled: linkPreviewEnabled !== false
   };
 
   let user: any = null;
@@ -2178,6 +2180,7 @@ apiRouter.post('/publications/publish', async (req: Request, res: Response) => {
       messageFormat,
       uppercaseHeader,
       signature,
+      linkPreviewEnabled: linkPreviewEnabled !== undefined ? linkPreviewEnabled : (dayRequest.linkPreviewEnabled !== false),
       attachmentType,
       attachmentUrl,
       attachmentUrls,
@@ -3252,7 +3255,8 @@ apiRouter.post('/telegram/send', async (req: Request, res: Response) => {
     attachmentType, 
     attachmentUrl, 
     attachmentUrls, 
-    inlineButtons 
+    inlineButtons,
+    linkPreviewEnabled
   } = req.body;
 
   const textToSend = rawText || req.body.content || req.body.requestTemplate || '';
@@ -3270,7 +3274,8 @@ apiRouter.post('/telegram/send', async (req: Request, res: Response) => {
     channels: [channel || '@SAV_AI'],
     title: title || 'Публикация из БД',
     signature: signature || '',
-    messageFormat: format || 'v2'
+    messageFormat: format || 'v2',
+    linkPreviewEnabled: linkPreviewEnabled !== false
   };
 
   try {
@@ -3281,6 +3286,7 @@ apiRouter.post('/telegram/send', async (req: Request, res: Response) => {
       {
         messageFormat: format || 'v2',
         signature,
+        linkPreviewEnabled: linkPreviewEnabled !== false,
         attachmentType,
         attachmentUrl,
         attachmentUrls,
@@ -3316,10 +3322,14 @@ apiRouter.post('/telegram/test-send', async (req: Request, res: Response) => {
     telegramId = 169262990, 
     title = 'Тестовое сообщение', 
     content = 'Это тестовое сообщение от PROTALK Manager!', 
-    signature = 'С уважением, ИИ Помощник', 
+    signature = '', 
     messageFormat = 'v2',
+    linkPreviewEnabled = true,
     attachmentType = 'none',
-    attachmentUrl = ''
+    attachmentUrl = '',
+    attachmentUrls = [],
+    inlineButtons = [],
+    uppercaseHeader = true
   } = req.body;
 
   try {
@@ -3331,16 +3341,20 @@ apiRouter.post('/telegram/test-send', async (req: Request, res: Response) => {
       channel: String(telegramId),
       channels: [String(telegramId)],
       title,
-      signature,
-      messageFormat
+      signature: signature || '',
+      messageFormat,
+      linkPreviewEnabled: Boolean(linkPreviewEnabled)
     };
 
     const result = await sendPromptToTelegram(title, content, dummyReq, {
       messageFormat,
-      uppercaseHeader: true,
+      uppercaseHeader: Boolean(uppercaseHeader),
       signature,
+      linkPreviewEnabled: Boolean(linkPreviewEnabled),
       attachmentType,
       attachmentUrl,
+      attachmentUrls,
+      inlineButtons,
       telegramId
     });
 
@@ -4684,136 +4698,7 @@ apiRouter.delete(['/tariffs/:id', '/admin/tariffs/:id'], async (req: Request, re
   }
 });
 
-// User Change Tariff endpoint (with downgrade retention, upgrade balance check, period months, and discounts)
-apiRouter.post('/tariffs/change', async (req: Request, res: Response) => {
-  try {
-    const { userId, targetTariffId, targetTariffName, periodMonths: reqPeriod } = req.body;
-    if (!userId || !targetTariffName) {
-      return res.status(400).json({ success: false, error: 'userId и targetTariffName обязательны' });
-    }
-
-    const periodMonths = Number(reqPeriod) === 12 ? 12 : Number(reqPeriod) === 6 ? 6 : Number(reqPeriod) === 3 ? 3 : 1;
-    const durationDays = periodMonths * 30;
-
-    const db = await getSQLiteDB();
-    const cleanUserId = normalizeUserId(String(userId));
-    const targetUser = findUserInDb(db, cleanUserId);
-    if (!targetUser) {
-      return res.status(404).json({ success: false, error: 'Пользователь не найден' });
-    }
-
-    const currentTariffLower = (targetUser.tariff || 'старт').toLowerCase();
-    const targetNameLower = targetTariffName.toLowerCase();
-
-    // Tariff rank mapping for comparison
-    const getTariffRank = (t: string) => {
-      if (t.includes('космос') || t.includes('cosmos')) return 4;
-      if (t.includes('отрыв') || t.includes('vip')) return 3;
-      if (t.includes('разгон') || t.includes('pro')) return 2;
-      return 1; // start / free
-    };
-
-    const currentRank = getTariffRank(currentTariffLower);
-    const targetRank = getTariffRank(targetNameLower);
-
-    // Get tariff price details from database
-    const allTariffs = getAllTariffsFromDb(db);
-    const targetTariff = allTariffs.find(t => 
-      t.id === targetTariffId || 
-      t.name.toLowerCase() === targetNameLower ||
-      (targetNameLower.includes('старт') && t.id === 'start') ||
-      (targetNameLower.includes('разгон') && t.id === 'razgon') ||
-      (targetNameLower.includes('отрыв') && t.id === 'otryv')
-    );
-
-    const discountPercent = periodMonths === 12 
-      ? (targetTariff?.discount_12m !== undefined ? Number(targetTariff.discount_12m) : 15) 
-      : periodMonths === 6 
-      ? (targetTariff?.discount_6m !== undefined ? Number(targetTariff.discount_6m) : 10) 
-      : periodMonths === 3 
-      ? (targetTariff?.discount_3m !== undefined ? Number(targetTariff.discount_3m) : 5) 
-      : 0;
-
-    const baseMonthlyPriceRub = targetTariff ? Number(targetTariff.price_rub || 0) : (targetRank === 2 ? 990 : targetRank === 3 ? 4900 : 0);
-    const totalWithoutDiscount = baseMonthlyPriceRub * periodMonths;
-    const priceRub = Math.round(totalWithoutDiscount * (1 - discountPercent / 100));
-
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
-
-    // Case 1: Same tariff and 1 month requested without extension intent
-    if (currentTariffLower === targetNameLower && targetRank === 1) {
-      return res.json({
-        success: true,
-        message: `У вас уже подключен базовый тариф «${targetTariffName}».`,
-        user: targetUser
-      });
-    }
-
-    // Case 2: Downgrade (Switch to lower tier)
-    // Rule: "Не списываются ИИрки при даунгрейде и остаются на балансе, но ежемесячно баланс будет обновляться на более маленький."
-    if (targetRank < currentRank || priceRub === 0) {
-      db.run(
-        `UPDATE users SET tariff = ?, tariff_assigned_at = ?, tariff_expires_at = ?, tariff_duration_days = ? WHERE id = ?`,
-        [targetTariffName, now.toISOString(), expiresAt, durationDays, targetUser.id]
-      );
-      saveSQLiteDB();
-
-      const updatedUser = findUserInDb(db, cleanUserId);
-      return res.json({
-        success: true,
-        isDowngrade: true,
-        message: `Тариф успешно изменен на «${targetTariffName}». Ваши накопленные ИИрки сохранены на балансе, а со следующего месяца лимит обновится согласно новому тарифу.`,
-        user: updatedUser
-      });
-    }
-
-    // Case 3: Upgrade / Paid tariff activation or extension
-    const currentTotalBalance = Number(targetUser.balance ?? (Number(targetUser.balance_pay || 0) + Number(targetUser.balance_free || 0)));
-
-    if (currentTotalBalance < priceRub) {
-      const missing = priceRub - currentTotalBalance;
-      return res.status(400).json({
-        success: false,
-        needTopup: true,
-        missingAmount: missing,
-        requiredAmount: priceRub,
-        currentBalance: currentTotalBalance,
-        periodMonths,
-        discountPercent,
-        error: `Недостаточно ИИрок на балансе для активации тарифа «${targetTariffName}» на ${periodMonths} мес.${discountPercent > 0 ? ` (скидка ${discountPercent}%)` : ''}. Требуется: ${priceRub} ИИрок, не хватает: ${missing} ИИрок.`
-      });
-    }
-
-    // Deduct price from balance and activate
-    const discountText = discountPercent > 0 ? ` (скидка ${discountPercent}%, экономия ${totalWithoutDiscount - priceRub} ИИрок)` : '';
-    addTransactionWithBalanceUpdate(db, {
-      userId: targetUser.id,
-      type: 'tarif',
-      balanceType: 'pay',
-      amount: -priceRub,
-      description: `Активация тарифа «${targetTariffName}» на ${periodMonths} мес.${discountText} (-${priceRub} ИИрок)`
-    });
-
-    db.run(
-      `UPDATE users SET tariff = ?, tariff_assigned_at = ?, tariff_expires_at = ?, tariff_duration_days = ? WHERE id = ?`,
-      [targetTariffName, now.toISOString(), expiresAt, durationDays, targetUser.id]
-    );
-
-    saveSQLiteDB();
-    const updatedUser = findUserInDb(db, cleanUserId);
-
-    return res.json({
-      success: true,
-      isUpgrade: true,
-      message: `Тариф «${targetTariffName}» успешно подключен на ${periodMonths} мес. (${durationDays} дней)!`,
-      user: updatedUser
-    });
-  } catch (err: any) {
-    console.error('[API /tariffs/change] Error:', err);
-    res.status(500).json({ success: false, error: err.message || 'Ошибка смены тарифа' });
-  }
-});
+// (Removed legacy duplicate /tariffs/change handler; the unified handler below handles validation, discounts, balance deduction with balance_cost, and dates)
 
 // Cosmos Tariff Contact Request endpoint
 apiRouter.post('/tariffs/cosmos-request', async (req: Request, res: Response) => {
@@ -6012,33 +5897,71 @@ apiRouter.post('/tariffs/change', async (req: Request, res: Response) => {
       return;
     }
 
-    // Determine cost and duration
-    const months = Math.max(1, Number(periodMonths) || 1);
-    const days = months * 30;
-
-    let basePricePerMonth = 0;
-    let monthlyIirkyBonus = 0;
     const nameLower = targetTariffName.toLowerCase();
+    const isFreePlan = nameLower.includes('старт') || nameLower.includes('бесплатн') || nameLower === 'free' || nameLower === 'start';
 
-    if (nameLower.includes('старт')) {
-      basePricePerMonth = 0;
-      monthlyIirkyBonus = 300;
-    } else if (nameLower.includes('разгон')) {
-      basePricePerMonth = 990;
-      monthlyIirkyBonus = 990;
-    } else if (nameLower.includes('отрыв')) {
-      basePricePerMonth = 4900;
-      monthlyIirkyBonus = 4900;
-    } else if (nameLower.includes('космос')) {
+    if (nameLower.includes('космос') || nameLower === 'cosmos') {
       res.status(400).json({ error: 'Тариф «Космос» подключается через персональную заявку и индивидуальный договор.' });
       return;
     }
 
-    // Calculate discount for longer periods (3m -> 10%, 6m -> 20%, 12m -> 30%)
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    // 1. FREE START TARIFF
+    if (isFreePlan) {
+      db.run(
+        `UPDATE users 
+         SET 
+           tariff = ?, 
+           tarif_date = ?, 
+           tariff_assigned_at = ?, 
+           tariff_expires_at = NULL, 
+           tariff_duration_days = 0,
+           balance_time = ?
+         WHERE id = ?`,
+        ['Старт', nowIso, nowIso, nowIso, cleanUserId]
+      );
+
+      saveSQLiteDB();
+      try { DB.updateUser(cleanUserId, { tariff: 'Старт' }); } catch(e) {}
+      const updatedUser = getUserByIdFromDb(db, cleanUserId);
+
+      res.json({
+        success: true,
+        message: 'Вы успешно перешли на базовый бесплатный тариф «Старт»!',
+        user: {
+          id: updatedUser?.id,
+          tariff: 'Старт',
+          tarif_date: updatedUser?.tarif_date,
+          tariff_expires_at: null,
+          tariffDurationDays: 0,
+          balance: (Number(updatedUser?.balance_pay) || 0) + (Number(updatedUser?.balance_free) || 0),
+          balance_pay: updatedUser?.balance_pay,
+          balance_free: updatedUser?.balance_free
+        }
+      });
+      return;
+    }
+
+    // 2. PAID TARIFFS (Разгон, Отрыв)
+    const months = Math.max(1, Number(periodMonths) || 1);
+    const days = months * 30;
+
+    let basePricePerMonth = 0;
+    if (nameLower.includes('разгон') || nameLower === 'pro') {
+      basePricePerMonth = 990;
+    } else if (nameLower.includes('отрыв') || nameLower === 'vip') {
+      basePricePerMonth = 4900;
+    } else {
+      basePricePerMonth = 990;
+    }
+
+    // Matching discounts: 3m -> 5%, 6m -> 10%, 12m -> 15%
     let discountPercent = 0;
-    if (months === 3) discountPercent = 10;
-    else if (months === 6) discountPercent = 20;
-    else if (months === 12) discountPercent = 30;
+    if (months === 3) discountPercent = 5;
+    else if (months === 6) discountPercent = 10;
+    else if (months === 12) discountPercent = 15;
 
     const totalCost = Math.round(basePricePerMonth * months * (1 - discountPercent / 100));
 
@@ -6056,22 +5979,28 @@ apiRouter.post('/tariffs/change', async (req: Request, res: Response) => {
       return;
     }
 
-    // Deduct cost if > 0
+    // Deduct cost from balance in database
     if (totalCost > 0) {
       addTransactionWithBalanceUpdate(db, {
         userId: cleanUserId,
         type: 'cost',
         amount: totalCost,
-        description: `Списание за переход на тариф «${targetTariffName}» на ${months} мес.`,
+        description: `Списание за подключение тарифа «${targetTariffName}» на ${months} мес.`,
         comment: `Тариф ${targetTariffName} (${days} дней)`
       });
     }
 
-    const now = new Date();
-    const nowIso = now.toISOString();
-    const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+    // Calculate expiry date: if user has future active subscription, extend from that date
+    let baseDate = now;
+    if (userRecord.tariff_expires_at) {
+      const existingExpiry = new Date(userRecord.tariff_expires_at);
+      if (!isNaN(existingExpiry.getTime()) && existingExpiry.getTime() > now.getTime()) {
+        baseDate = existingExpiry;
+      }
+    }
+    const expiresAt = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
 
-    // Update user tariff info with triggers tracking tarif_date
+    // Update user tariff info
     db.run(
       `UPDATE users 
        SET 
@@ -6085,25 +6014,15 @@ apiRouter.post('/tariffs/change', async (req: Request, res: Response) => {
       [targetTariffName, nowIso, nowIso, expiresAt, days, nowIso, cleanUserId]
     );
 
-    // Credit monthly Iirky bonus if applicable
-    if (monthlyIirkyBonus > 0) {
-      addTransactionWithBalanceUpdate(db, {
-        userId: cleanUserId,
-        type: 'tarif',
-        balanceType: 'tarif',
-        amount: monthlyIirkyBonus,
-        description: `Пакетное начисление по тарифу «${targetTariffName}» (+${monthlyIirkyBonus} ИИрок)`,
-        comment: `Бонус тарифа ${targetTariffName}`
-      });
-    }
-
     saveSQLiteDB();
+    try { DB.updateUser(cleanUserId, { tariff: targetTariffName }); } catch(e) {}
 
     const updatedUser = getUserByIdFromDb(db, cleanUserId);
+    const newExpiryFormatted = new Date(expiresAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
     res.json({
       success: true,
-      message: `Тариф успешно изменен на «${targetTariffName}» на ${days} дней!`,
+      message: `Тариф «${targetTariffName}» успешно подключен до ${newExpiryFormatted}! Списано ${totalCost.toLocaleString('ru-RU')} ИИрок.`,
       user: {
         id: updatedUser?.id,
         tariff: updatedUser?.tariff,

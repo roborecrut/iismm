@@ -25,7 +25,7 @@ export interface User {
   profileLink?: string;
   bio?: string;
   isPremium?: boolean;
-  tariff?: 'free' | 'start' | 'pro' | 'vip';
+  tariff?: 'free' | 'start' | 'pro' | 'vip' | string;
   premiumUntil?: string;
   languageCode?: string;
   phone?: string;
@@ -58,6 +58,7 @@ export interface Prompt {
   messageFormat?: 'markdown' | 'html';
   uppercaseHeader?: boolean;
   signature?: string;
+  linkPreviewEnabled?: boolean;
   attachmentType?: 'none' | 'photo' | 'document' | 'video' | 'audio';
   attachmentUrl?: string;
 }
@@ -150,6 +151,7 @@ export interface DayRequest {
   channels?: string[];
   title: string;
   signature: string;
+  linkPreviewEnabled?: boolean;
   messageFormat?: 'v2' | 'rich' | 'markdown' | 'html';
   uppercaseHeader?: boolean;
   postText?: string;
@@ -469,7 +471,7 @@ export class DB {
           user_avatar: userAvatar,
           bio: row.bio || '',
           status: (row.status as any) || 'Активный',
-          tariff: row.tariff || (row.role === 'admin' ? 'Космос' : 'Старт'),
+          tariff: row.tariff || 'Старт',
           balance: row.balance !== undefined && row.balance !== null ? Number(row.balance) : 1000,
           referredBy: row.referred_by 
             ? (isNaN(Number(row.referred_by)) ? String(row.referred_by) : Number(row.referred_by)) 

@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Paperclip, Loader2, UploadCloud } from 'lucide-react';
+import { Paperclip, Loader2, UploadCloud, CheckCircle2, Clock } from 'lucide-react';
 import { useFileUpload } from '../hooks/useFileUpload';
 
 interface FileUploadProps {
@@ -20,7 +20,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     variant = "button"
 }) => {
     const inputRef = useRef<HTMLInputElement>(null);
-    const { upload, uploading, error } = useFileUpload();
+    const { upload, uploading, progress, error } = useFileUpload();
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
@@ -30,13 +30,15 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         for (const file of fileList) {
             try {
                 const { key, url } = await upload(file);
-                onUploaded(key, url, { name: file.name, type: file.type });
+                if (onUploaded) {
+                    onUploaded(key, url, { name: file.name, type: file.type });
+                }
             } catch (err) {
                 console.error('Upload failed:', err);
             }
         }
 
-        // Сброс input
+        // Reset input
         if (inputRef.current) {
             inputRef.current.value = '';
         }
@@ -54,7 +56,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         for (const file of fileList) {
             try {
                 const { key, url } = await upload(file);
-                onUploaded(key, url, { name: file.name, type: file.type });
+                if (onUploaded) {
+                    onUploaded(key, url, { name: file.name, type: file.type });
+                }
             } catch (err) {
                 console.error('Upload failed:', err);
             }
@@ -67,6 +71,19 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     };
 
     const uniqueId = `file-input-${Math.random().toString(36).substring(2, 9)}`;
+
+    // Render progress message
+    const renderProgressText = () => {
+        if (!uploading) return buttonLabel;
+        if (progress.stage === 'uploading') {
+            return `Загрузка файла: ${progress.percent}%`;
+        }
+        if (progress.stage === 'saving_gallery') {
+            const secs = (progress.secondsElapsed || 0).toFixed(1);
+            return `Сохранение в галерею... ⏳ ${secs} сек`;
+        }
+        return 'Файл обработан!';
+    };
 
     if (variant === 'dropzone') {
         return (
@@ -88,17 +105,32 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 />
                 <div className="flex flex-col items-center justify-center space-y-2">
                     {uploading ? (
-                        <Loader2 className="animate-spin text-pink-600" size={24} />
+                        <div className="relative">
+                            <Loader2 className="animate-spin text-pink-600" size={28} />
+                            {progress.stage === 'saving_gallery' && (
+                                <Clock className="absolute -top-1 -right-2 text-orange-500 animate-pulse" size={14} />
+                            )}
+                        </div>
                     ) : (
-                        <UploadCloud className="text-pink-600" size={24} />
+                        <UploadCloud className="text-pink-600" size={28} />
                     )}
-                    <span className="text-xs font-bold text-slate-800">
-                        {uploading ? 'Загрузка файла на сервер...' : buttonLabel}
-                    </span>
-                    <span className="text-xs text-slate-500 font-mono">
+                    <div className="flex flex-col items-center">
+                        <span className="text-sm font-bold text-slate-800">
+                            {renderProgressText()}
+                        </span>
+                        {uploading && (
+                            <div className="w-48 bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden border border-pink-200">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 transition-all duration-200"
+                                    style={{ width: `${progress.percent}%` }}
+                                />
+                            </div>
+                        )}
+                    </div>
+                    <span className="text-sm text-slate-600 font-medium">
                         Перетащите файл сюда или нажмите для выбора (картинки, видео, аудио, документы)
                     </span>
-                    {error && <span className="text-xs text-rose-600 font-bold">{error}</span>}
+                    {error && <span className="text-sm text-rose-600 font-bold">{error}</span>}
                 </div>
             </div>
         );
@@ -119,13 +151,13 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 />
                 <label 
                     htmlFor={uniqueId} 
-                    className="p-1.5 bg-gradient-to-r from-sky-50 via-pink-50 to-orange-50 hover:bg-white text-pink-700 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 border border-pink-200 shadow-2xs"
+                    className="px-3 py-2 bg-gradient-to-r from-sky-50 via-pink-50 to-orange-50 hover:bg-white text-pink-700 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center space-x-2 border border-pink-200 shadow-2xs"
                     title="Загрузить файл"
                 >
-                    {uploading ? <Loader2 className="animate-spin text-pink-600" size={14} /> : <Paperclip size={14} className="text-pink-600" />}
-                    <span className="text-xs">{uploading ? 'Загрузка...' : buttonLabel}</span>
+                    {uploading ? <Loader2 className="animate-spin text-pink-600 shrink-0" size={16} /> : <Paperclip size={16} className="text-pink-600 shrink-0" />}
+                    <span className="text-sm">{renderProgressText()}</span>
                 </label>
-                {error && <span className="text-xs text-rose-600 ml-2 font-bold">{error}</span>}
+                {error && <span className="text-sm text-rose-600 ml-2 font-bold">{error}</span>}
             </div>
         );
     }
@@ -144,14 +176,15 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             />
             <label 
                 htmlFor={uniqueId} 
-                className="flex items-center space-x-2 px-3.5 py-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white rounded-xl text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
             >
-                {uploading ? <Loader2 className="animate-spin" size={14} /> : <Paperclip size={14} />}
-                <span>{uploading ? 'Загрузка...' : buttonLabel}</span>
+                {uploading ? <Loader2 className="animate-spin shrink-0" size={16} /> : <Paperclip size={16} className="shrink-0" />}
+                <span className="text-sm">{renderProgressText()}</span>
             </label>
-            {error && <div className="text-[10px] text-rose-500 mt-1 font-bold">{error}</div>}
+            {error && <div className="text-sm text-rose-500 mt-1 font-bold">{error}</div>}
         </div>
     );
 };
 
 export default FileUpload;
+

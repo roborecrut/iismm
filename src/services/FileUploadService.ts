@@ -2,6 +2,17 @@ const UPLOAD_URL = "https://file.pro-talk.ru/tgf";
 const STORAGE_KEY = "protalk_upload_token";
 const FILES_MAP_KEY = "protalk_files_map";
 
+export interface UploadProgressInfo {
+    stage: 'uploading' | 'saving_gallery' | 'done';
+    percent: number;
+    secondsElapsed?: number;
+    estimatedSecondsLeft?: number;
+    loadedBytes?: number;
+    totalBytes?: number;
+}
+
+export type UploadProgressCallback = (progress: UploadProgressInfo) => void;
+
 interface FileMap {
     [key: string]: string; // key -> полный URL
 }
@@ -76,8 +87,126 @@ export class FileUploadService {
         }
     }
 
+    // Загрузка из File через серверный API с трекингом прогресса и таймером сохранения в галерею
+    async uploadFromFileWithProgress(
+        file: File, 
+        folderIds?: (number | string)[],
+        onProgress?: UploadProgressCallback
+    ): Promise<{ url: string; proxyUrl?: string; fileKey?: string; file?: any }> {
+        return new Promise((resolve, reject) => {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("token", this.token);
+            if (folderIds && folderIds.length > 0) {
+                folderIds.forEach(id => formData.append("folderIds", String(id)));
+            }
+
+            const xhr = new XMLHttpRequest();
+            let timerInterval: any = null;
+            let gallerySeconds = 0;
+
+            const cleanupTimer = () => {
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                }
+            };
+
+            // Progress tracking for file bytes upload
+            xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable && onProgress) {
+                    const percent = Math.min(99, Math.round((event.loaded / event.total) * 100));
+                    onProgress({
+                        stage: 'uploading',
+                        percent,
+                        loadedBytes: event.loaded,
+                        totalBytes: event.total
+                    });
+                }
+            };
+
+            // When upload bytes are 100% transferred, start the gallery saving waiting timer
+            xhr.upload.onload = () => {
+                if (onProgress) {
+                    onProgress({
+                        stage: 'saving_gallery',
+                        percent: 100,
+                        secondsElapsed: 0,
+                        estimatedSecondsLeft: 2
+                    });
+
+                    const startTime = Date.now();
+                    timerInterval = setInterval(() => {
+                        gallerySeconds = Math.round((Date.now() - startTime) / 100) / 10;
+                        onProgress({
+                            stage: 'saving_gallery',
+                            percent: 100,
+                            secondsElapsed: gallerySeconds,
+                            estimatedSecondsLeft: Math.max(0, Math.round((2.5 - gallerySeconds) * 10) / 10)
+                        });
+                    }, 100);
+                }
+            };
+
+            xhr.onload = async () => {
+                cleanupTimer();
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const proxyData = JSON.parse(xhr.responseText);
+                        if (proxyData && (proxyData.url || proxyData.proxyUrl)) {
+                            if (onProgress) {
+                                onProgress({
+                                    stage: 'done',
+                                    percent: 100,
+                                    secondsElapsed: gallerySeconds
+                                });
+                            }
+                            resolve({
+                                url: proxyData.proxyUrl || proxyData.shortUrl || proxyData.url,
+                                proxyUrl: proxyData.proxyUrl,
+                                fileKey: proxyData.fileKey,
+                                file: proxyData.file
+                            });
+                            return;
+                        }
+                    } catch (e) {}
+                }
+
+                // If proxy failed, try fallback
+                try {
+                    const fallbackRes = await this.uploadFromFile(file, folderIds);
+                    if (onProgress) {
+                        onProgress({ stage: 'done', percent: 100 });
+                    }
+                    resolve(fallbackRes);
+                } catch (err) {
+                    reject(err);
+                }
+            };
+
+            xhr.onerror = async () => {
+                cleanupTimer();
+                try {
+                    const fallbackRes = await this.uploadFromFile(file, folderIds);
+                    if (onProgress) {
+                        onProgress({ stage: 'done', percent: 100 });
+                    }
+                    resolve(fallbackRes);
+                } catch (err) {
+                    reject(err);
+                }
+            };
+
+            xhr.open('POST', '/api/upload', true);
+            xhr.send(formData);
+        });
+    }
+
     // Загрузка из File через серверный API
-    async uploadFromFile(file: File, folderIds?: (number | string)[]): Promise<{ url: string; proxyUrl?: string; fileKey?: string; file?: any }> {
+    async uploadFromFile(file: File, folderIds?: (number | string)[], onProgress?: UploadProgressCallback): Promise<{ url: string; proxyUrl?: string; fileKey?: string; file?: any }> {
+        if (onProgress) {
+            return this.uploadFromFileWithProgress(file, folderIds, onProgress);
+        }
         try {
             const formData = new FormData();
             formData.append("file", file);
@@ -231,15 +360,16 @@ export class FileUploadService {
     }
 
     // Загрузка и сохранение в карту
-    async uploadAndStore(file: File | string, customKey?: string): Promise<{ key: string; url: string }> {
+    async uploadAndStore(file: File | string, customKey?: string, onProgress?: UploadProgressCallback): Promise<{ key: string; url: string }> {
         let url: string;
         
         if (typeof file === 'string') {
             // Это URL
             url = await this.uploadFromUrl(file);
+            if (onProgress) onProgress({ stage: 'done', percent: 100 });
         } else {
             // Это File
-            const res = await this.uploadFromFile(file);
+            const res = await this.uploadFromFile(file, undefined, onProgress);
             url = typeof res === 'string' ? res : res.url;
         }
 

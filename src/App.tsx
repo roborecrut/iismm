@@ -975,27 +975,39 @@ export default function App() {
 
             {/* RIGHT: User Tariff Badge */}
             <div className="flex items-center gap-1.5 z-10">
-              {user.role === 'admin' || user.id === '169262990' || String(user.id) === '16926299042' || user.tariff === 'kosmos' ? (
-                <button onClick={() => changeRoute('/tarif')} className="px-2.5 py-1 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white text-[9px] font-black rounded-xl shadow-xs flex items-center gap-1 cursor-pointer hover:opacity-95">
-                  <span>👑</span>
-                  <span>КОСМОС</span>
-                </button>
-              ) : user.tariff === 'vip' || user.tariff === 'otryv' ? (
-                <button onClick={() => changeRoute('/tarif')} className="px-2.5 py-1 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[9px] font-black rounded-xl shadow-xs flex items-center gap-1 cursor-pointer hover:opacity-95">
-                  <span>🔥</span>
-                  <span>ОТРЫВ</span>
-                </button>
-              ) : user.tariff === 'pro' || user.tariff === 'razgon' ? (
-                <button onClick={() => changeRoute('/tarif')} className="px-2.5 py-1 bg-gradient-to-r from-sky-400 to-indigo-500 text-white text-[9px] font-black rounded-xl shadow-xs flex items-center gap-1 cursor-pointer hover:opacity-95">
-                  <span>⚡</span>
-                  <span>РАЗГОН</span>
-                </button>
-              ) : (
-                <button onClick={() => changeRoute('/tarif')} className="px-2.5 py-1 bg-slate-200 text-slate-700 text-[9px] font-black rounded-xl flex items-center gap-1 cursor-pointer hover:bg-slate-300">
-                  <span>🌱</span>
-                  <span>СТАРТ</span>
-                </button>
-              )}
+              {(() => {
+                const raw = (user.tariff || '').toLowerCase();
+                if (raw.includes('космос') || raw.includes('kosmos') || raw.includes('индивидуальн')) {
+                  return (
+                    <button onClick={() => changeRoute('/tarif')} className="px-2.5 py-1 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white text-[9px] font-black rounded-xl shadow-xs flex items-center gap-1 cursor-pointer hover:opacity-95">
+                      <span>👑</span>
+                      <span>КОСМОС</span>
+                    </button>
+                  );
+                }
+                if (raw.includes('отрыв') || raw.includes('otryv') || raw.includes('vip') || raw.includes('взлет')) {
+                  return (
+                    <button onClick={() => changeRoute('/tarif')} className="px-2.5 py-1 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[9px] font-black rounded-xl shadow-xs flex items-center gap-1 cursor-pointer hover:opacity-95">
+                      <span>🔥</span>
+                      <span>ОТРЫВ</span>
+                    </button>
+                  );
+                }
+                if (raw.includes('разгон') || raw.includes('razgon') || raw.includes('pro')) {
+                  return (
+                    <button onClick={() => changeRoute('/tarif')} className="px-2.5 py-1 bg-gradient-to-r from-sky-400 to-indigo-500 text-white text-[9px] font-black rounded-xl shadow-xs flex items-center gap-1 cursor-pointer hover:opacity-95">
+                      <span>⚡</span>
+                      <span>РАЗГОН</span>
+                    </button>
+                  );
+                }
+                return (
+                  <button onClick={() => changeRoute('/tarif')} className="px-2.5 py-1 bg-slate-200 text-slate-700 text-[9px] font-black rounded-xl flex items-center gap-1 cursor-pointer hover:bg-slate-300">
+                    <span>🌱</span>
+                    <span>СТАРТ</span>
+                  </button>
+                );
+              })()}
             </div>
           </div>
         )}

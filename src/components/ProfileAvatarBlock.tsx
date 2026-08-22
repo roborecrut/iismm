@@ -19,15 +19,14 @@ export default function ProfileAvatarBlock({
   className = '',
   size = 'md'
 }: ProfileAvatarBlockProps) {
-  const isUserAdmin = user.role === 'admin' || user.id === '169262990' || user.telegramId === 169262990 || String(user.id) === '16926299042';
-  const rawTariff = user.tariff ? String(user.tariff).toLowerCase() : (isUserAdmin ? 'kosmos' : 'start');
+  const rawTariff = user.tariff ? String(user.tariff).toLowerCase() : 'start';
   
   let tariffName = 'Старт';
   let tariffIcon = '🌱';
-  if (rawTariff.includes('kosmos') || rawTariff.includes('космос') || isUserAdmin) {
+  if (rawTariff.includes('kosmos') || rawTariff.includes('космос') || rawTariff.includes('индивидуальн')) {
     tariffName = 'Космос';
     tariffIcon = '👑';
-  } else if (rawTariff.includes('otryv') || rawTariff.includes('отрыв') || rawTariff.includes('vip')) {
+  } else if (rawTariff.includes('otryv') || rawTariff.includes('отрыв') || rawTariff.includes('vip') || rawTariff.includes('взлет')) {
     tariffName = 'Отрыв';
     tariffIcon = '🔥';
   } else if (rawTariff.includes('razgon') || rawTariff.includes('разгон') || rawTariff.includes('pro')) {
