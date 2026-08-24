@@ -87,12 +87,12 @@ export default function App() {
         '/payment/success', '/payment/fail', '/payment/robokassa/success', '/payment/robokassa/fail'
       ];
 
-      const landingPaths = ['/', '/main', '/blog', '/ai', '/market-exchange', '/chat', '/prices', '/projects', '/academy', '/oferta', '/tarif/pay', '/reset-password', '/payment/success', '/payment/fail', '/payment/robokassa/success', '/payment/robokassa/fail'];
+      const landingPaths = ['/', '/main', '/blog', '/ai', '/market-exchange', '/prices', '/projects', '/academy', '/oferta', '/tarif/pay', '/reset-password', '/payment/success', '/payment/fail', '/payment/robokassa/success', '/payment/robokassa/fail'];
 
       const isAppPath = rawAppPaths.some(p => path === p || path.startsWith(p + '/') || (p === '/social' && path.startsWith('/social')));
       const isLandingPath = landingPaths.some(p => path === p || path.startsWith(p + '/'));
 
-      if (path === '/' || path === '' || path === '/main') {
+      if (path === '/' || path === '' || path === '/main' || path === '/chat') {
         setCurrentPath(path === '/main' ? '/main' : '/');
       } else if (isAppPath || isLandingPath) {
         setCurrentPath(path);
@@ -880,7 +880,7 @@ export default function App() {
     return <PaymentFailPage onNavigate={changeRoute} />;
   }
 
-  const landingPaths = ['/', '/main', '/blog', '/ai', '/market-exchange', '/chat', '/prices', '/projects', '/academy'];
+  const landingPaths = ['/', '/main', '/blog', '/ai', '/market-exchange', '/prices', '/projects', '/academy'];
 
   const isLandingRoute = landingPaths.includes(currentPath) || currentPath.startsWith('/blog/') || currentPath.startsWith('/blog');
 

@@ -6,13 +6,15 @@ interface VoiceRecorderModalProps {
   onClose: () => void;
   onVoiceProcessed: (result: { url: string; text: string }) => void;
   activeFriendName?: string;
+  skipTranscription?: boolean;
 }
 
 export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
   isOpen,
   onClose,
   onVoiceProcessed,
-  activeFriendName = 'Соавтор'
+  activeFriendName = 'Соавтор',
+  skipTranscription = false
 }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -298,12 +300,12 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
     ctx.fill();
   };
 
-  // Stop Recording and Transcribe Speech to Text via ProTalk STT
+  // Stop Recording and Transcribe Speech to Text via ProTalk STT (or save as OGG voice directly if skipTranscription)
   const stopRecordingAndSend = async () => {
     if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') return;
 
     setStatusText('processing');
-    setStatusMessage('Распознавание речи...');
+    setStatusMessage(skipTranscription ? 'Сохранение и конвертация голосового сообщения...' : 'Распознавание речи...');
 
     const mediaRecorder = mediaRecorderRef.current;
 
@@ -322,6 +324,61 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
         let voiceUrl = '';
         let voiceText = '';
 
+        // If skipTranscription is true (e.g. for post voice message), convert and upload directly to OGG without STT
+        if (skipTranscription) {
+          try {
+            const formData = new FormData();
+            formData.append('file', audioBlob, 'voice_message.webm');
+            formData.append('convertVoiceOgg', 'true');
+
+            const convRes = await fetch('/api/convert-audio-to-ogg', {
+              method: 'POST',
+              body: formData
+            });
+
+            if (convRes.ok) {
+              const convData = await convRes.json();
+              if (convData.success && convData.url) {
+                voiceUrl = convData.proxyUrl || convData.shortUrl || convData.url;
+              }
+            }
+          } catch (cErr) {
+            console.warn('convert-audio-to-ogg failed, trying /api/upload fallback:', cErr);
+          }
+
+          if (!voiceUrl) {
+            try {
+              const formData = new FormData();
+              formData.append('file', audioBlob, 'voice_message.webm');
+              formData.append('convertVoiceOgg', 'true');
+
+              const uploadRes = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+              });
+              if (uploadRes.ok) {
+                const uploadData = await uploadRes.json();
+                voiceUrl = uploadData.proxyUrl || uploadData.shortUrl || uploadData.url;
+              }
+            } catch (uErr) {
+              console.warn('/api/upload fallback failed:', uErr);
+            }
+          }
+
+          if (!voiceUrl) {
+            voiceUrl = URL.createObjectURL(audioBlob);
+          }
+
+          onVoiceProcessed({
+            url: voiceUrl,
+            text: ''
+          });
+
+          onClose();
+          return;
+        }
+
+        // Standard flow with STT transcription
         // 1. Try server proxy endpoint /api/protalk-stt
         try {
           const formData = new FormData();
@@ -401,7 +458,7 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
       } catch (err: any) {
         console.error('Failed to process voice message:', err);
         setStatusText('error');
-        setStatusMessage('Ошибка при распознавании речи: ' + (err.message || 'Сбой сети'));
+        setStatusMessage('Ошибка при обработке записи: ' + (err.message || 'Сбой сети'));
       }
     };
 

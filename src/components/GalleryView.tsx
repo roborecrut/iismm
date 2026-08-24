@@ -81,10 +81,12 @@ export default function GalleryView({
   // Upload states
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [directUrl, setDirectUrl] = useState('');
   const [isSubmittingUrl, setIsSubmittingUrl] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const uploadAbortRef = useRef<AbortController | null>(null);
 
   // Preview Modal state
   const [previewFile, setPreviewFile] = useState<MediaFile | null>(null);
@@ -208,51 +210,124 @@ export default function GalleryView({
     }
   };
 
-  // Upload files handler with PNG X-Preserve-Alpha support
+  // Cancel active upload handler
+  const cancelMassUpload = () => {
+    if (uploadAbortRef.current) {
+      uploadAbortRef.current.abort();
+      uploadAbortRef.current = null;
+    }
+    setIsUploading(false);
+    setUploadProgress('Загрузка отменена');
+    setUploadError(null);
+    loadFiles();
+    loadFolders();
+    setTimeout(() => setUploadProgress(''), 2500);
+  };
+
+  // Upload files handler with cancellation and multi-retry resilience
   const handleFileUpload = async (fileList: FileList | File[]) => {
     const selectedFiles: File[] = Array.from(fileList);
     if (selectedFiles.length === 0) return;
 
-    const filesToUpload = selectedFiles.slice(0, 10);
+    const filesToUpload = selectedFiles.slice(0, 15);
     setIsUploading(true);
-    setUploadProgress(`Загрузка 1 из ${filesToUpload.length}...`);
+    setUploadError(null);
+    setUploadProgress(`Подготовка к загрузке ${filesToUpload.length} файлов...`);
 
+    uploadAbortRef.current = new AbortController();
     let uploadedCount = 0;
+
     try {
       for (let i = 0; i < filesToUpload.length; i++) {
+        if (uploadAbortRef.current?.signal.aborted) {
+          break;
+        }
+
         const file = filesToUpload[i];
         setUploadProgress(`Загрузка ${i + 1} из ${filesToUpload.length}: ${file.name}...`);
 
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('userId', targetUserId);
-        
-        if (activeFolderId !== 'all') {
-          formData.append('folderId', String(activeFolderId));
+        let uploadSuccess = false;
+        let lastErrorMsg = '';
+
+        // Up to 3 attempts per file for network resilience
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          if (uploadAbortRef.current?.signal.aborted) break;
+
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('userId', targetUserId);
+            
+            if (activeFolderId !== 'all') {
+              formData.append('folderId', String(activeFolderId));
+            }
+
+            const res = await fetch('/api/upload', {
+              method: 'POST',
+              headers: { 'x-user-id': targetUserId },
+              body: formData,
+              signal: uploadAbortRef.current?.signal
+            });
+
+            if (res.ok) {
+              uploadSuccess = true;
+              uploadedCount++;
+              break;
+            } else {
+              const errData = await res.json().catch(() => ({}));
+              lastErrorMsg = errData.error || `HTTP ${res.status}`;
+            }
+          } catch (fetchErr: any) {
+            if (fetchErr.name === 'AbortError' || uploadAbortRef.current?.signal.aborted) {
+              break;
+            }
+            lastErrorMsg = fetchErr.message || 'Ошибка сети';
+          }
+
+          if (attempt < 3 && !uploadAbortRef.current?.signal.aborted) {
+            // Short backoff before retry
+            await new Promise(r => setTimeout(r, 600 * attempt));
+          }
         }
 
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { 'x-user-id': targetUserId },
-          body: formData
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `Ошибка при загрузке ${file.name} (код ${res.status})`);
+        if (uploadAbortRef.current?.signal.aborted) {
+          break;
         }
-        uploadedCount++;
+
+        if (!uploadSuccess) {
+          setUploadError(`Не удалось загрузить "${file.name}": ${lastErrorMsg}`);
+          console.warn(`[Gallery Upload] Failed file ${file.name}: ${lastErrorMsg}`);
+        } else {
+          // Asynchronously reload file list periodically during mass upload
+          if ((i + 1) % 2 === 0 || i === filesToUpload.length - 1) {
+            loadFiles();
+            loadFolders();
+          }
+        }
+
+        // Brief delay between files to avoid socket contention
+        if (i < filesToUpload.length - 1 && !uploadAbortRef.current?.signal.aborted) {
+          await new Promise(r => setTimeout(r, 200));
+        }
       }
-      setUploadProgress(`Успешно загружено файлов: ${uploadedCount}`);
-      await loadFiles();
-      await loadFolders();
-      setTimeout(() => setUploadProgress(''), 3000);
+
+      if (!uploadAbortRef.current?.signal.aborted) {
+        setUploadProgress(`Завершено. Успешно загружено: ${uploadedCount} из ${filesToUpload.length}`);
+        await loadFiles();
+        await loadFolders();
+        setTimeout(() => {
+          setUploadProgress('');
+          setUploadError(null);
+        }, 3500);
+      }
     } catch (err: any) {
-      console.error('Upload error:', err);
-      alert('Ошибка при загрузке файлов: ' + (err.message || 'Ошибка сети'));
-      setUploadProgress('');
+      if (err.name !== 'AbortError') {
+        console.error('Upload general error:', err);
+        setUploadError('Ошибка при загрузке файлов: ' + (err.message || 'Сбой сети'));
+      }
     } finally {
       setIsUploading(false);
+      uploadAbortRef.current = null;
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -789,14 +864,51 @@ export default function GalleryView({
       )}
 
       {/* Progress / Status Notification */}
-      {(isUploading || uploadProgress) && (
-        <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 p-4 rounded-xl flex items-center space-x-3 text-xs text-pink-900 shadow-sm animate-fadeIn">
-          {isUploading ? (
-            <Loader2 size={18} className="animate-spin text-pink-500 shrink-0" />
-          ) : (
-            <CheckCircle2 size={18} className="text-pink-600 shrink-0" />
-          )}
-          <span className="font-extrabold">{uploadProgress}</span>
+      {(isUploading || uploadProgress || uploadError) && (
+        <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-sm text-pink-950 shadow-sm animate-fadeIn">
+          <div className="flex items-center space-x-3">
+            {isUploading ? (
+              <Loader2 size={20} className="animate-spin text-pink-500 shrink-0" />
+            ) : uploadError ? (
+              <AlertCircle size={20} className="text-rose-500 shrink-0" />
+            ) : (
+              <CheckCircle2 size={20} className="text-pink-600 shrink-0" />
+            )}
+            <div className="flex flex-col">
+              <span className="font-semibold text-sm">
+                {uploadProgress || (uploadError ? 'Ошибка при загрузке' : '')}
+              </span>
+              {uploadError && (
+                <span className="text-xs text-rose-600 font-medium mt-0.5">
+                  {uploadError}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0 self-end md:self-auto">
+            {isUploading && (
+              <button
+                type="button"
+                onClick={cancelMassUpload}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-90 text-white rounded-xl text-sm font-semibold transition-all shadow-xs cursor-pointer"
+              >
+                Отменить загрузку
+              </button>
+            )}
+            {uploadError && (
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadError(null);
+                  setUploadProgress('');
+                }}
+                className="px-3 py-1.5 bg-white/80 hover:bg-white border border-pink-200 text-slate-700 rounded-xl text-sm font-medium transition-all cursor-pointer"
+              >
+                Закрыть
+              </button>
+            )}
+          </div>
         </div>
       )}
 

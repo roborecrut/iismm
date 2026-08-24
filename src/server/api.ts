@@ -6,7 +6,7 @@ import { DB, Prompt, DayRequest, Publication, Settings, User, Channel } from './
 
 const uploadMiddleware = multer({ storage: multer.memoryStorage() });
 import { generateProkhorPrompt, generateImagePromptFromPost, generateProTalkImage, callProTalkBotApi, generateTopicFromHistory } from './protalk';
-import { sendPromptToTelegram, sendPrivateTelegramNotification } from './telegram';
+import { sendPromptToTelegram, sendPrivateTelegramNotification, convertAudioToTelegramVoice } from './telegram';
 import { 
   getAllTablesInfo, getTableRows, insertRow, updateRow, deleteRow, executeRawSQL, importCSVRows,
   fetchAllBlogPostsFromSQLite, fetchBlogPostByIdFromSQLite, createBlogPostInSQLite, updateBlogPostInSQLite,
@@ -5092,13 +5092,14 @@ apiRouter.delete(['/files/:id', '/admin/files/:id'], async (req: Request, res: R
   }
 });
 
-// ProTalk File Upload Proxy endpoint (with PNG X-Preserve-Alpha support)
+// ProTalk File Upload Proxy endpoint (with PNG X-Preserve-Alpha and Voice OGG Opus conversion support)
 apiRouter.post('/upload', uploadMiddleware.single('file'), async (req: Request, res: Response) => {
   try {
     const defaultToken = "b2VcU3NrVVttYlh3GHM_AEQ4eA8yDR4FGREODwsaLyUqQjpTEA8HGzMdFB8aORQYaG9dWGpkVQRvAXM";
     const uploadToken = (req.headers['x-upload-token'] as string) || req.body?.token || defaultToken;
     const userId = (req.headers['x-user-id'] as string) || req.body?.userId || 'admin';
     const folderIds = req.body?.folderIds ? (Array.isArray(req.body.folderIds) ? req.body.folderIds : [req.body.folderIds]) : (req.body?.folderId ? [req.body.folderId] : []);
+    const convertVoiceOgg = req.body?.convertVoiceOgg === 'true' || req.body?.convertVoiceOgg === true || req.headers['x-convert-voice-ogg'] === 'true';
 
     let uploadedUrl = '';
     let uploadedKey = '';
@@ -5112,12 +5113,26 @@ apiRouter.post('/upload', uploadMiddleware.single('file'), async (req: Request, 
       originalFilename = req.file.originalname || 'file.bin';
       mimeType = req.file.mimetype || '';
       fileSize = req.file.size || req.file.buffer.length || 0;
+      let uploadBuffer = req.file.buffer;
+
+      // If user requested voice OGG conversion for audio file
+      if (convertVoiceOgg && (mimeType.startsWith('audio/') || originalFilename.match(/\.(mp3|wav|m4a|aac|webm|flac|wma)$/i))) {
+        try {
+          uploadBuffer = await convertAudioToTelegramVoice(uploadBuffer);
+          const baseName = originalFilename.replace(/\.[^/.]+$/, "");
+          originalFilename = `${baseName.startsWith('voice_') ? baseName : 'voice_' + baseName}.ogg`;
+          mimeType = 'audio/ogg; codecs=opus';
+          fileSize = uploadBuffer.length;
+        } catch (convErr: any) {
+          console.warn('[upload] Audio OGG conversion warning:', convErr.message);
+        }
+      }
 
       const isPng = mimeType === 'image/png' || originalFilename.toLowerCase().endsWith('.png');
       const targetUploadUrl = isPng ? "https://filestore.pro-talk.ru/up" : "https://file.pro-talk.ru/tgf";
 
       const formData = new FormData();
-      formData.append('file', req.file.buffer, {
+      formData.append('file', uploadBuffer, {
         filename: originalFilename,
         contentType: mimeType
       });
@@ -5125,30 +5140,57 @@ apiRouter.post('/upload', uploadMiddleware.single('file'), async (req: Request, 
       const formHeaders = formData.getHeaders();
       const formBuffer = formData.getBuffer();
 
-      let response = await fetch(targetUploadUrl, {
-        method: "POST",
-        headers: {
-          "X-Upload-Token": uploadToken,
-          "X-Preserve-Alpha": "true",
-          ...formHeaders
-        },
-        body: formBuffer
-      });
+      let response: any = null;
+      let lastErr: any = null;
 
-      if (!response.ok && isPng) {
-        response = await fetch("https://file.pro-talk.ru/tgf", {
-          method: "POST",
-          headers: {
-            "X-Upload-Token": uploadToken,
-            "X-Preserve-Alpha": "true",
-            ...formHeaders
-          },
-          body: formBuffer
-        });
+      // Robust upload with up to 3 attempts and timeout
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+          response = await fetch(targetUploadUrl, {
+            method: "POST",
+            headers: {
+              "X-Upload-Token": uploadToken,
+              "X-Preserve-Alpha": "true",
+              ...formHeaders
+            },
+            body: formBuffer,
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+
+          if (!response.ok && isPng) {
+            const fallbackController = new AbortController();
+            const fbTimeoutId = setTimeout(() => fallbackController.abort(), 25000);
+            response = await fetch("https://file.pro-talk.ru/tgf", {
+              method: "POST",
+              headers: {
+                "X-Upload-Token": uploadToken,
+                "X-Preserve-Alpha": "true",
+                ...formHeaders
+              },
+              body: formBuffer,
+              signal: fallbackController.signal
+            });
+            clearTimeout(fbTimeoutId);
+          }
+
+          if (response.ok) {
+            break;
+          }
+        } catch (err: any) {
+          lastErr = err;
+          console.warn(`[upload] Attempt ${attempt} failed:`, err.message);
+          if (attempt < 3) {
+            await new Promise(r => setTimeout(r, 400 * attempt));
+          }
+        }
       }
 
-      if (!response.ok) {
-        throw new Error(`Upload server responded with status ${response.status}`);
+      if (!response || !response.ok) {
+        throw new Error(lastErr?.message || `Upload server responded with status ${response?.status || 'unknown'}`);
       }
 
       const resText = await response.text();
@@ -5230,6 +5272,112 @@ apiRouter.post('/upload', uploadMiddleware.single('file'), async (req: Request, 
   } catch (err: any) {
     console.error('ProTalk Upload error:', err);
     res.status(500).json({ error: err.message || 'Ошибка загрузки файла на ProTalk' });
+  }
+});
+
+// Dedicated Audio-to-OGG (Opus Telegram Voice) Conversion Endpoint
+apiRouter.post('/convert-audio-to-ogg', uploadMiddleware.single('file'), async (req: Request, res: Response) => {
+  try {
+    let inputBuffer: Buffer | null = null;
+    let originalName = 'voice_message.ogg';
+    const defaultToken = "b2VcU3NrVVttYlh3GHM_AEQ4eA8yDR4FGREODwsaLyUqQjpTEA8HGzMdFB8aORQYaG9dWGpkVQRvAXM";
+    const uploadToken = (req.headers['x-upload-token'] as string) || req.body?.token || defaultToken;
+    const userId = (req.headers['x-user-id'] as string) || req.body?.userId || 'admin';
+    const folderIds = req.body?.folderIds ? (Array.isArray(req.body.folderIds) ? req.body.folderIds : [req.body.folderIds]) : (req.body?.folderId ? [req.body.folderId] : []);
+
+    if (req.file) {
+      inputBuffer = req.file.buffer;
+      originalName = req.file.originalname || 'voice_message.ogg';
+    } else if (req.body && (req.body.audioUrl || req.body.url)) {
+      const targetUrl = req.body.audioUrl || req.body.url;
+      originalName = targetUrl.split('/').pop()?.split('?')[0] || 'voice_message.ogg';
+      const fileRes = await fetch(targetUrl);
+      if (!fileRes.ok) {
+        throw new Error(`Не удалось скачать аудиофайл по URL: ${targetUrl} (HTTP ${fileRes.status})`);
+      }
+      const arrayBuf = await fileRes.arrayBuffer();
+      inputBuffer = Buffer.from(arrayBuf);
+    }
+
+    if (!inputBuffer || inputBuffer.length === 0) {
+      res.status(400).json({ error: 'Не передан аудиофайл или URL для конвертации' });
+      return;
+    }
+
+    // Convert audio to Telegram Voice OGG Opus buffer using ffmpeg
+    const oggBuffer = await convertAudioToTelegramVoice(inputBuffer);
+    const baseName = originalName.replace(/\.[^/.]+$/, "");
+    const oggFilename = `${baseName.startsWith('voice_') ? baseName : 'voice_' + baseName}_${Date.now()}.ogg`;
+
+    // Upload converted .ogg file to ProTalk storage
+    const formData = new FormData();
+    formData.append('file', oggBuffer, {
+      filename: oggFilename,
+      contentType: 'audio/ogg; codecs=opus'
+    });
+
+    const formHeaders = formData.getHeaders();
+    const formBuffer = formData.getBuffer();
+
+    let response = await fetch("https://file.pro-talk.ru/tgf", {
+      method: "POST",
+      headers: {
+        "X-Upload-Token": uploadToken,
+        ...formHeaders
+      },
+      body: formBuffer
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ошибка загрузки сконвертированного OGG в хранилище (HTTP ${response.status})`);
+    }
+
+    const resText = await response.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(resText);
+    } catch (e) {
+      const trimmed = resText.trim().replace(/^["']|["']$/g, '');
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        data = { url: trimmed, key: trimmed.split('/').pop() || '' };
+      } else {
+        throw new Error(`Ответ сервера хранилища: ${resText}`);
+      }
+    }
+
+    const uploadedUrl = data.url || data.link || (typeof data === 'string' ? data : '');
+    const uploadedKey = data.key || data.file_key || (uploadedUrl ? uploadedUrl.split('/').pop() : '');
+
+    const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3000';
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+
+    const db = await getSQLiteDB();
+    const fileRecord = registerFileInStorage(db, {
+      userId,
+      name: oggFilename,
+      originalUrl: uploadedUrl,
+      mimeType: 'audio/ogg; codecs=opus',
+      fileSize: oggBuffer.length,
+      folderIds,
+      hostProtocol: { host, protocol }
+    });
+
+    saveSQLiteDB();
+
+    res.json({
+      success: true,
+      url: uploadedUrl,
+      key: uploadedKey,
+      fileKey: fileRecord?.file_key,
+      shortUrl: fileRecord?.short_url,
+      proxyUrl: `${protocol}://${host}/file/${fileRecord?.id}/${fileRecord?.slug_name}`,
+      name: oggFilename,
+      format: 'ogg',
+      file: fileRecord
+    });
+  } catch (err: any) {
+    console.error('Audio conversion error:', err);
+    res.status(500).json({ error: err.message || 'Ошибка конвертации аудиофайла в OGG Opus' });
   }
 });
 

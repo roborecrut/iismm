@@ -9,6 +9,14 @@ export interface UploadProgressInfo {
     estimatedSecondsLeft?: number;
     loadedBytes?: number;
     totalBytes?: number;
+    batchIndex?: number;
+    batchTotal?: number;
+    currentFileName?: string;
+}
+
+export interface UploadFileOptions {
+    folderIds?: (number | string)[];
+    convertVoiceOgg?: boolean;
 }
 
 export type UploadProgressCallback = (progress: UploadProgressInfo) => void;
@@ -90,15 +98,29 @@ export class FileUploadService {
     // Загрузка из File через серверный API с трекингом прогресса и таймером сохранения в галерею
     async uploadFromFileWithProgress(
         file: File, 
-        folderIds?: (number | string)[],
+        optionsOrFolderIds?: (number | string)[] | UploadFileOptions,
         onProgress?: UploadProgressCallback
     ): Promise<{ url: string; proxyUrl?: string; fileKey?: string; file?: any }> {
         return new Promise((resolve, reject) => {
             const formData = new FormData();
             formData.append("file", file);
             formData.append("token", this.token);
+            
+            let folderIds: (number | string)[] | undefined;
+            let convertVoiceOgg = false;
+
+            if (Array.isArray(optionsOrFolderIds)) {
+                folderIds = optionsOrFolderIds;
+            } else if (optionsOrFolderIds && typeof optionsOrFolderIds === 'object') {
+                folderIds = optionsOrFolderIds.folderIds;
+                convertVoiceOgg = !!optionsOrFolderIds.convertVoiceOgg;
+            }
+
             if (folderIds && folderIds.length > 0) {
                 folderIds.forEach(id => formData.append("folderIds", String(id)));
+            }
+            if (convertVoiceOgg) {
+                formData.append("convertVoiceOgg", "true");
             }
 
             const xhr = new XMLHttpRequest();
@@ -174,7 +196,7 @@ export class FileUploadService {
 
                 // If proxy failed, try fallback
                 try {
-                    const fallbackRes = await this.uploadFromFile(file, folderIds);
+                    const fallbackRes = await this.uploadFromFile(file, optionsOrFolderIds);
                     if (onProgress) {
                         onProgress({ stage: 'done', percent: 100 });
                     }
@@ -187,7 +209,7 @@ export class FileUploadService {
             xhr.onerror = async () => {
                 cleanupTimer();
                 try {
-                    const fallbackRes = await this.uploadFromFile(file, folderIds);
+                    const fallbackRes = await this.uploadFromFile(file, optionsOrFolderIds);
                     if (onProgress) {
                         onProgress({ stage: 'done', percent: 100 });
                     }
@@ -203,16 +225,31 @@ export class FileUploadService {
     }
 
     // Загрузка из File через серверный API
-    async uploadFromFile(file: File, folderIds?: (number | string)[], onProgress?: UploadProgressCallback): Promise<{ url: string; proxyUrl?: string; fileKey?: string; file?: any }> {
+    async uploadFromFile(file: File, optionsOrFolderIds?: (number | string)[] | UploadFileOptions, onProgress?: UploadProgressCallback): Promise<{ url: string; proxyUrl?: string; fileKey?: string; file?: any }> {
         if (onProgress) {
-            return this.uploadFromFileWithProgress(file, folderIds, onProgress);
+            return this.uploadFromFileWithProgress(file, optionsOrFolderIds, onProgress);
         }
+
+        let folderIds: (number | string)[] | undefined;
+        let convertVoiceOgg = false;
+
+        if (Array.isArray(optionsOrFolderIds)) {
+            folderIds = optionsOrFolderIds;
+        } else if (optionsOrFolderIds && typeof optionsOrFolderIds === 'object') {
+            folderIds = optionsOrFolderIds.folderIds;
+            convertVoiceOgg = !!optionsOrFolderIds.convertVoiceOgg;
+        }
+
         try {
             const formData = new FormData();
             formData.append("file", file);
             formData.append("token", this.token);
+
             if (folderIds && folderIds.length > 0) {
                 folderIds.forEach(id => formData.append("folderIds", String(id)));
+            }
+            if (convertVoiceOgg) {
+                formData.append("convertVoiceOgg", "true");
             }
 
             const proxyRes = await fetch('/api/upload', {
@@ -360,7 +397,7 @@ export class FileUploadService {
     }
 
     // Загрузка и сохранение в карту
-    async uploadAndStore(file: File | string, customKey?: string, onProgress?: UploadProgressCallback): Promise<{ key: string; url: string }> {
+    async uploadAndStore(file: File | string, customKey?: string, onProgress?: UploadProgressCallback, options?: UploadFileOptions): Promise<{ key: string; url: string }> {
         let url: string;
         
         if (typeof file === 'string') {
@@ -369,7 +406,7 @@ export class FileUploadService {
             if (onProgress) onProgress({ stage: 'done', percent: 100 });
         } else {
             // Это File
-            const res = await this.uploadFromFile(file, undefined, onProgress);
+            const res = await this.uploadFromFile(file, options, onProgress);
             url = typeof res === 'string' ? res : res.url;
         }
 
@@ -377,6 +414,54 @@ export class FileUploadService {
         this.addFile(key, url);
 
         return { key, url };
+    }
+
+    // Конвертация любого аудиофайла или аудио URL в Telegram Voice OGG Opus формат
+    async convertAudioToOgg(
+        fileOrUrl: File | string,
+        folderIds?: (number | string)[],
+        onProgress?: UploadProgressCallback
+    ): Promise<{ url: string; proxyUrl?: string; fileKey?: string; name: string }> {
+        if (onProgress) {
+            onProgress({ stage: 'uploading', percent: 50 });
+        }
+
+        const formData = new FormData();
+        formData.append("token", this.token);
+        if (folderIds && folderIds.length > 0) {
+            folderIds.forEach(id => formData.append("folderIds", String(id)));
+        }
+
+        if (typeof fileOrUrl === 'string') {
+            formData.append("audioUrl", fileOrUrl);
+        } else {
+            formData.append("file", fileOrUrl);
+        }
+
+        if (onProgress) {
+            onProgress({ stage: 'saving_gallery', percent: 90, secondsElapsed: 0.5 });
+        }
+
+        const res = await fetch('/api/convert-audio-to-ogg', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.url) {
+            throw new Error(data.error || 'Ошибка конвертации аудио в формат OGG');
+        }
+
+        if (onProgress) {
+            onProgress({ stage: 'done', percent: 100 });
+        }
+
+        return {
+            url: data.proxyUrl || data.shortUrl || data.url,
+            proxyUrl: data.proxyUrl,
+            fileKey: data.fileKey,
+            name: data.name || 'voice.ogg'
+        };
     }
 
     // Замена ключей на URL в тексте

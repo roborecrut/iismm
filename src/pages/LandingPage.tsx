@@ -815,11 +815,8 @@ export function SmmLiveChat({ onJoin }: { onJoin: () => void }) {
 }
 
 export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, onNavigate, isLoggedIn = false }: LandingPageProps) {
-  const pathToTab = (path: string): 'abilities' | 'chat' | 'oferta' => {
+  const pathToTab = (path: string): 'abilities' | 'oferta' => {
     switch (path) {
-      case '/main':
-      case '/': return 'abilities';
-      case '/chat': return 'chat';
       case '/oferta': return 'oferta';
       default: return 'abilities';
     }
@@ -827,8 +824,6 @@ export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, 
 
   const tabToPath = (tab: string) => {
     switch (tab) {
-      case 'abilities': return '/main';
-      case 'chat': return '/chat';
       case 'oferta': return '/oferta';
       default: return '/main';
     }
@@ -836,7 +831,7 @@ export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, 
 
   const activeTab = pathToTab(currentPath);
   
-  const setActiveTab = (tab: 'abilities' | 'chat' | 'oferta') => {
+  const setActiveTab = (tab: 'abilities' | 'oferta') => {
     onNavigate(tabToPath(tab));
   };
 
@@ -1201,92 +1196,23 @@ export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, 
     }
   };
 
-  // Nav labels matching active pages (compact)
-  const tabs = [
-    { key: 'abilities', label: 'Возможности', icon: <Radio className="w-3.5 h-3.5" /> },
-    { key: 'chat', label: 'Чат 💬', icon: <MessageSquare className="w-3.5 h-3.5" /> },
-  ] as const;
-
   return (
     <div ref={containerRef} className="min-h-screen text-slate-800 flex flex-col font-sans relative overflow-hidden">
       <LiquidGlassBackground />
       
       {/* 1. Global Navigation header block (Apple Liquid Glass) */}
       <header className="sticky top-0 z-40 bg-white/45 backdrop-blur-xl border-b border-white/30 shadow-xs px-4 py-3 sm:px-6 relative z-10">
-        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           
-          {/* Mobile Screen Header Row (Compact & Clean with Centered Burger Menu) */}
-          <div className="flex items-center justify-between w-full lg:hidden relative shrink-0">
-            {/* LEFT: Mini Brand Logo */}
-            <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => { setActiveTab('abilities'); setMobileMenuOpen(false); }}>
-              <ShinyLogo height={32} />
-            </div>
-
-            {/* CENTER: Burger "Бутерброд" Menu Button (Icon only) */}
-            <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
-              <button 
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
-                className="bg-white/90 hover:bg-white text-slate-700 w-9 h-9 rounded-full flex items-center justify-center cursor-pointer border border-pink-200 shadow-xs active:scale-95 transition-all"
-                title="Меню"
-              >
-                {mobileMenuOpen ? <X size={20} className="text-pink-600" /> : <Menu size={20} className="text-pink-600" />}
-              </button>
-            </div>
-
-            {/* RIGHT: Quick Login button */}
-            <div className="flex items-center gap-1">
-              <button 
-                id="header-btn-login-mobile"
-                onClick={() => { 
-                  if (isLoggedIn) {
-                    onNavigate('/profile');
-                  } else {
-                    setShowTelegramModal(true); 
-                  }
-                  setMobileMenuOpen(false); 
-                }}
-                className="px-3 py-1.5 hover:scale-103 text-white text-[9px] uppercase font-black rounded-lg shadow-md border border-white/20 transition-all active:scale-97 flex items-center gap-1 cursor-pointer"
-                style={{ background: 'linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%)' }}
-              >
-                <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-white fill-current shrink-0">
-                  <path d="M19.897 5.115l-17.1 6.59c-1.17.47-1.16 1.12-.22 1.41l4.39 1.37 10.16-6.41c.48-.29.92-.13.56.19l-8.24 7.44-.32 4.79c.47 0 .68-.21.94-.47l2.25-2.19 4.68 3.46c.86.48 1.48.23 1.69-.8l3.07-14.47c.31-1.26-.48-1.83-1.32-1.37z" />
-                </svg>
-                {isLoggedIn ? 'Кабинет 👤' : 'Войти ⚡'}
-              </button>
-            </div>
+          {/* Brand Logo */}
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => onNavigate('/main')}>
+            <ShinyLogo height={38} />
           </div>
 
-          {/* PC-only Brand Logo */}
-          <div className="hidden lg:flex items-center gap-2.5 cursor-pointer" onClick={() => setActiveTab('abilities')}>
-            <ShinyLogo height={44} />
-          </div>
-
-          {/* PC Navigation Items (displayed only on lg screens) */}
-          <nav className="hidden lg:flex flex-wrap justify-center gap-1 max-w-full overflow-x-auto no-scrollbar py-1">
-            {tabs.map((tab) => {
-              const isActive = activeTab === tab.key;
-              return (
-                <button
-                  id={`tab-landing-${tab.key}`}
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-extrabold tracking-tight cursor-pointer whitespace-nowrap transition-all ${
-                    isActive 
-                      ? 'bg-white/80 text-slate-900 shadow-md border border-white/50 scale-102 font-extrabold ring-1 ring-sky-300' 
-                      : 'text-slate-600 hover:bg-white/20 hover:text-slate-900'
-                  }`}
-                >
-                  <span className={isActive ? 'text-orange-500 animate-pulse' : 'text-slate-400'}>{tab.icon}</span>
-                  {tab.label}
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* PC Header Authorization button */}
-          <div className="hidden lg:flex items-center gap-3">
+          {/* Header Authorization button */}
+          <div className="flex items-center gap-3">
             <button 
-              id="header-btn-login-pc"
+              id="header-btn-login"
               onClick={() => {
                 if (isLoggedIn) {
                   onNavigate('/profile');
@@ -1294,67 +1220,17 @@ export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, 
                   setShowTelegramModal(true);
                 }
               }}
-              className="px-5 py-2.5 hover:scale-103 text-white font-black text-xs rounded-xl tracking-wider flex items-center justify-center gap-2 border border-white/20 shadow-md active:scale-98 transition-all cursor-pointer"
+              className="px-4 sm:px-5 py-2 sm:py-2.5 hover:scale-103 text-white font-black text-xs rounded-xl tracking-wider flex items-center justify-center gap-2 border border-white/20 shadow-md active:scale-98 transition-all cursor-pointer"
               style={{ background: 'linear-gradient(120deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%)' }}
             >
               <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-white fill-current shrink-0 animate-bounce">
                 <path d="M19.897 5.115l-17.1 6.59c-1.17.47-1.16 1.12-.22 1.41l4.39 1.37 10.16-6.41c.48-.29.92-.13.56.19l-8.24 7.44-.32 4.79c.47 0 .68-.21.94-.47l2.25-2.19 4.68 3.46c.86.48 1.48.23 1.69-.8l3.07-14.47c.31-1.26-.48-1.83-1.32-1.37z" />
               </svg>
-              {isLoggedIn ? 'Кабинет 👤' : 'Войти 👤'}
+              {isLoggedIn ? 'Кабинет 👤' : 'Войти ⚡'}
             </button>
           </div>
 
         </div>
-
-        {/* Floating Slide-Down Burger Menu Panel for Landing Page (Animated & Beautiful) */}
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="lg:hidden overflow-hidden z-30 rounded-2xl bg-white/95 backdrop-blur-lg border border-slate-200/50 p-4 shadow-xl space-y-3 mt-3 absolute left-4 right-4"
-            >
-              <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider text-center border-b pb-1.5 mb-2 flex items-center justify-center gap-1">
-                <span>📂</span> ИИSMM Разделы Платформы
-              </div>
-              <div className="grid grid-cols-2 gap-2 max-h-[360px] overflow-y-auto pr-1 no-scrollbar">
-                {tabs.map((tab) => {
-                  const isActive = activeTab === tab.key;
-                  return (
-                    <button
-                      key={tab.key}
-                      onClick={() => {
-                        setActiveTab(tab.key);
-                        setMobileMenuOpen(false);
-                      }}
-                      className={`p-2.5 rounded-xl font-bold text-xs cursor-pointer border flex flex-col items-center justify-center text-center gap-1 transition-all ${
-                        isActive 
-                          ? 'bg-gradient-to-r from-orange-400 to-pink-500 border-orange-400 text-white shadow-md scale-[1.02]' 
-                          : 'bg-slate-50 hover:bg-slate-100 border-slate-200/60 text-slate-700'
-                      }`}
-                    >
-                      <span className={isActive ? 'text-white' : 'text-slate-500'}>{tab.icon}</span>
-                      <span className="text-[9px] font-black uppercase tracking-tight">{tab.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="pt-2 border-t border-slate-100">
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    setShowTelegramModal(true);
-                  }}
-                  className="w-full py-2 bg-gradient-to-r from-orange-400 to-pink-500 hover:from-orange-500 hover:to-pink-600 text-white font-black rounded-xl text-[10px] uppercase tracking-wider text-center flex items-center justify-center gap-1.5 shadow-sm"
-                >
-                  <Smartphone className="w-3.5 h-3.5" />
-                  Авторизоваться
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </header>
 
       {/* 2. Main Page Render and Content Container */}
@@ -1566,6 +1442,28 @@ export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, 
                   <TariffCards onAction={() => setShowTelegramModal(true)} />
                 </div>
 
+                {/* SMM LIVE CHAT SECTION (ЧАТ-ЭФИР) */}
+                <div id="chat-live-section" className="pt-20 pb-4 max-w-4xl mx-auto px-4 space-y-6">
+                  <div className="text-center max-w-2xl mx-auto space-y-2">
+                    <span className="px-3 py-1 bg-pink-100 text-pink-850 rounded-full text-[10px] font-black uppercase tracking-widest border border-pink-200">
+                      ОБЩЕНИЕ И ЭФИР
+                    </span>
+                    <h2 
+                      className="text-2xl sm:text-3xl font-extrabold tracking-tight text-transparent bg-clip-text"
+                      style={{ 
+                        background: 'linear-gradient(90deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent'
+                      }}
+                    >
+                      Чат-Эфир
+                    </h2>
+                    <p className="text-slate-500 text-xs">Живые сообщения, обсуждения и обмен опытом в реальном времени</p>
+                  </div>
+
+                  <SmmLiveChat onJoin={() => setShowTelegramModal(true)} />
+                </div>
+
                 {/* REVIEWS TESTIMONIAL CAROUSEL */}
                 <div id="reviews-carousel-section" className="pt-24 pb-12 max-w-4xl mx-auto px-4 space-y-8 overflow-visible">
                   <div className="text-center max-w-md mx-auto space-y-3">
@@ -1681,26 +1579,6 @@ export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, 
           {currentPath === '/oferta' && (
             <OfertaPage onNavigate={onNavigate} />
           )}
-
-            {/* INFORMATIVE SECTION: ЖИВОЙ SMM ЧАТ (LIVE CHAT) */}
-            {activeTab === 'chat' && (
-              <div className="space-y-6 py-4">
-                <div className="text-center max-w-2xl mx-auto">
-                  <h2 
-                    className="text-2xl sm:text-3xl font-extrabold tracking-tight text-transparent bg-clip-text"
-                    style={{ 
-                      background: 'linear-gradient(90deg, #38bdf8 0%, #ec4899 25%, #f97316 50%, #ec4899 75%, #38bdf8 100%)',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent'
-                    }}
-                  >
-                    Чат-Эфир
-                  </h2>
-                </div>
-
-                <SmmLiveChat onJoin={() => setShowTelegramModal(true)} />
-              </div>
-            )}
 
 
 

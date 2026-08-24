@@ -1097,12 +1097,53 @@ export default function PromptEditor({
   const [attachmentType, setAttachmentType] = useState<'none' | 'photo' | 'document' | 'video' | 'audio' | 'album' | 'video_note'>('none');
   const [audioFormat, setAudioFormat] = useState<'audio' | 'voice'>('audio');
   const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState<boolean>(false);
+  const [isConvertingVoiceOgg, setIsConvertingVoiceOgg] = useState<boolean>(false);
   const [photoUrl, setPhotoUrl] = useState<string>('');
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [videoNoteUrl, setVideoNoteUrl] = useState<string>('');
   const [albumUrls, setAlbumUrls] = useState<string[]>(['', '']); // Up to 10 files
   const [audioUrls, setAudioUrls] = useState<string[]>(['', '']); // Up to 10 files
   const [documentUrls, setDocumentUrls] = useState<string[]>(['', '']); // Up to 10 files
+
+  // Audio-to-OGG conversion helper
+  const handleConvertToVoiceOgg = async (targetIndex = 0) => {
+    const currentUrl = audioUrls[targetIndex]?.trim();
+    if (!currentUrl) {
+      alert('Сначала введите или загрузите аудиофайл для конвертации');
+      return;
+    }
+
+    setIsConvertingVoiceOgg(true);
+    try {
+      const res = await fetch('/api/convert-audio-to-ogg', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioUrl: currentUrl })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Ошибка конвертации (код ${res.status})`);
+      }
+
+      const data = await res.json();
+      if (data.success && data.url) {
+        const finalUrl = data.proxyUrl || data.shortUrl || data.url;
+        setAudioUrls(prev => {
+          const copy = [...prev];
+          copy[targetIndex] = finalUrl;
+          return copy;
+        });
+        setAudioFormat('voice');
+      } else {
+        throw new Error('Сервер не вернул ссылку на сконвертированный OGG файл');
+      }
+    } catch (err: any) {
+      alert('Ошибка при конвертации аудио в OGG: ' + (err.message || 'Ошибка'));
+    } finally {
+      setIsConvertingVoiceOgg(false);
+    }
+  };
 
   // Helper to extract active attachment URL & URLs array based on selected attachmentType
   const getActiveAttachmentData = () => {
@@ -1948,7 +1989,7 @@ export default function PromptEditor({
     setIsPublishing(true);
     setStatusMessage(null);
 
-    const { url: activeUrl, urls: activeUrls } = getActiveAttachmentData();
+    const { url: activeUrl, urls: activeUrls, audioFormat: activeAudioFormat } = getActiveAttachmentData();
     const effectiveButtons = (messageFormat === 'v2' && attachmentType !== 'none') ? [] : inlineButtons;
 
     try {
@@ -1960,6 +2001,7 @@ export default function PromptEditor({
         attachmentType,
         attachmentUrl: activeUrl,
         attachmentUrls: activeUrls,
+        audioFormat: activeAudioFormat,
         inlineButtons: effectiveButtons,
         channels: selectedChannels
       });
@@ -2111,6 +2153,21 @@ export default function PromptEditor({
             multiple={true}
             accept={acceptFilter}
             onUploaded={handleBatchUpload}
+            onBatchUploaded={(items) => {
+              if (items && items.length > 0) {
+                setUrls(prev => {
+                  const copy = [...prev].filter(u => u && u.trim());
+                  for (const item of items) {
+                    if (item.url && !copy.includes(item.url) && copy.length < 10) {
+                      copy.push(item.url);
+                    }
+                  }
+                  while (copy.length < 2) copy.push('');
+                  syncAttachmentToRequest(attachmentType, copy[0] || '', copy.filter(u => u && u.trim()));
+                  return copy;
+                });
+              }
+            }}
           />
         </div>
 
@@ -2813,6 +2870,7 @@ export default function PromptEditor({
                       variant="compact"
                       buttonLabel="Загрузить"
                       accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac"
+                      convertVoiceOgg={true}
                       onUploaded={(key, url) => {
                         setAudioUrls(prev => {
                           const copy = [...prev];
@@ -2833,6 +2891,22 @@ export default function PromptEditor({
                     {audioUrls[0] && (
                       <button
                         type="button"
+                        onClick={() => handleConvertToVoiceOgg(0)}
+                        disabled={isConvertingVoiceOgg}
+                        className="px-2.5 py-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white rounded-xl text-xs font-semibold hover:opacity-90 transition-all cursor-pointer shrink-0 flex items-center space-x-1.5 shadow-2xs disabled:opacity-50"
+                        title="Конвертировать аудиофайл в голосовой формат OGG Opus"
+                      >
+                        {isConvertingVoiceOgg ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Sparkles size={14} />
+                        )}
+                        <span>В OGG</span>
+                      </button>
+                    )}
+                    {audioUrls[0] && (
+                      <button
+                        type="button"
                         onClick={() => {
                           setAudioUrls(prev => {
                             const copy = [...prev];
@@ -2847,9 +2921,11 @@ export default function PromptEditor({
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    💡 Голосовое сообщение: аудиофайл будет автоматически сконвертирован сервером в формат OGG Opus и отправлен как настоящее голосовое сообщение Telegram.
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      💡 Голосовое сообщение: аудиофайл любого формата (.mp3, .wav, .m4a) автоматически конвертируется сервером в формат OGG Opus для Telegram.
+                    </p>
+                  </div>
                 </div>
               ) : (
                 /* Multi-Audio Track Manager */
@@ -4886,6 +4962,7 @@ export default function PromptEditor({
       <VoiceRecorderModal
         isOpen={isVoiceRecorderOpen}
         onClose={() => setIsVoiceRecorderOpen(false)}
+        skipTranscription={true}
         onVoiceProcessed={(result) => {
           if (result && result.url) {
             setAudioUrls(prev => {
