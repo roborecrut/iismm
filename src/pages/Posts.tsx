@@ -83,6 +83,44 @@ export default function Posts({
   const [internalSelectedPostId, setInternalSelectedPostId] = useState<string | null>(null);
   const [postToDelete, setPostToDelete] = useState<DayRequest | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [postToCopy, setPostToCopy] = useState<DayRequest | null>(null);
+  const [isCopying, setIsCopying] = useState(false);
+
+  const handleConfirmCopy = async () => {
+    if (!postToCopy) return;
+    setIsCopying(true);
+    try {
+      const copyData: Partial<DayRequest> = {
+        title: postToCopy.title ? `${postToCopy.title} (Копия)` : 'Копия поста',
+        category: postToCopy.category || 'общий',
+        requestTemplate: postToCopy.requestTemplate || '',
+        postText: postToCopy.postText || '',
+        imagePrompt: postToCopy.imagePrompt || '',
+        signature: postToCopy.signature || '',
+        messageFormat: postToCopy.messageFormat || 'v2',
+        uppercaseHeader: postToCopy.uppercaseHeader !== false,
+        linkPreviewEnabled: postToCopy.linkPreviewEnabled !== false,
+        attachmentType: postToCopy.attachmentType || 'none',
+        attachmentUrl: postToCopy.attachmentUrl || '',
+        attachmentUrls: postToCopy.attachmentUrls ? [...postToCopy.attachmentUrls] : [],
+        audioFormat: postToCopy.audioFormat,
+        channel: postToCopy.channel || '',
+        channels: postToCopy.channels ? [...postToCopy.channels] : [],
+        inlineButtons: postToCopy.inlineButtons ? JSON.parse(JSON.stringify(postToCopy.inlineButtons)) : [],
+        uniquenessMemoryCount: postToCopy.uniquenessMemoryCount || 0,
+        triggerSchedule: postToCopy.triggerSchedule ? JSON.parse(JSON.stringify(postToCopy.triggerSchedule)) : { enabled: false }
+      };
+      const created = await onAddDayRequest(copyData);
+      setPostToCopy(null);
+      if (created && created.id) {
+        setActivePostId(created.id);
+      }
+    } catch (err) {
+      console.error('Failed to copy post:', err);
+    } finally {
+      setIsCopying(false);
+    }
+  };
 
   const activePostId = externalSelectedPostId !== undefined ? externalSelectedPostId : internalSelectedPostId;
 
@@ -682,16 +720,28 @@ export default function Posts({
 
                 {/* Card Actions */}
                 <div className="pt-3 border-t border-pink-200/60 flex justify-between items-center space-x-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPostToDelete(post);
-                    }}
-                    className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                    title="Удалить пост"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPostToCopy(post);
+                      }}
+                      className="p-2 text-pink-600 hover:text-pink-800 hover:bg-pink-50 rounded-xl transition-colors cursor-pointer"
+                      title="Создать копию поста"
+                    >
+                      <Copy size={16} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPostToDelete(post);
+                      }}
+                      className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                      title="Удалить пост"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
 
                   <button
                     onClick={() => setActivePostId(post.id)}
@@ -806,6 +856,16 @@ export default function Posts({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              setPostToCopy(post);
+                            }}
+                            className="p-1.5 text-pink-600 hover:text-pink-800 hover:bg-pink-50 rounded-lg transition-colors cursor-pointer"
+                            title="Создать копию"
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setPostToDelete(post);
                             }}
                             className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
@@ -824,6 +884,50 @@ export default function Posts({
         </div>
       )}
         </>
+      )}
+
+      {/* Copy Confirmation Modal */}
+      {postToCopy && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-3xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-pink-200 pb-3">
+              <div className="flex items-center space-x-2">
+                <Copy size={20} className="text-pink-600" />
+                <h3 className="text-sm font-extrabold text-slate-900">Создание копии поста</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPostToCopy(null)}
+                className="text-slate-500 hover:text-slate-900 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-800 leading-relaxed font-semibold">
+              Создать копию поста <strong className="text-pink-700">"{postToCopy.title || 'Пост без названия'}"</strong>?
+            </p>
+
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setPostToCopy(null)}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-pink-50 text-slate-700 text-xs font-bold border border-pink-200 cursor-pointer shadow-2xs"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={isCopying}
+                onClick={handleConfirmCopy}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white text-xs font-extrabold cursor-pointer shadow-2xs flex items-center space-x-1.5"
+              >
+                {isCopying ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+                <span>Создать копию</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete Confirmation Modal */}

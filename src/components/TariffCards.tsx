@@ -381,13 +381,13 @@ export default function TariffCards({ onAction, buttonText = "Подключит
               initial={{ opacity: 0, y: 20, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.4, ease: "easeOut" }}
-              className={`bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 backdrop-blur-md rounded-3xl p-5 sm:p-6 border flex flex-col justify-between space-y-5 relative transition-all duration-300 hover:scale-102 shadow-md ${
+              className={`bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 backdrop-blur-md rounded-3xl p-3.5 sm:p-4 border flex flex-col justify-between space-y-3 relative transition-all duration-300 hover:scale-102 shadow-md ${
                 isCurrentPlanActive 
                   ? 'border-pink-500 ring-2 ring-pink-400/40' 
                   : 'border-pink-300'
               }`}
             >
-              <div className="space-y-4">
+              <div className="space-y-2">
                 <div>
                   <div className="flex justify-between items-center">
                     <h3 className="text-base sm:text-lg font-bold text-slate-900">
@@ -407,7 +407,7 @@ export default function TariffCards({ onAction, buttonText = "Подключит
                     )}
                   </div>
 
-                  <div className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent mt-1">
+                  <div className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent mt-0.5">
                     {priceCalc.displayPrice}
                   </div>
 
@@ -422,16 +422,16 @@ export default function TariffCards({ onAction, buttonText = "Подключит
                     )}
                   </div>
 
-                  <p className="text-sm text-slate-700 font-medium mt-2 leading-snug">{plan.sub}</p>
+                  <p className="text-sm text-slate-700 font-medium mt-1.5 leading-snug">{plan.sub}</p>
                 </div>
 
                 {plan.continuation && (
-                  <div className="text-sm font-bold text-pink-700 bg-white/50 px-3 py-1 rounded-xl border border-pink-200 text-left">
+                  <div className="text-sm font-bold text-pink-700 bg-white/50 px-2.5 py-0.5 rounded-lg border border-pink-200 text-left">
                     {plan.continuation}
                   </div>
                 )}
 
-                <ul className="space-y-2 text-sm text-slate-800 font-medium pt-2 border-t border-pink-200/80">
+                <ul className="space-y-1 text-sm text-slate-800 font-medium pt-1.5 border-t border-pink-200/80">
                   {plan.features.slice(0, visibleFeaturesCount).map((feat, fIdx) => (
                     <motion.li 
                       key={fIdx} 
@@ -439,14 +439,14 @@ export default function TariffCards({ onAction, buttonText = "Подключит
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ type: "spring", stiffness: 350, damping: 25 }}
                       onClick={() => setSelectedFeature({ title: feat.title, desc: feat.desc, planName: plan.name })}
-                      className="flex items-start justify-between gap-2 leading-normal cursor-pointer p-2 rounded-xl hover:bg-white/90 hover:shadow-xs transition-all group border border-transparent hover:border-pink-200"
+                      className="flex items-start justify-between gap-2 leading-snug cursor-pointer py-1 px-2 rounded-lg hover:bg-white/90 hover:shadow-xs transition-all group border border-transparent hover:border-pink-200"
                       title="Нажмите для просмотра подробностей"
                     >
-                      <div className="flex items-start gap-2 min-w-0">
-                        <span className="text-pink-500 shrink-0 select-none mt-0.5">✦</span>
+                      <div className="flex items-start gap-1.5 min-w-0">
+                        <span className="text-pink-500 shrink-0 select-none mt-0.5 text-xs">✦</span>
                         <span className="text-slate-800 font-medium group-hover:text-pink-700 transition-colors text-left break-words">{feat.title}</span>
                       </div>
-                      <Info className="w-4 h-4 text-slate-400 group-hover:text-pink-500 shrink-0 mt-0.5 opacity-70 group-hover:opacity-100 transition-opacity" />
+                      <Info className="w-3.5 h-3.5 text-slate-400 group-hover:text-pink-500 shrink-0 mt-0.5 opacity-70 group-hover:opacity-100 transition-opacity" />
                     </motion.li>
                   ))}
                 </ul>
@@ -456,7 +456,7 @@ export default function TariffCards({ onAction, buttonText = "Подключит
               {planNameLower.includes('космос') ? (
                 <button 
                   onClick={() => onAction && onAction(plan.name, priceCalc.displayPrice, priceCalc.totalPrice, 'contact', selectedPeriod, discountPercent)} 
-                  className="w-full py-3 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white font-bold text-sm rounded-2xl shadow-md transition-all duration-200 hover:opacity-95 cursor-pointer active:scale-98 mt-4 flex items-center justify-center gap-2"
+                  className="w-full py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white font-bold text-sm rounded-2xl shadow-md transition-all duration-200 hover:opacity-95 cursor-pointer active:scale-98 mt-2.5 flex items-center justify-center gap-2"
                 >
                   <span>Связаться</span>
                   <Sparkles className="w-4 h-4 text-white" />
@@ -464,7 +464,7 @@ export default function TariffCards({ onAction, buttonText = "Подключит
               ) : (
                 <button 
                   onClick={() => onAction && onAction(plan.name, priceCalc.displayPrice, priceCalc.totalPrice, 'connect', selectedPeriod, discountPercent)} 
-                  className="w-full py-3 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white font-bold text-sm rounded-2xl shadow-md transition-all duration-200 hover:opacity-95 cursor-pointer active:scale-98 mt-4 flex items-center justify-center gap-2"
+                  className="w-full py-2.5 bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white font-bold text-sm rounded-2xl shadow-md transition-all duration-200 hover:opacity-95 cursor-pointer active:scale-98 mt-2.5 flex items-center justify-center gap-2"
                 >
                   <span>{buttonText} {discountPercent > 0 ? `(-${discountPercent}%)` : ''}</span>
                   <Sparkles className="w-4 h-4 text-white" />

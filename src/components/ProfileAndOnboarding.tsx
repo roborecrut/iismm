@@ -434,13 +434,15 @@ export default function ProfileAndOnboarding({
         headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
         body: JSON.stringify({ userId: user.id })
       })
-        .then(r => r.json())
+        .then(r => (r.ok ? r.json() : null))
         .then(data => {
-          if (data.success && Array.isArray(data.channels)) {
+          if (data && data.success && Array.isArray(data.channels)) {
             setLocalChannels(data.channels);
           }
         })
-        .catch(err => console.error("Error verify-all on profile mount:", err));
+        .catch(err => {
+          console.warn("Notice verify-all on profile mount:", err?.message || err);
+        });
     }
   }, [user.id]);
 
@@ -995,13 +997,13 @@ export default function ProfileAndOnboarding({
       const res = await fetch(`/api/user/team-privacy?userId=${user.id || '16926299042'}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.success) {
+        if (data && (data.success || data.allowTeamInvites !== undefined)) {
           setAllowTeamInvites(data.allowTeamInvites !== false);
-          setTeamBlacklist(data.teamBlacklist || []);
+          setTeamBlacklist(Array.isArray(data.teamBlacklist) ? data.teamBlacklist : []);
         }
       }
-    } catch (e) {
-      console.error('Error fetching team privacy settings:', e);
+    } catch (e: any) {
+      console.warn('Notice fetching team privacy settings:', e?.message || e);
     }
   };
 

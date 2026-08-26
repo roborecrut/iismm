@@ -175,6 +175,17 @@ const POST_STYLES = [
   { id: 'case_study', title: '📊 Кейс и результаты в цифрах', desc: 'Конкретный результат Было -> Стало, выгоды в процентах и выручке' }
 ];
 
+// Default Markdown V2 standard template with all formatting examples
+export const DEFAULT_MARKDOWN_V2_TEMPLATE = `Обычный текст
+*жирный*
+_курсив_
+__подчеркивание__
+~зачеркнут~
+||спойлер||
+\`моно код\`
+\`\`\`код копировать\`\`\`
+[текст ссылки](https://url.com)`;
+
 // Built-in Rich Draft Templates
 const BUILTIN_DRAFTS = [
   {
@@ -299,10 +310,10 @@ function calculateBonus(score: number): number {
   {
     id: 'empty_tpl',
     title: 'Пустой шаблон',
-    subtitle: 'Начать писать с чистого листа',
+    subtitle: 'Начать писать со стандартным V2 шаблоном',
     badge: '📄',
     format: 'v2',
-    content: ''
+    content: DEFAULT_MARKDOWN_V2_TEMPLATE
   }
 ];
 
@@ -1174,7 +1185,7 @@ export default function PromptEditor({
   };
 
   // Content fields
-  const [postText, setPostText] = useState<string>(''); // Manual post text (Free)
+  const [postText, setPostText] = useState<string>(DEFAULT_MARKDOWN_V2_TEMPLATE); // Manual post text (Free)
   const [requestTemplate, setRequestTemplate] = useState<string>(''); // AI Prompt (Instruction - max 10,000)
   const [imagePrompt, setImagePrompt] = useState<string>(''); // ProTalk Image prompt
   const [signature, setSignature] = useState<string>('');
@@ -1352,7 +1363,7 @@ export default function PromptEditor({
       setSignature(activeRequest.signature || '');
       setRequestTemplate(activeRequest.requestTemplate || '');
       setImagePrompt(activeRequest.imagePrompt || '');
-      setPostText(activeRequest.postText !== undefined && activeRequest.postText !== null ? activeRequest.postText : '');
+      setPostText(activeRequest.postText !== undefined && activeRequest.postText !== null && activeRequest.postText !== '' ? activeRequest.postText : DEFAULT_MARKDOWN_V2_TEMPLATE);
       setMessageFormat(activeRequest.messageFormat === 'rich' ? 'rich' : 'v2');
       setUppercaseHeader(activeRequest.uppercaseHeader !== false);
       setLinkPreviewEnabled(activeRequest.linkPreviewEnabled !== false);
@@ -2331,7 +2342,12 @@ export default function PromptEditor({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => setMessageFormat('v2')}
+              onClick={() => {
+                setMessageFormat('v2');
+                if (!postText || postText.trim() === '') {
+                  setPostText(DEFAULT_MARKDOWN_V2_TEMPLATE);
+                }
+              }}
               className={`flex items-center space-x-3 p-3.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                 messageFormat === 'v2'
                   ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-md'
@@ -2891,22 +2907,6 @@ export default function PromptEditor({
                     {audioUrls[0] && (
                       <button
                         type="button"
-                        onClick={() => handleConvertToVoiceOgg(0)}
-                        disabled={isConvertingVoiceOgg}
-                        className="px-2.5 py-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white rounded-xl text-xs font-semibold hover:opacity-90 transition-all cursor-pointer shrink-0 flex items-center space-x-1.5 shadow-2xs disabled:opacity-50"
-                        title="Конвертировать аудиофайл в голосовой формат OGG Opus"
-                      >
-                        {isConvertingVoiceOgg ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                          <Sparkles size={14} />
-                        )}
-                        <span>В OGG</span>
-                      </button>
-                    )}
-                    {audioUrls[0] && (
-                      <button
-                        type="button"
                         onClick={() => {
                           setAudioUrls(prev => {
                             const copy = [...prev];
@@ -2953,79 +2953,81 @@ export default function PromptEditor({
 
       {/* Main Post Text Editor */}
       <div className="iirky-card-block rounded-2xl p-6 space-y-4">
-        {/* Template selector dropdown */}
-        <div className="relative">
-          <div className="flex items-center justify-between bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 p-3 rounded-xl border border-pink-300 shadow-2xs">
-            <div className="flex items-center space-x-2">
-              <Sparkles size={16} className="text-pink-600" />
-              <span className="text-xs font-bold text-slate-800">Выбор готового шаблона:</span>
-              <span className="text-xs text-pink-700 font-extrabold bg-white/80 px-2.5 py-0.5 rounded-lg border border-pink-300 shadow-2xs">
-                {BUILTIN_DRAFTS.find(d => d.id === selectedDraftId)?.title || 'Выберите шаблон'}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowDraftsMenu(!showDraftsMenu)}
-              className="flex items-center space-x-1.5 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer shadow-2xs transition-all"
-            >
-              <span>Все шаблоны</span>
-              <ChevronDown size={14} className={`transition-transform ${showDraftsMenu ? 'rotate-180' : ''}`} />
-            </button>
-          </div>
-
-          {showDraftsMenu && (
-            <>
-              <div
-                className="fixed inset-0 z-20"
-                onClick={() => setShowDraftsMenu(false)}
-              />
-              <div className="absolute top-full left-0 right-0 mt-2 bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-2xl shadow-xl p-3 z-30 space-y-2 max-h-80 overflow-y-auto">
-                <div className="flex items-center justify-between pb-2 border-b border-pink-200 px-1">
-                  <span className="text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider">
-                    Выберите готовый шаблон
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowDraftsMenu(false)}
-                    className="text-slate-500 hover:text-slate-800 p-1 rounded-lg hover:bg-white/60 cursor-pointer"
-                    title="Закрыть"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-                {BUILTIN_DRAFTS.map(draft => (
-                  <button
-                    key={draft.id}
-                    type="button"
-                    onClick={() => handleSelectDraft(draft)}
-                    className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                      selectedDraftId === draft.id
-                        ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-2xs'
-                        : 'bg-white/80 border-pink-200 text-slate-800 hover:bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <span className="text-lg">{draft.badge}</span>
-                      <div>
-                        <div className="text-xs font-bold">{draft.title}</div>
-                        <div className={`text-[10px] ${selectedDraftId === draft.id ? 'text-white/90' : 'text-slate-500'}`}>{draft.subtitle}</div>
-                      </div>
-                    </div>
-                    {draft.format && (
-                      <span className={`text-[9px] px-2 py-0.5 rounded-md font-mono font-bold ${
-                        selectedDraftId === draft.id
-                          ? 'bg-white/20 text-white'
-                          : draft.format === 'rich' ? 'bg-pink-100 text-pink-700 border border-pink-300' : 'bg-sky-100 text-sky-700 border border-sky-300'
-                      }`}>
-                        {draft.format === 'rich' ? 'Rich' : 'V2'}
-                      </span>
-                    )}
-                  </button>
-                ))}
+        {/* Template selector dropdown (Available only in Rich mode) */}
+        {messageFormat === 'rich' && (
+          <div className="relative">
+            <div className="flex items-center justify-between bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 p-3 rounded-xl border border-pink-300 shadow-2xs">
+              <div className="flex items-center space-x-2">
+                <Sparkles size={16} className="text-pink-600" />
+                <span className="text-xs font-bold text-slate-800">Выбор готового шаблона:</span>
+                <span className="text-xs text-pink-700 font-extrabold bg-white/80 px-2.5 py-0.5 rounded-lg border border-pink-300 shadow-2xs">
+                  {BUILTIN_DRAFTS.find(d => d.id === selectedDraftId)?.title || 'Выберите шаблон'}
+                </span>
               </div>
-            </>
-          )}
-        </div>
+              <button
+                type="button"
+                onClick={() => setShowDraftsMenu(!showDraftsMenu)}
+                className="flex items-center space-x-1.5 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer shadow-2xs transition-all"
+              >
+                <span>Все шаблоны</span>
+                <ChevronDown size={14} className={`transition-transform ${showDraftsMenu ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+
+            {showDraftsMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-20"
+                  onClick={() => setShowDraftsMenu(false)}
+                />
+                <div className="absolute top-full left-0 right-0 mt-2 bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-2xl shadow-xl p-3 z-30 space-y-2 max-h-80 overflow-y-auto">
+                  <div className="flex items-center justify-between pb-2 border-b border-pink-200 px-1">
+                    <span className="text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider">
+                      Выберите готовый шаблон
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDraftsMenu(false)}
+                      className="text-slate-500 hover:text-slate-800 p-1 rounded-lg hover:bg-white/60 cursor-pointer"
+                      title="Закрыть"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {BUILTIN_DRAFTS.map(draft => (
+                    <button
+                      key={draft.id}
+                      type="button"
+                      onClick={() => handleSelectDraft(draft)}
+                      className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                        selectedDraftId === draft.id
+                          ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-2xs'
+                          : 'bg-white/80 border-pink-200 text-slate-800 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        <span className="text-lg">{draft.badge}</span>
+                        <div>
+                          <div className="text-xs font-bold">{draft.title}</div>
+                          <div className={`text-[10px] ${selectedDraftId === draft.id ? 'text-white/90' : 'text-slate-500'}`}>{draft.subtitle}</div>
+                        </div>
+                      </div>
+                      {draft.format && (
+                        <span className={`text-[9px] px-2 py-0.5 rounded-md font-mono font-bold ${
+                          selectedDraftId === draft.id
+                            ? 'bg-white/20 text-white'
+                            : draft.format === 'rich' ? 'bg-pink-100 text-pink-700 border border-pink-300' : 'bg-sky-100 text-sky-700 border border-sky-300'
+                        }`}>
+                          {draft.format === 'rich' ? 'Rich' : 'V2'}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Post Title Input (At the top of the editor) */}
         <div>

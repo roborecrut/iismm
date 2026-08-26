@@ -1400,7 +1400,7 @@ apiRouter.get('/user/team-privacy', async (req: Request, res: Response) => {
 
     const user = findUserInDb(db, userId);
     if (!user) {
-      res.json({ allowTeamInvites: true, teamBlacklist: [] });
+      res.json({ success: true, allowTeamInvites: true, teamBlacklist: [] });
       return;
     }
 
@@ -1412,9 +1412,9 @@ apiRouter.get('/user/team-privacy', async (req: Request, res: Response) => {
       }
     } catch (e) {}
 
-    res.json({ allowTeamInvites, teamBlacklist });
+    res.json({ success: true, allowTeamInvites, teamBlacklist: Array.isArray(teamBlacklist) ? teamBlacklist : [] });
   } catch (err: any) {
-    res.status(500).json({ error: 'Ошибка получения настроек приватности: ' + err.message });
+    res.json({ success: true, allowTeamInvites: true, teamBlacklist: [] });
   }
 });
 
@@ -2482,10 +2482,13 @@ async function checkBotInTelegramChannel(usernameOrId: string): Promise<{ ok: bo
   }
 
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+
     let botUserId: number | null = null;
     let botUsername = 'IIrkiBot';
     try {
-      const meRes = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+      const meRes = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: controller.signal });
       const meData = await meRes.json() as any;
       if (meData.ok && meData.result) {
         botUserId = meData.result.id;
@@ -2493,15 +2496,20 @@ async function checkBotInTelegramChannel(usernameOrId: string): Promise<{ ok: bo
       }
     } catch (e) {}
 
-    const chatRes = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(cleanUsername)}`);
+    const chatRes = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(cleanUsername)}`, { signal: controller.signal });
     const chatData = await chatRes.json() as any;
+    clearTimeout(timer);
+
     if (!chatData.ok) {
       return { ok: false, error: `Бот @${botUsername} не может найти канал ${cleanUsername} или был удален из него.` };
     }
 
     if (botUserId) {
-      const memberRes = await fetch(`https://api.telegram.org/bot${token}/getChatMember?chat_id=${encodeURIComponent(cleanUsername)}&user_id=${botUserId}`);
+      const subController = new AbortController();
+      const subTimer = setTimeout(() => subController.abort(), 4000);
+      const memberRes = await fetch(`https://api.telegram.org/bot${token}/getChatMember?chat_id=${encodeURIComponent(cleanUsername)}&user_id=${botUserId}`, { signal: subController.signal });
       const memberData = await memberRes.json() as any;
+      clearTimeout(subTimer);
 
       if (!memberData.ok || !memberData.result) {
         return { ok: false, error: `Бот @${botUsername} не найден в канале ${cleanUsername}.` };
@@ -2521,26 +2529,34 @@ async function checkBotInTelegramChannel(usernameOrId: string): Promise<{ ok: bo
 
 // Verify all channels for a user upon login/entering cabinet
 apiRouter.post('/channels/verify-all', async (req: Request, res: Response) => {
-  const userId = req.body.userId || (req.headers['x-user-id'] as string) || '';
-  const channels = DB.getChannels(userId);
+  try {
+    const userId = req.body?.userId || (req.headers['x-user-id'] as string) || '';
+    const channels = DB.getChannels(userId);
 
-  const updatedChannels = [];
-  for (const ch of channels) {
-    if (ch.username || ch.telegramId) {
-      const checkResult = await checkBotInTelegramChannel(ch.username || ch.telegramId || '');
-      const newStatus = checkResult.ok;
-      if (ch.isActive !== newStatus) {
-        const updated = DB.updateChannel(ch.id, { isActive: newStatus });
-        updatedChannels.push(updated);
+    const updatedChannels = [];
+    for (const ch of channels) {
+      if (ch.username || ch.telegramId) {
+        try {
+          const checkResult = await checkBotInTelegramChannel(ch.username || ch.telegramId || '');
+          const newStatus = checkResult.ok;
+          if (ch.isActive !== newStatus) {
+            const updated = DB.updateChannel(ch.id, { isActive: newStatus });
+            updatedChannels.push(updated);
+          } else {
+            updatedChannels.push(ch);
+          }
+        } catch (err) {
+          updatedChannels.push(ch);
+        }
       } else {
         updatedChannels.push(ch);
       }
-    } else {
-      updatedChannels.push(ch);
     }
-  }
 
-  res.json({ success: true, channels: updatedChannels });
+    res.json({ success: true, channels: updatedChannels });
+  } catch (err: any) {
+    res.json({ success: true, channels: [] });
+  }
 });
 
 // Re-verify a single channel by ID via Telegram Bot check button

@@ -277,17 +277,155 @@ export function toSafeAsciiFilename(originalName: string, defaultExt: string = '
   return cleanBase ? `${cleanBase}.${ext}` : `${prefix}_${Date.now()}.${ext}`;
 }
 
+// Magic bytes analyzer to determine exact format and prevent IMAGE_PROCESS_FAILED in Telegram API
+export function detectBufferMediaMeta(
+  buffer: Buffer,
+  fallbackName: string = 'media.bin',
+  fallbackContentType: string = 'application/octet-stream'
+): { ext: string; contentType: string; mediaType: 'photo' | 'video' | 'audio' | 'document'; safeFilename: string } {
+  let ext = '';
+  let contentType = '';
+  let mediaType: 'photo' | 'video' | 'audio' | 'document' = 'document';
+
+  if (buffer && buffer.length >= 4) {
+    // JPEG: FF D8 FF
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+      ext = 'jpg';
+      contentType = 'image/jpeg';
+      mediaType = 'photo';
+    }
+    // PNG: 89 50 4E 47 (0D 0A 1A 0A)
+    else if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+      ext = 'png';
+      contentType = 'image/png';
+      mediaType = 'photo';
+    }
+    // GIF: 47 49 46 38
+    else if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) {
+      ext = 'gif';
+      contentType = 'image/gif';
+      mediaType = 'photo';
+    }
+    // WEBP: 52 49 46 46 (RIFF) ... 57 45 42 50 (WEBP)
+    else if (
+      buffer.length >= 12 &&
+      buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+      buffer.toString('utf8', 8, 12) === 'WEBP'
+    ) {
+      ext = 'webp';
+      contentType = 'image/webp';
+      mediaType = 'photo';
+    }
+    // MP4 / MOV: ftyp at offset 4
+    else if (buffer.length >= 8 && buffer.toString('utf8', 4, 8) === 'ftyp') {
+      ext = 'mp4';
+      contentType = 'video/mp4';
+      mediaType = 'video';
+    }
+    // MKV / WebM: 1A 45 DF A3
+    else if (buffer[0] === 0x1A && buffer[1] === 0x45 && buffer[2] === 0xDF && buffer[3] === 0xA3) {
+      ext = 'webm';
+      contentType = 'video/webm';
+      mediaType = 'video';
+    }
+    // OGG: 4F 67 67 53 (OggS)
+    else if (buffer[0] === 0x4F && buffer[1] === 0x67 && buffer[2] === 0x67 && buffer[3] === 0x53) {
+      ext = 'ogg';
+      contentType = 'audio/ogg';
+      mediaType = 'audio';
+    }
+    // MP3: ID3 (49 44 33) or sync frame FF FB / FF F3 / FF F2
+    else if (
+      (buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) ||
+      (buffer[0] === 0xFF && (buffer[1] & 0xE0) === 0xE0)
+    ) {
+      ext = 'mp3';
+      contentType = 'audio/mpeg';
+      mediaType = 'audio';
+    }
+    // WAV: RIFF ... WAVE
+    else if (
+      buffer.length >= 12 &&
+      buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+      buffer.toString('utf8', 8, 12) === 'WAVE'
+    ) {
+      ext = 'wav';
+      contentType = 'audio/wav';
+      mediaType = 'audio';
+    }
+    // PDF: %PDF
+    else if (buffer.toString('utf8', 0, 4) === '%PDF') {
+      ext = 'pdf';
+      contentType = 'application/pdf';
+      mediaType = 'document';
+    }
+  }
+
+  // Fallback by name / header if magic bytes did not match
+  if (!ext) {
+    const lowerName = fallbackName.toLowerCase();
+    const lowerHeader = fallbackContentType.toLowerCase();
+
+    if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerHeader.includes('jpeg') || lowerHeader.includes('jpg')) {
+      ext = 'jpg';
+      contentType = 'image/jpeg';
+      mediaType = 'photo';
+    } else if (lowerName.endsWith('.png') || lowerHeader.includes('png')) {
+      ext = 'png';
+      contentType = 'image/png';
+      mediaType = 'photo';
+    } else if (lowerName.endsWith('.webp') || lowerHeader.includes('webp')) {
+      ext = 'webp';
+      contentType = 'image/webp';
+      mediaType = 'photo';
+    } else if (lowerName.endsWith('.gif') || lowerHeader.includes('gif')) {
+      ext = 'gif';
+      contentType = 'image/gif';
+      mediaType = 'photo';
+    } else if (lowerName.endsWith('.mp4') || lowerName.endsWith('.mov') || lowerHeader.includes('video')) {
+      ext = 'mp4';
+      contentType = 'video/mp4';
+      mediaType = 'video';
+    } else if (lowerName.endsWith('.mp3') || lowerHeader.includes('mpeg') || lowerHeader.includes('mp3')) {
+      ext = 'mp3';
+      contentType = 'audio/mpeg';
+      mediaType = 'audio';
+    } else if (lowerName.endsWith('.ogg') || lowerHeader.includes('ogg')) {
+      ext = 'ogg';
+      contentType = 'audio/ogg';
+      mediaType = 'audio';
+    } else if (lowerName.endsWith('.wav') || lowerHeader.includes('wav')) {
+      ext = 'wav';
+      contentType = 'audio/wav';
+      mediaType = 'audio';
+    } else if (lowerName.endsWith('.pdf') || lowerHeader.includes('pdf')) {
+      ext = 'pdf';
+      contentType = 'application/pdf';
+      mediaType = 'document';
+    } else {
+      ext = 'bin';
+      contentType = fallbackContentType || 'application/octet-stream';
+      mediaType = 'document';
+    }
+  }
+
+  const safeFilename = toSafeAsciiFilename(fallbackName, ext, mediaType);
+  return { ext, contentType, mediaType, safeFilename };
+}
+
 // Helper to fetch media from local storage, pro-talk or external URL into Buffer
 export async function fetchMediaBuffer(
   urlStr: string
-): Promise<{ buffer: Buffer; filename: string; contentType: string } | null> {
+): Promise<{ buffer: Buffer; filename: string; contentType: string; mediaType: 'photo' | 'video' | 'audio' | 'document' } | null> {
   if (!urlStr || typeof urlStr !== 'string') return null;
 
   try {
     let fetchUrl = urlStr.trim();
     const trimmed = fetchUrl;
+    let fallbackName = 'media.bin';
+    let fallbackContentType = 'application/octet-stream';
 
-    // Handle base64 data URIs directly
+    // 1. Handle base64 data URIs directly
     if (trimmed.startsWith('data:')) {
       const commaIdx = trimmed.indexOf(',');
       if (commaIdx !== -1) {
@@ -296,94 +434,226 @@ export async function fetchMediaBuffer(
         const mime = meta.split(';')[0] || 'application/octet-stream';
         const rawData = trimmed.substring(commaIdx + 1);
         const buffer = Buffer.from(rawData, isBase64 ? 'base64' : 'utf-8');
-        const ext = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' :
-                    mime.includes('png') ? 'png' :
-                    mime.includes('webp') ? 'webp' :
-                    mime.includes('ogg') ? 'ogg' :
-                    mime.includes('mp3') ? 'mp3' :
-                    mime.includes('mp4') ? 'mp4' : 'bin';
-        return { buffer, filename: `data_file_${Date.now()}.${ext}`, contentType: mime };
+        const detected = detectBufferMediaMeta(buffer, `data_file_${Date.now()}`, mime);
+        return { buffer, filename: detected.safeFilename, contentType: detected.contentType, mediaType: detected.mediaType };
       }
     }
 
-    // Resolve local storage short urls or file keys
-    try {
-      const db = await getSQLiteDB();
-      if (db) {
-        const match = trimmed.match(/\/file\/([a-zA-Z0-9_-]+)/) || 
-                      trimmed.match(/\/f\/([a-zA-Z0-9_-]+)/) ||
-                      trimmed.match(/file\/([a-zA-Z0-9_-]+)/) ||
-                      trimmed.match(/f\/([a-zA-Z0-9_-]+)/);
-        const searchKey = match ? match[1] : path.basename(trimmed);
-        const stmt = db.prepare(`
-          SELECT original_url, name, mime_type FROM file_storage 
-          WHERE file_key = ? OR short_url LIKE ? OR name = ? OR slug_name = ? OR id = ? 
-          LIMIT 1
-        `);
-        stmt.bind([searchKey, `%${searchKey}%`, searchKey, searchKey, parseInt(searchKey, 10) || -1]);
-        if (stmt.step()) {
-          const row = stmt.getAsObject() as any;
-          if (row.original_url && typeof row.original_url === 'string' && (row.original_url.startsWith('http://') || row.original_url.startsWith('https://'))) {
-            fetchUrl = row.original_url;
-          }
+    // 2. Check direct local disk paths
+    const possibleLocalPaths = [
+      trimmed.startsWith('/') ? path.join(process.cwd(), 'dist', trimmed.replace(/^\//, '')) : null,
+      trimmed.startsWith('/') ? path.join(process.cwd(), 'public', trimmed.replace(/^\//, '')) : null,
+      trimmed.startsWith('/') ? path.join(process.cwd(), trimmed.replace(/^\//, '')) : null,
+      path.join(process.cwd(), 'dist', trimmed),
+      path.join(process.cwd(), 'public', trimmed)
+    ].filter(Boolean) as string[];
+
+    for (const p of possibleLocalPaths) {
+      try {
+        if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+          const buffer = await fs.promises.readFile(p);
+          const detected = detectBufferMediaMeta(buffer, path.basename(p));
+          return { buffer, filename: detected.safeFilename, contentType: detected.contentType, mediaType: detected.mediaType };
         }
-        stmt.free();
-      }
-    } catch (e) {}
-
-    // If relative path on server
-    if (fetchUrl.startsWith('/') || fetchUrl.startsWith('./')) {
-      const port = 3000;
-      fetchUrl = `http://127.0.0.1:${port}${fetchUrl.startsWith('/') ? '' : '/'}${fetchUrl}`;
+      } catch (e) {}
     }
 
-    const defaultToken = "b2VcU3NrVVttYlh3GHM_AEQ4eA8yDR4FGREODwsaLyUqQjpTEA8HGzMdFB8aORQYaG9dWGpkVQRvAXM";
-    const response = await fetch(fetchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'X-Upload-Token': defaultToken
-      },
-      signal: AbortSignal.timeout(20000)
-    });
+    // 3. Resolve from SQLite file_storage for any /file/... or /f/... URL pattern
+    const proxyMatch = trimmed.match(/(?:\/|^)(?:file|f)\/([a-zA-Z0-9_-]+)/i);
+    const searchKey = proxyMatch ? proxyMatch[1] : '';
 
-    if (!response.ok) {
-      console.warn(`[fetchMediaBuffer] HTTP ${response.status} fetching media from ${fetchUrl}`);
+    if (searchKey) {
+      // Check disk under public/file or dist/file
+      const keyDiskCandidates = [
+        path.join(process.cwd(), 'public', 'file', searchKey),
+        path.join(process.cwd(), 'dist', 'file', searchKey),
+        path.join(process.cwd(), 'public', 'file', searchKey, `${searchKey}.png`),
+        path.join(process.cwd(), 'public', 'file', searchKey, `${searchKey}.mp3`),
+        path.join(process.cwd(), 'public', `${searchKey}.png`),
+        path.join(process.cwd(), `${searchKey}.png`)
+      ];
+      for (const kp of keyDiskCandidates) {
+        try {
+          if (fs.existsSync(kp) && fs.statSync(kp).isFile()) {
+            const buffer = await fs.promises.readFile(kp);
+            const detected = detectBufferMediaMeta(buffer, path.basename(kp));
+            return { buffer, filename: detected.safeFilename, contentType: detected.contentType, mediaType: detected.mediaType };
+          }
+        } catch (e) {}
+      }
+
+      // Query SQLite database
+      try {
+        const db = await getSQLiteDB();
+        if (db) {
+          const isNumeric = /^\d+$/.test(searchKey);
+          let stmt: any = null;
+          if (isNumeric) {
+            stmt = db.prepare(`SELECT original_url, name, mime_type FROM file_storage WHERE id = ? LIMIT 1`);
+            stmt.bind([parseInt(searchKey, 10)]);
+          } else {
+            stmt = db.prepare(`SELECT original_url, name, mime_type FROM file_storage WHERE file_key = ? OR slug_name = ? OR short_url LIKE ? OR name = ? LIMIT 1`);
+            stmt.bind([searchKey, searchKey, `%${searchKey}%`, searchKey]);
+          }
+
+          if (stmt && stmt.step()) {
+            const row = stmt.getAsObject() as any;
+            if (row.original_url && typeof row.original_url === 'string' && row.original_url.trim()) {
+              fetchUrl = row.original_url.trim();
+              if (row.name) fallbackName = row.name;
+              if (row.mime_type) fallbackContentType = row.mime_type;
+            }
+          }
+          if (stmt) stmt.free();
+        }
+      } catch (e) {
+        console.warn('[fetchMediaBuffer] SQLite lookup error:', e);
+      }
+
+      // Check legacy DB files lookup
+      if (fetchUrl === trimmed) {
+        try {
+          const legacy = DB.getFileByShortKey(searchKey);
+          if (legacy && legacy.fullUrl) {
+            fetchUrl = legacy.fullUrl;
+            if (legacy.name) fallbackName = legacy.name;
+            if (legacy.mimeType) fallbackContentType = legacy.mimeType;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 4. If relative path after resolution
+    if (fetchUrl.startsWith('/') || fetchUrl.startsWith('./')) {
+      const relPath = fetchUrl.replace(/^\.?\//, '');
+      const localRelCandidates = [
+        path.join(process.cwd(), 'dist', relPath),
+        path.join(process.cwd(), 'public', relPath),
+        path.join(process.cwd(), relPath)
+      ];
+      for (const lr of localRelCandidates) {
+        if (fs.existsSync(lr) && fs.statSync(lr).isFile()) {
+          const buffer = await fs.promises.readFile(lr);
+          const detected = detectBufferMediaMeta(buffer, fallbackName || path.basename(lr), fallbackContentType);
+          return { buffer, filename: detected.safeFilename, contentType: detected.contentType, mediaType: detected.mediaType };
+        }
+      }
+      fetchUrl = `http://127.0.0.1:3000/${relPath}`;
+    }
+
+    // 5. Network fetch with headers & fallback
+    const defaultToken = "b2VcU3NrVVttYlh3GHM_AEQ4eA8yDR4FGREODwsaLyUqQjpTEA8HGzMdFB8aORQYaG9dWGpkVQRvAXM";
+    let response: any = null;
+
+    try {
+      response = await fetch(fetchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'X-Upload-Token': defaultToken
+        },
+        signal: AbortSignal.timeout(25000)
+      });
+    } catch (netErr: any) {
+      console.warn(`[fetchMediaBuffer] Initial fetch failed for ${fetchUrl}:`, netErr.message);
+    }
+
+    // Retry without X-Upload-Token if failed or returned error status
+    if (!response || !response.ok) {
+      try {
+        response = await fetch(fetchUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          },
+          signal: AbortSignal.timeout(25000)
+        });
+      } catch (retryErr: any) {
+        console.warn(`[fetchMediaBuffer] Retry fetch failed for ${fetchUrl}:`, retryErr.message);
+      }
+    }
+
+    if (!response || !response.ok) {
+      console.warn(`[fetchMediaBuffer] HTTP ${response?.status} fetching media from ${fetchUrl}`);
       return null;
     }
 
-    const contentType = response.headers.get('content-type') || 'application/octet-stream';
-    if (contentType.includes('text/html')) {
+    const rawContentType = response.headers.get('content-type') || fallbackContentType || 'application/octet-stream';
+    if (rawContentType.includes('text/html')) {
       console.warn(`[fetchMediaBuffer] Received HTML instead of media binary from ${fetchUrl}`);
       return null;
     }
 
     const arrayBuf = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuf);
-
-    let filename = 'media.bin';
-    try {
-      const parsed = new URL(fetchUrl);
-      filename = path.basename(parsed.pathname) || 'media.bin';
-      if (!filename.includes('.')) {
-        const ext = contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' :
-                     contentType.includes('png') ? 'png' :
-                     contentType.includes('webp') ? 'webp' :
-                     contentType.includes('mp4') ? 'mp4' :
-                     contentType.includes('mp3') ? 'mp3' :
-                     contentType.includes('ogg') ? 'ogg' :
-                     contentType.includes('pdf') ? 'pdf' : 'bin';
-        filename = `file_${Date.now()}.${ext}`;
-      }
-    } catch (e) {
-      filename = `media_${Date.now()}.bin`;
+    if (!buffer || buffer.length === 0) {
+      console.warn(`[fetchMediaBuffer] Received empty buffer from ${fetchUrl}`);
+      return null;
     }
 
-    const safeFilename = toSafeAsciiFilename(filename, 'bin');
-    return { buffer, filename: safeFilename, contentType };
+    let parsedName = fallbackName || 'media.bin';
+    try {
+      const parsed = new URL(fetchUrl);
+      const bname = path.basename(parsed.pathname);
+      if (bname && bname !== '/' && bname !== 'tgf' && bname !== 'up') {
+        parsedName = bname;
+      }
+    } catch (e) {
+      if (!parsedName || parsedName === 'media.bin') {
+        parsedName = `media_${Date.now()}.bin`;
+      }
+    }
+
+    const detected = detectBufferMediaMeta(buffer, parsedName, rawContentType);
+    return {
+      buffer,
+      filename: detected.safeFilename,
+      contentType: detected.contentType,
+      mediaType: detected.mediaType
+    };
   } catch (err: any) {
     console.warn(`[fetchMediaBuffer] Error fetching ${urlStr}:`, err.message);
     return null;
   }
+}
+
+// Helper to resolve public URL from SQLite or legacy DB for Telegram URL fallback
+export async function resolvePublicUrl(urlStr: string): Promise<string> {
+  if (!urlStr || typeof urlStr !== 'string') return '';
+  const trimmed = urlStr.trim();
+  const match = trimmed.match(/(?:\/|^)(?:file|f)\/([a-zA-Z0-9_-]+)/i);
+  const searchKey = match ? match[1] : '';
+  if (searchKey) {
+    try {
+      const db = await getSQLiteDB();
+      if (db) {
+        const isNumeric = /^\d+$/.test(searchKey);
+        let stmt: any = null;
+        if (isNumeric) {
+          stmt = db.prepare(`SELECT original_url FROM file_storage WHERE id = ? LIMIT 1`);
+          stmt.bind([parseInt(searchKey, 10)]);
+        } else {
+          stmt = db.prepare(`SELECT original_url FROM file_storage WHERE file_key = ? OR slug_name = ? OR short_url LIKE ? OR name = ? LIMIT 1`);
+          stmt.bind([searchKey, searchKey, `%${searchKey}%`, searchKey]);
+        }
+        if (stmt && stmt.step()) {
+          const row = stmt.getAsObject() as any;
+          if (row.original_url && typeof row.original_url === 'string' && row.original_url.startsWith('http')) {
+            const resolved = row.original_url.trim();
+            stmt.free();
+            return resolved;
+          }
+        }
+        if (stmt) stmt.free();
+      }
+    } catch (e) {}
+
+    try {
+      const legacy = DB.getFileByShortKey(searchKey);
+      if (legacy && legacy.fullUrl && legacy.fullUrl.startsWith('http')) {
+        return legacy.fullUrl;
+      }
+    } catch (e) {}
+  }
+  return trimmed;
 }
 
 // Build reply_markup for inline keyboard WITHOUT injecting extra emoji circles
@@ -543,17 +813,80 @@ export async function sendPromptToTelegram(
       if (attachmentType === 'album' && (rawAttachmentUrls.length > 0 || rawAttachmentUrl)) {
         const urlsToProcess = (rawAttachmentUrls.length > 0 ? rawAttachmentUrls : [rawAttachmentUrl]).filter(u => Boolean(u && typeof u === 'string' && u.trim()));
         const mediaBuffers = await Promise.all(urlsToProcess.slice(0, 10).map(u => fetchMediaBuffer(u)));
-        const validBuffers = mediaBuffers.filter(b => b !== null) as { buffer: Buffer; filename: string; contentType: string }[];
+        const validBuffers = mediaBuffers.filter(b => b !== null) as { buffer: Buffer; filename: string; contentType: string; mediaType: 'photo' | 'video' | 'audio' | 'document' }[];
 
-        if (validBuffers.length > 0) {
+        if (validBuffers.length === 1) {
+          // Telegram sendMediaGroup requires 2-10 items; for a single item send as single photo or video
+          const item = validBuffers[0];
+          const isVideo = item.mediaType === 'video' || item.filename.match(/\.(mp4|mov|avi|webm)$/i) || item.contentType.includes('video');
+          const safeName = item.filename || `media_0.${isVideo ? 'mp4' : 'jpg'}`;
+          const mimeType = isVideo ? (item.contentType.includes('video') ? item.contentType : 'video/mp4') : (item.contentType.startsWith('image/') ? item.contentType : 'image/jpeg');
+
+          const singleForm = new FormData();
+          singleForm.append('chat_id', channel);
+          singleForm.append(isVideo ? 'video' : 'photo', item.buffer, { filename: safeName, contentType: mimeType });
+          if (captionToSend) {
+            singleForm.append('caption', captionToSend);
+            singleForm.append('parse_mode', 'HTML');
+          }
+          if (replyMarkup) {
+            singleForm.append('reply_markup', JSON.stringify(replyMarkup));
+          }
+
+          const endpoint = isVideo ? 'sendVideo' : 'sendPhoto';
+          const res = await fetch(`https://api.telegram.org/bot${token}/${endpoint}`, {
+            method: 'POST',
+            headers: singleForm.getHeaders(),
+            body: singleForm.getBuffer()
+          });
+          resultData = await res.json();
+
+          if (!resultData.ok && resultData.description && (resultData.description.includes('entities') || resultData.description.includes('tag') || resultData.description.includes('HTML'))) {
+            const retrySingleForm = new FormData();
+            retrySingleForm.append('chat_id', channel);
+            retrySingleForm.append(isVideo ? 'video' : 'photo', item.buffer, { filename: safeName, contentType: mimeType });
+            if (captionToSend) {
+              retrySingleForm.append('caption', stripHTML(captionToSend));
+            }
+            if (replyMarkup) {
+              retrySingleForm.append('reply_markup', JSON.stringify(replyMarkup));
+            }
+            const retryRes = await fetch(`https://api.telegram.org/bot${token}/${endpoint}`, {
+              method: 'POST',
+              headers: retrySingleForm.getHeaders(),
+              body: retrySingleForm.getBuffer()
+            });
+            resultData = await retryRes.json();
+          }
+
+          if (resultData.ok) {
+            sendSuccess = true;
+            lastMessageId = String(resultData.result?.message_id || '1');
+            if (!hasShortCaption || (replyMarkup && replyMarkup.inline_keyboard.length > 0)) {
+              try {
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: channel,
+                    text: fullHtmlText || 'Подробнее:',
+                    parse_mode: 'HTML',
+                    reply_markup: replyMarkup
+                  })
+                });
+              } catch (e) {}
+            }
+          }
+        } else if (validBuffers.length >= 2) {
           const form = new FormData();
           form.append('chat_id', channel);
 
           const mediaArray = validBuffers.map((item, idx) => {
             const fieldName = `file_${idx}`;
-            const isVideo = item.filename.match(/\.(mp4|mov|avi|webm)$/i) || item.contentType.includes('video');
-            const safeName = toSafeAsciiFilename(item.filename, isVideo ? 'mp4' : 'jpg', `media_${idx}`);
-            form.append(fieldName, item.buffer, { filename: safeName, contentType: item.contentType });
+            const isVideo = item.mediaType === 'video' || item.filename.match(/\.(mp4|mov|avi|webm)$/i) || item.contentType.includes('video');
+            const safeName = item.filename || `media_${idx}.${isVideo ? 'mp4' : 'jpg'}`;
+            const mimeType = isVideo ? (item.contentType.includes('video') ? item.contentType : 'video/mp4') : (item.contentType.startsWith('image/') ? item.contentType : 'image/jpeg');
+            form.append(fieldName, item.buffer, { filename: safeName, contentType: mimeType });
             return {
               type: isVideo ? 'video' : 'photo',
               media: `attach://${fieldName}`,
@@ -578,9 +911,10 @@ export async function sendPromptToTelegram(
             const plainCaption = hasShortCaption ? stripHTML(captionToSend) : undefined;
             const retryMedia = validBuffers.map((item, idx) => {
               const fieldName = `file_${idx}`;
-              const isVideo = item.filename.match(/\.(mp4|mov|avi|webm)$/i) || item.contentType.includes('video');
-              const safeName = toSafeAsciiFilename(item.filename, isVideo ? 'mp4' : 'jpg', `media_${idx}`);
-              retryForm.append(fieldName, item.buffer, { filename: safeName, contentType: item.contentType });
+              const isVideo = item.mediaType === 'video' || item.filename.match(/\.(mp4|mov|avi|webm)$/i) || item.contentType.includes('video');
+              const safeName = item.filename || `media_${idx}.${isVideo ? 'mp4' : 'jpg'}`;
+              const mimeType = isVideo ? (item.contentType.includes('video') ? item.contentType : 'video/mp4') : (item.contentType.startsWith('image/') ? item.contentType : 'image/jpeg');
+              retryForm.append(fieldName, item.buffer, { filename: safeName, contentType: mimeType });
               return {
                 type: isVideo ? 'video' : 'photo',
                 media: `attach://${fieldName}`,
@@ -594,6 +928,67 @@ export async function sendPromptToTelegram(
               body: retryForm.getBuffer()
             });
             resultData = await retryRes.json();
+          }
+
+          // Fallback: If sendMediaGroup failed (e.g. IMAGE_PROCESS_FAILED or size limits), send each media sequentially
+          if (!resultData.ok && validBuffers.length > 0) {
+            console.warn(`[sendMediaGroup] Album failed (${resultData.description}), switching to sequential fallback.`);
+            let fallbackCount = 0;
+            for (let idx = 0; idx < validBuffers.length; idx++) {
+              const item = validBuffers[idx];
+              const isVideo = item.mediaType === 'video' || item.filename.match(/\.(mp4|mov|avi|webm)$/i) || item.contentType.includes('video');
+              const isShort = idx === 0 && hasShortCaption;
+              const safeName = item.filename || `media_${idx}.${isVideo ? 'mp4' : 'jpg'}`;
+              const mimeType = isVideo ? (item.contentType.includes('video') ? item.contentType : 'video/mp4') : (item.contentType.startsWith('image/') ? item.contentType : 'image/jpeg');
+              
+              const subForm = new FormData();
+              subForm.append('chat_id', channel);
+              if (isShort && captionToSend) {
+                subForm.append('caption', captionToSend);
+                subForm.append('parse_mode', 'HTML');
+              }
+              if (isShort && replyMarkup) {
+                subForm.append('reply_markup', JSON.stringify(replyMarkup));
+              }
+
+              let endpoint = isVideo ? 'sendVideo' : 'sendPhoto';
+              let fieldKey = isVideo ? 'video' : 'photo';
+              subForm.append(fieldKey, item.buffer, { filename: safeName, contentType: mimeType });
+
+              let subRes = await fetch(`https://api.telegram.org/bot${token}/${endpoint}`, {
+                method: 'POST',
+                headers: subForm.getHeaders(),
+                body: subForm.getBuffer()
+              });
+              let subData = await subRes.json();
+
+              // If sendPhoto failed with IMAGE_PROCESS_FAILED, send as document
+              if (!subData.ok && !isVideo) {
+                const docForm = new FormData();
+                docForm.append('chat_id', channel);
+                docForm.append('document', item.buffer, { filename: safeName, contentType: mimeType });
+                if (isShort && captionToSend) {
+                  docForm.append('caption', captionToSend);
+                  docForm.append('parse_mode', 'HTML');
+                }
+                const docRes = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+                  method: 'POST',
+                  headers: docForm.getHeaders(),
+                  body: docForm.getBuffer()
+                });
+                subData = await docRes.json();
+              }
+
+              if (subData.ok) {
+                fallbackCount++;
+                if (idx === 0) lastMessageId = String(subData.result?.message_id || '1');
+              }
+            }
+
+            if (fallbackCount > 0) {
+              sendSuccess = true;
+              resultData = { ok: true, fallback: true };
+            }
           }
 
           if (resultData.ok) {
@@ -704,12 +1099,13 @@ export async function sendPromptToTelegram(
 
         // Fallback to sending URL directly if buffer failed
         if (!sendSuccess) {
+          const publicPhotoUrl = await resolvePublicUrl(targetUrl);
           const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: channel,
-              photo: targetUrl,
+              photo: publicPhotoUrl,
               caption: captionToSend || undefined,
               parse_mode: captionToSend ? 'HTML' : undefined,
               reply_markup: (hasShortCaption && replyMarkup) ? replyMarkup : undefined
@@ -724,7 +1120,7 @@ export async function sendPromptToTelegram(
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 chat_id: channel,
-                photo: targetUrl,
+                photo: publicPhotoUrl,
                 caption: captionToSend || undefined,
                 parse_mode: captionToSend ? 'HTML' : undefined,
                 reply_markup: (hasShortCaption && urlFallbackMarkup) ? urlFallbackMarkup : undefined
@@ -803,12 +1199,13 @@ export async function sendPromptToTelegram(
         }
 
         if (!sendSuccess) {
+          const publicVideoUrl = await resolvePublicUrl(targetUrl);
           const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: channel,
-              video: targetUrl,
+              video: publicVideoUrl,
               caption: captionToSend || undefined,
               parse_mode: captionToSend ? 'HTML' : undefined,
               reply_markup: (hasShortCaption && replyMarkup) ? replyMarkup : undefined
@@ -868,12 +1265,13 @@ export async function sendPromptToTelegram(
 
         // Fallback to sendAudio if sendVoice fails
         if (!sendSuccess) {
+          const publicAudioUrl = await resolvePublicUrl(targetUrl);
           const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: channel,
-              audio: targetUrl,
+              audio: publicAudioUrl,
               caption: captionToSend || undefined,
               parse_mode: captionToSend ? 'HTML' : undefined,
               reply_markup: (hasShortCaption && replyMarkup) ? replyMarkup : undefined
@@ -890,7 +1288,7 @@ export async function sendPromptToTelegram(
       else if (attachmentType === 'audio' && (rawAttachmentUrl || rawAttachmentUrls.length > 0)) {
         const urlsToProcess = (rawAttachmentUrls.length > 0 ? rawAttachmentUrls : [rawAttachmentUrl]).filter(u => Boolean(u && typeof u === 'string' && u.trim()));
         const mediaBuffers = await Promise.all(urlsToProcess.slice(0, 10).map(u => fetchMediaBuffer(u)));
-        const validBuffers = mediaBuffers.filter(b => b !== null) as { buffer: Buffer; filename: string; contentType: string }[];
+        const validBuffers = mediaBuffers.filter(b => b !== null) as { buffer: Buffer; filename: string; contentType: string; mediaType: 'photo' | 'video' | 'audio' | 'document' }[];
 
         // If multiple audio tracks (>= 2), group into an album (sendMediaGroup type: 'audio')
         if (validBuffers.length >= 2) {
@@ -899,7 +1297,7 @@ export async function sendPromptToTelegram(
 
           const mediaArray = validBuffers.map((item, idx) => {
             const fieldName = `audio_${idx}`;
-            const safeName = toSafeAsciiFilename(item.filename, 'mp3', `track_${idx + 1}`);
+            const safeName = item.filename || `track_${idx + 1}.mp3`;
             form.append(fieldName, item.buffer, { 
               filename: safeName, 
               contentType: item.contentType || 'audio/mpeg' 
@@ -928,7 +1326,7 @@ export async function sendPromptToTelegram(
             const plainCaption = hasShortCaption ? stripHTML(captionToSend) : undefined;
             const retryMedia = validBuffers.map((item, idx) => {
               const fieldName = `audio_${idx}`;
-              const safeName = toSafeAsciiFilename(item.filename, 'mp3', `track_${idx + 1}`);
+              const safeName = item.filename || `track_${idx + 1}.mp3`;
               retryForm.append(fieldName, item.buffer, { 
                 filename: safeName, 
                 contentType: item.contentType || 'audio/mpeg' 
@@ -946,6 +1344,62 @@ export async function sendPromptToTelegram(
               body: retryForm.getBuffer()
             });
             resultData = await retryRes.json();
+          }
+
+          // Fallback: If sendMediaGroup failed for audio album, send ALL tracks sequentially via sendAudio
+          if (!resultData.ok && validBuffers.length > 0) {
+            console.warn(`[sendMediaGroup] Audio group failed (${resultData?.description}), sequentially sending all ${validBuffers.length} audio tracks.`);
+            let sentCount = 0;
+            for (let idx = 0; idx < validBuffers.length; idx++) {
+              const item = validBuffers[idx];
+              const isShort = idx === 0 && hasShortCaption;
+              const safeName = item.filename || `track_${idx + 1}.mp3`;
+              const mime = item.contentType || 'audio/mpeg';
+              const subForm = new FormData();
+              subForm.append('chat_id', channel);
+              subForm.append('audio', item.buffer, { filename: safeName, contentType: mime });
+              if (isShort && captionToSend) {
+                subForm.append('caption', captionToSend);
+                subForm.append('parse_mode', 'HTML');
+              }
+              if (isShort && replyMarkup) {
+                subForm.append('reply_markup', JSON.stringify(replyMarkup));
+              }
+
+              let subRes = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
+                method: 'POST',
+                headers: subForm.getHeaders(),
+                body: subForm.getBuffer()
+              });
+              let subData = await subRes.json();
+
+              // If sendAudio failed, retry as sendDocument
+              if (!subData.ok) {
+                const docForm = new FormData();
+                docForm.append('chat_id', channel);
+                docForm.append('document', item.buffer, { filename: safeName, contentType: mime });
+                if (isShort && captionToSend) {
+                  docForm.append('caption', captionToSend);
+                  docForm.append('parse_mode', 'HTML');
+                }
+                const docRes = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+                  method: 'POST',
+                  headers: docForm.getHeaders(),
+                  body: docForm.getBuffer()
+                });
+                subData = await docRes.json();
+              }
+
+              if (subData.ok) {
+                sentCount++;
+                if (idx === 0) lastMessageId = String(subData.result?.message_id || '1');
+              }
+            }
+
+            if (sentCount > 0) {
+              sendSuccess = true;
+              resultData = { ok: true, fallback: true };
+            }
           }
 
           if (resultData.ok) {
@@ -969,26 +1423,34 @@ export async function sendPromptToTelegram(
 
         // If single audio (1 track) or fallback if sendMediaGroup failed
         if (!sendSuccess && validBuffers.length > 0) {
-          const firstAudio = validBuffers[0];
-          const safeName = toSafeAsciiFilename(firstAudio.filename, 'mp3', 'audio');
-          const form = new FormData();
-          form.append('chat_id', channel);
-          form.append('audio', firstAudio.buffer, { filename: safeName, contentType: firstAudio.contentType });
-          if (captionToSend) {
-            form.append('caption', captionToSend);
-            form.append('parse_mode', 'HTML');
-          }
-          if (hasShortCaption && replyMarkup) {
-            form.append('reply_markup', JSON.stringify(replyMarkup));
+          let sentCount = 0;
+          for (let idx = 0; idx < validBuffers.length; idx++) {
+            const item = validBuffers[idx];
+            const isShort = idx === 0 && hasShortCaption;
+            const form = new FormData();
+            form.append('chat_id', channel);
+            form.append('audio', item.buffer, { filename: item.filename, contentType: item.contentType || 'audio/mpeg' });
+            if (isShort && captionToSend) {
+              form.append('caption', captionToSend);
+              form.append('parse_mode', 'HTML');
+            }
+            if (isShort && replyMarkup) {
+              form.append('reply_markup', JSON.stringify(replyMarkup));
+            }
+
+            const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
+              method: 'POST',
+              headers: form.getHeaders(),
+              body: form.getBuffer()
+            });
+            const data = await res.json();
+            if (data.ok) {
+              sentCount++;
+              if (idx === 0) lastMessageId = String(data.result?.message_id || '1');
+            }
           }
 
-          const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
-            method: 'POST',
-            headers: form.getHeaders(),
-            body: form.getBuffer()
-          });
-          resultData = await res.json();
-          if (resultData.ok) {
+          if (sentCount > 0) {
             sendSuccess = true;
             if (!hasShortCaption && fullHtmlText) {
               try {
@@ -1007,22 +1469,32 @@ export async function sendPromptToTelegram(
           }
         }
 
-        // Direct URL fallback
-        if (!sendSuccess) {
-          const targetUrl = urlsToProcess[0];
-          const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: channel,
-              audio: targetUrl,
-              caption: captionToSend || undefined,
-              parse_mode: captionToSend ? 'HTML' : undefined,
-              reply_markup: (hasShortCaption && replyMarkup) ? replyMarkup : undefined
-            })
-          });
-          resultData = await res.json();
-          if (resultData.ok) sendSuccess = true;
+        // Direct URL fallback (send ALL audio URLs)
+        if (!sendSuccess && urlsToProcess.length > 0) {
+          let sentCount = 0;
+          for (let idx = 0; idx < urlsToProcess.length; idx++) {
+            const isShort = idx === 0 && hasShortCaption;
+            const res = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: channel,
+                audio: urlsToProcess[idx],
+                caption: isShort ? (captionToSend || undefined) : undefined,
+                parse_mode: isShort && captionToSend ? 'HTML' : undefined,
+                reply_markup: (isShort && replyMarkup) ? replyMarkup : undefined
+              })
+            });
+            const data = await res.json();
+            if (data.ok) {
+              sentCount++;
+              if (idx === 0) lastMessageId = String(data.result?.message_id || '1');
+            }
+          }
+          if (sentCount > 0) {
+            sendSuccess = true;
+            resultData = { ok: true };
+          }
         }
       }
 
@@ -1138,13 +1610,13 @@ export async function sendPromptToTelegram(
 
         // Direct URL fallback
         if (!sendSuccess) {
-          const targetUrl = urlsToProcess[0];
+          const publicDocUrl = await resolvePublicUrl(urlsToProcess[0]);
           const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: channel,
-              document: targetUrl,
+              document: publicDocUrl,
               caption: captionToSend || undefined,
               parse_mode: captionToSend ? 'HTML' : undefined,
               reply_markup: (hasShortCaption && replyMarkup) ? replyMarkup : undefined

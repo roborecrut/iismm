@@ -210,7 +210,7 @@ export default function App() {
       fetch(`/api/users/me?${query.toString()}`, {
         headers: { 'x-user-id': user.id || '16926299042' }
       })
-        .then(r => r.json())
+        .then(r => (r.ok ? r.json() : null))
         .then(data => {
           if (data && data.user) {
             const u = data.user;
@@ -226,7 +226,7 @@ export default function App() {
             }));
           }
         })
-        .catch(err => console.error("Error syncing user me photo:", err));
+        .catch(err => console.warn("Notice syncing user me photo:", err?.message || err));
     }
   }, [user.id, user.telegramId]);
 
