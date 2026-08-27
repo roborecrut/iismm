@@ -444,19 +444,9 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
   }
 
   // Regex ordered strictly by specificity:
-  // 1. Code blocks (```...```)
-  // 2. Inline code (`...`)
-  // 3. Spoilers (||...||)
-  // 4. Underline (__...__ or <u>...</u>)
-  // 5. Bold (**...** or *...* or <b>...</b>)
-  // 6. Strikethrough (~~...~~ or ~...~ or <s>...</s>)
-  // 7. Italic (_..._ or <i>...</i>)
-  // 8. Links ([...](...))
-  // 9. Time tags (<tg-time...>)
-  // 10. Math formulas ($...$)
   const regex = format === 'v2'
     ? /(```[\s\S]*?```|`[^`\n]+`|\|\|[\s\S]+?\|\||__[^_\n]+__|(?:\*\*[^*\n]+\*\*|\*[^*\n]+\*)|(?:~~[^~\n]+~~|~[^~\n]+~)|_[^_\n]+_|\[[^\]]+\]\([^\)]+\)|\$[^\$\n]+\$)/g
-    : /(```[\s\S]*?```|`[^`\n]+`|\|\|[\s\S]+?\|\||__[^_\n]+__|<u>[\s\S]+?<\/u>|(?:\*\*[^*\n]+\*\*|\*[^*\n]+\*)|<b>[\s\S]+?<\/b>|(?:~~[^~\n]+~~|~[^~\n]+~)|<s>[\s\S]+?<\/s>|_[^_\n]+_|<i>[\s\S]+?<\/i>|\[[^\]]+\]\([^\)]+\)|<tg-time[\s\S]+?<\/tg-time>|\$[^\$\n]+\$)/g;
+    : /(```[\s\S]*?```|`[^`\n]+`|\|\|[\s\S]+?\|\||<tg-spoiler>[\s\S]+?<\/tg-spoiler>|<tg-emoji[\s\S]+?<\/tg-emoji>|__[^_\n]+__|<u>[\s\S]+?<\/u>|\*\*[^*\n]+\*\*|<b>[\s\S]+?<\/b>|<strong>[\s\S]+?<\/strong>|~~[^~\n]+~~|<s>[\s\S]+?<\/s>|<del>[\s\S]+?<\/del>|\*[^*\n]+\*|_[^_\n]+_|<i>[\s\S]+?<\/i>|<em>[\s\S]+?<\/em>|\[[^\]]+\]\([^\)]+\)|<tg-time[\s\S]+?<\/tg-time>|\$[^\$\n]+\$)/g;
 
   const parts = cleanedText.split(regex);
 
@@ -475,15 +465,18 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
         if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
           const content = part.slice(1, -1);
           return (
-            <code key={index} className="bg-white/95 text-pink-700 font-mono text-[11px] px-1.5 py-0.5 rounded border border-pink-300 shadow-2xs select-all">
+            <code key={index} className="bg-white/95 text-pink-700 font-mono text-sm px-1.5 py-0.5 rounded border border-pink-300 shadow-2xs select-all">
               {content}
             </code>
           );
         }
 
-        // 3. Spoilers ||spoiler||
-        if (part.startsWith('||') && part.endsWith('||') && part.length >= 4) {
-          const content = part.slice(2, -2);
+        // 3. Spoilers ||spoiler|| or <tg-spoiler>spoiler</tg-spoiler>
+        if (
+          (part.startsWith('||') && part.endsWith('||') && part.length >= 4) ||
+          (part.startsWith('<tg-spoiler>') && part.endsWith('</tg-spoiler>'))
+        ) {
+          const content = part.startsWith('<tg-spoiler>') ? part.slice(12, -13) : part.slice(2, -2);
           return (
             <span
               key={index}
@@ -495,7 +488,18 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           );
         }
 
-        // 4. Underline __text__ or <u>text</u>
+        // 4. Custom Emoji <tg-emoji emoji-id="123">alt</tg-emoji>
+        if (part.startsWith('<tg-emoji') && part.endsWith('</tg-emoji>')) {
+          const idMatch = part.match(/emoji-id=["'](\d+)["']/i);
+          const innerText = part.replace(/<[^>]+>/g, '') || '✨';
+          return (
+            <span key={index} className="inline-flex items-center space-x-1 bg-white/90 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700 font-bold text-sm" title={`Custom Emoji ID: ${idMatch ? idMatch[1] : ''}`}>
+              <span>{innerText}</span>
+            </span>
+          );
+        }
+
+        // 5. Underline __text__ or <u>text</u>
         if (
           (part.startsWith('__') && part.endsWith('__') && part.length >= 4) ||
           (part.startsWith('<u>') && part.endsWith('</u>'))
@@ -508,32 +512,42 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           );
         }
 
-        // 5. Bold **text**, *text*, <b>text</b>
+        // 6. Bold in Rich (**text**, <b>text</b>, <strong>text</strong>) or in V2 (*text*, **text**)
         if (
           (part.startsWith('**') && part.endsWith('**') && part.length >= 4) ||
           (part.startsWith('<b>') && part.endsWith('</b>')) ||
-          (part.startsWith('*') && part.endsWith('*') && part.length >= 2)
+          (part.startsWith('<strong>') && part.endsWith('</strong>')) ||
+          (format === 'v2' && part.startsWith('*') && part.endsWith('*') && part.length >= 2)
         ) {
-          const content = part.startsWith('<b>') ? part.slice(3, -4) : (part.startsWith('**') ? part.slice(2, -2) : part.slice(1, -1));
+          const content = part.startsWith('<strong>') 
+            ? part.slice(8, -9) 
+            : (part.startsWith('<b>') ? part.slice(3, -4) : (part.startsWith('**') ? part.slice(2, -2) : part.slice(1, -1)));
           return <strong key={index} className="font-bold text-slate-950">{renderFormattedText(content, format)}</strong>;
         }
 
-        // 6. Strikethrough ~~text~~, ~text~, <s>text</s>
+        // 7. Strikethrough ~~text~~, ~text~, <s>text</s>, <del>text</del>
         if (
           (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) ||
           (part.startsWith('<s>') && part.endsWith('</s>')) ||
-          (part.startsWith('~') && part.endsWith('~') && part.length >= 2)
+          (part.startsWith('<del>') && part.endsWith('</del>')) ||
+          (format === 'v2' && part.startsWith('~') && part.endsWith('~') && part.length >= 2)
         ) {
-          const content = part.startsWith('<s>') ? part.slice(3, -4) : (part.startsWith('~~') ? part.slice(2, -2) : part.slice(1, -1));
+          const content = part.startsWith('<del>')
+            ? part.slice(5, -6)
+            : (part.startsWith('<s>') ? part.slice(3, -4) : (part.startsWith('~~') ? part.slice(2, -2) : part.slice(1, -1)));
           return <del key={index} className="line-through text-slate-500">{renderFormattedText(content, format)}</del>;
         }
 
-        // 7. Italic _text_, <i>text</i>
+        // 8. Italic in Rich (*text*, _text_, <i>text</i>, <em>text</em>) or in V2 (_text_)
         if (
           (part.startsWith('_') && part.endsWith('_') && part.length >= 2) ||
-          (part.startsWith('<i>') && part.endsWith('</i>'))
+          (part.startsWith('<i>') && part.endsWith('</i>')) ||
+          (part.startsWith('<em>') && part.endsWith('</em>')) ||
+          (format === 'rich' && part.startsWith('*') && part.endsWith('*') && part.length >= 2)
         ) {
-          const content = part.startsWith('<i>') ? part.slice(3, -4) : part.slice(1, -1);
+          const content = part.startsWith('<em>')
+            ? part.slice(4, -5)
+            : (part.startsWith('<i>') ? part.slice(3, -4) : part.slice(1, -1));
           return <em key={index} className="italic text-slate-800">{renderFormattedText(content, format)}</em>;
         }
 
@@ -548,7 +562,7 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
               const idMatch = url.match(/id=(\d+)/);
               const emojiId = idMatch ? idMatch[1] : '';
               return (
-                <span key={index} className="inline-flex items-center space-x-1 bg-white/90 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700 font-bold text-[11px]" title={`Custom Emoji ID: ${emojiId}`}>
+                <span key={index} className="inline-flex items-center space-x-1 bg-white/90 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700 font-bold text-sm" title={`Custom Emoji ID: ${emojiId}`}>
                   <span>{label || '✨'}</span>
                 </span>
               );
@@ -568,8 +582,8 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           if (timeMatch) {
             const timeLabel = timeMatch[2];
             return (
-              <span key={index} className="inline-flex items-center space-x-1 bg-white/90 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700 font-mono text-[11px]">
-                <Clock size={11} />
+              <span key={index} className="inline-flex items-center space-x-1 bg-white/90 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700 font-mono text-sm">
+                <Clock size={14} />
                 <span>{timeLabel}</span>
               </span>
             );
@@ -592,7 +606,46 @@ function renderInlineMarkdown(text: string, format: 'v2' | 'rich' = 'rich') {
   return renderFormattedText(text, format);
 }
 
-// Complete Rich Markdown Telegram Preview Renderer
+// Markdown Table Parser and Formatter Helper
+interface ParsedTableData {
+  headers: string[] | null;
+  rows: string[][];
+  alignments: ('left' | 'center' | 'right')[];
+}
+
+function parseMarkdownTableBlock(tableLines: string[]): ParsedTableData | null {
+  const separatorRegex = /^\|?\s*:?-+:?\s*(\|?\s*:?-+:?\s*)*\|?$/;
+  let alignments: ('left' | 'center' | 'right')[] = [];
+
+  const sepLine = tableLines.find(l => separatorRegex.test(l.trim()));
+  if (sepLine) {
+    const rawCols = sepLine.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+    alignments = rawCols.map(c => {
+      const trimmed = c.trim();
+      if (trimmed.startsWith(':') && trimmed.endsWith(':')) return 'center';
+      if (trimmed.endsWith(':')) return 'right';
+      return 'left';
+    });
+  }
+
+  const contentLines = tableLines.filter(l => !separatorRegex.test(l.trim()) && l.trim().length > 0);
+  if (contentLines.length === 0) return null;
+
+  const matrix: string[][] = contentLines.map(line => {
+    let clean = line.trim();
+    if (clean.startsWith('|')) clean = clean.slice(1);
+    if (clean.endsWith('|')) clean = clean.slice(0, -1);
+    return clean.split('|').map(c => c.trim());
+  });
+
+  const hasHeader = matrix.length > 1;
+  const headers = hasHeader ? matrix[0] : null;
+  const rows = hasHeader ? matrix.slice(1) : matrix;
+
+  return { headers, rows, alignments };
+}
+
+// Complete Rich Markdown Telegram Preview Renderer with Full H1-H6 and Tables Support
 function RichPreviewRenderer({
   postText,
   signature,
@@ -607,208 +660,574 @@ function RichPreviewRenderer({
   linkPreviewEnabled?: boolean;
 }) {
   const [slideshowIndices, setSlideshowIndices] = useState<{ [key: number]: number }>({});
+  const [expandedQuotes, setExpandedQuotes] = useState<{ [key: number]: boolean }>({});
 
   const setSlideIndex = (blockIdx: number, newIndex: number) => {
     setSlideshowIndices(prev => ({ ...prev, [blockIdx]: newIndex }));
   };
 
-  const renderContentWithTables = (text: string) => {
-    if (!text) return null;
-    if (!text.includes('|')) {
-      return renderInlineMarkdown(text);
-    }
-
-    const lines = text.split('\n');
-    const segments: { type: 'text' | 'table'; lines: string[] }[] = [];
-    let currentType: 'text' | 'table' = 'text';
-    let currentLines: string[] = [];
-
-    lines.forEach((line) => {
-      const isTableLine = line.trim().startsWith('|') || (line.trim().includes('|') && line.trim().endsWith('|'));
-      if (isTableLine) {
-        if (currentType !== 'table') {
-          if (currentLines.length > 0) {
-            segments.push({ type: 'text', lines: currentLines });
-            currentLines = [];
-          }
-          currentType = 'table';
-        }
-      } else {
-        if (currentType !== 'text') {
-          if (currentLines.length > 0) {
-            segments.push({ type: 'table', lines: currentLines });
-            currentLines = [];
-          }
-          currentType = 'text';
-        }
-      }
-      currentLines.push(line);
-    });
-
-    if (currentLines.length > 0) {
-      segments.push({ type: currentType, lines: currentLines });
-    }
-
-    return (
-      <div className="space-y-2">
-        {segments.map((seg, sIdx) => {
-          if (seg.type === 'text') {
-            const txt = seg.lines.join('\n').trim();
-            return txt ? <div key={sIdx}>{renderInlineMarkdown(txt)}</div> : null;
-          } else {
-            const tableText = seg.lines.join('\n');
-            let rawRows = tableText.split('\n').map(r => r.trim()).filter(Boolean);
-            let tableRows = rawRows.filter(r => !r.match(/^\|?\s*:?---+\s*:?/));
-
-            let parsedMatrix: string[][] = [];
-            tableRows.forEach(rowStr => {
-              const cells = rowStr.split('|').map(c => c.trim()).filter(c => c.length > 0 && !c.match(/^:?---*:?$/));
-              if (cells.length > 0) {
-                parsedMatrix.push(cells);
-              }
-            });
-
-            if (parsedMatrix.length > 0) {
-              const hasHeader = parsedMatrix.length > 1;
-              const headers = parsedMatrix[0];
-              const dataRows = hasHeader ? parsedMatrix.slice(1) : [parsedMatrix[0]];
-
-              return (
-                <div key={sIdx} className="overflow-x-auto my-2 rounded-xl border border-pink-200 bg-white/90 shadow-xs">
-                  <table className="w-full text-[11px] border-collapse">
-                    {hasHeader && (
-                      <thead>
-                        <tr className="bg-gradient-to-r from-sky-100 via-pink-100 to-orange-100 font-extrabold text-slate-900 border-b border-pink-200">
-                          {headers.map((headerCell, hIdx) => (
-                            <th key={hIdx} className="p-2.5 text-left border-r border-pink-200 last:border-r-0 font-bold text-slate-900">
-                              {renderInlineMarkdown(headerCell)}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                    )}
-                    <tbody>
-                      {dataRows.map((rowCells, rIdx) => (
-                        <tr key={rIdx} className="border-t border-pink-100 hover:bg-pink-50/50 transition-colors">
-                          {(hasHeader ? headers : rowCells).map((_, cIdx) => (
-                            <td key={cIdx} className="p-2 border-r border-pink-100 last:border-r-0 text-slate-800">
-                              {renderInlineMarkdown(rowCells[cIdx] || '')}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            }
-            return <div key={sIdx}>{renderInlineMarkdown(tableText)}</div>;
-          }
-        })}
-      </div>
-    );
+  const toggleQuote = (quoteIdx: number) => {
+    setExpandedQuotes(prev => ({ ...prev, [quoteIdx]: !prev[quoteIdx] }));
   };
 
   if (!postText && !signature) {
-    return <p className="text-xs text-slate-500 italic">Текст вашего сообщения появится здесь...</p>;
+    return <p className="text-sm text-slate-500 italic">Текст вашего сообщения появится здесь...</p>;
   }
 
-  const blocks = postText.split('\n\n');
+  // Tokenize the markdown into block units
+  const rawLines = (postText || '').split('\n');
+  type BlockItem =
+    | { type: 'h1'; text: string }
+    | { type: 'h2'; text: string }
+    | { type: 'h3'; text: string }
+    | { type: 'h4'; text: string }
+    | { type: 'h5'; text: string }
+    | { type: 'h6'; text: string }
+    | { type: 'table'; lines: string[] }
+    | { type: 'code'; lang: string; code: string }
+    | { type: 'details'; summary: string; content: string }
+    | { type: 'quote'; lines: string[]; expandable?: boolean }
+    | { type: 'collage'; urls: string[] }
+    | { type: 'slideshow'; urls: string[] }
+    | { type: 'video'; url: string }
+    | { type: 'audio'; url: string }
+    | { type: 'image'; alt: string; url: string; title?: string }
+    | { type: 'checklist'; items: { checked: boolean; text: string }[] }
+    | { type: 'list'; items: { ordered: boolean; num?: string; text: string }[] }
+    | { type: 'paragraph'; lines: string[] };
+
+  const parsedBlocks: BlockItem[] = [];
+  let i = 0;
+
+  while (i < rawLines.length) {
+    const line = rawLines[i];
+    const trimmed = line.trim();
+
+    // 1. Empty lines
+    if (!trimmed) {
+      i++;
+      continue;
+    }
+
+    // 2. Code blocks (```lang\n...\n```)
+    if (trimmed.startsWith('```')) {
+      const lang = trimmed.slice(3).trim();
+      const codeLines: string[] = [];
+      i++;
+      while (i < rawLines.length && !rawLines[i].trim().startsWith('```')) {
+        codeLines.push(rawLines[i]);
+        i++;
+      }
+      if (i < rawLines.length) i++; // skip closing ```
+      parsedBlocks.push({ type: 'code', lang, code: codeLines.join('\n') });
+      continue;
+    }
+
+    // 3. Collapsible block (<details><summary>...</summary>...</details>)
+    if (trimmed.startsWith('<details') || trimmed.includes('<details>')) {
+      let detailsLines: string[] = [];
+      while (i < rawLines.length) {
+        detailsLines.push(rawLines[i]);
+        if (rawLines[i].includes('</details>')) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      const fullDetails = detailsLines.join('\n');
+      const sumMatch = fullDetails.match(/<summary>(.*?)<\/summary>/i);
+      const summary = sumMatch ? sumMatch[1] : 'Подробнее';
+      const content = fullDetails
+        .replace(/<details.*?>/gi, '')
+        .replace(/<\/details>/gi, '')
+        .replace(/<summary>.*?<\/summary>/gi, '')
+        .trim();
+      parsedBlocks.push({ type: 'details', summary, content });
+      continue;
+    }
+
+    // 4. Custom media containers (<tg-collage>, <tg-slideshow>)
+    if (trimmed.includes('<tg-collage>')) {
+      let collageLines: string[] = [];
+      while (i < rawLines.length) {
+        collageLines.push(rawLines[i]);
+        if (rawLines[i].includes('</tg-collage>')) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      const collageText = collageLines.join('\n');
+      const imgMatches = [...collageText.matchAll(/!\[(.*?)\]\((.*?)\)/g)];
+      const urls = imgMatches.map(m => m[2]);
+      if (urls.length > 0) {
+        parsedBlocks.push({ type: 'collage', urls });
+      }
+      continue;
+    }
+
+    if (trimmed.includes('<tg-slideshow>')) {
+      let slideLines: string[] = [];
+      while (i < rawLines.length) {
+        slideLines.push(rawLines[i]);
+        if (rawLines[i].includes('</tg-slideshow>')) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      const slideText = slideLines.join('\n');
+      const imgMatches = [...slideText.matchAll(/!\[(.*?)\]\((.*?)\)/g)];
+      const urls = imgMatches.map(m => m[2]);
+      if (urls.length > 0) {
+        parsedBlocks.push({ type: 'slideshow', urls });
+      }
+      continue;
+    }
+
+    // 5. Headings H1 to H6 (# to ######)
+    const h1Match = line.match(/^#\s+(.+)$/);
+    if (h1Match) {
+      parsedBlocks.push({ type: 'h1', text: h1Match[1] });
+      i++;
+      continue;
+    }
+    const h2Match = line.match(/^##\s+(.+)$/);
+    if (h2Match) {
+      parsedBlocks.push({ type: 'h2', text: h2Match[1] });
+      i++;
+      continue;
+    }
+    const h3Match = line.match(/^###\s+(.+)$/);
+    if (h3Match) {
+      parsedBlocks.push({ type: 'h3', text: h3Match[1] });
+      i++;
+      continue;
+    }
+    const h4Match = line.match(/^####\s+(.+)$/);
+    if (h4Match) {
+      parsedBlocks.push({ type: 'h4', text: h4Match[1] });
+      i++;
+      continue;
+    }
+    const h5Match = line.match(/^#####\s+(.+)$/);
+    if (h5Match) {
+      parsedBlocks.push({ type: 'h5', text: h5Match[1] });
+      i++;
+      continue;
+    }
+    const h6Match = line.match(/^######\s+(.+)$/);
+    if (h6Match) {
+      parsedBlocks.push({ type: 'h6', text: h6Match[1] });
+      i++;
+      continue;
+    }
+
+    // 6. Markdown Tables (Lines containing | and table separators)
+    if (trimmed.startsWith('|') || (trimmed.includes('|') && (trimmed.endsWith('|') || rawLines[i + 1]?.trim().startsWith('|')))) {
+      const tableLines: string[] = [];
+      while (i < rawLines.length) {
+        const currentTrim = rawLines[i].trim();
+        if (currentTrim.includes('|')) {
+          tableLines.push(rawLines[i]);
+          i++;
+        } else {
+          break;
+        }
+      }
+      if (tableLines.length > 0) {
+        parsedBlocks.push({ type: 'table', lines: tableLines });
+        continue;
+      }
+    }
+
+    // 7. Expandable Quotes (>> quote)
+    if (trimmed.startsWith('>>')) {
+      const quoteLines: string[] = [];
+      while (i < rawLines.length && rawLines[i].trim().startsWith('>>')) {
+        quoteLines.push(rawLines[i].trim().replace(/^>>\s?/, ''));
+        i++;
+      }
+      parsedBlocks.push({ type: 'quote', lines: quoteLines, expandable: true });
+      continue;
+    }
+
+    // 8. Standard Quotes (> quote)
+    if (trimmed.startsWith('>')) {
+      const quoteLines: string[] = [];
+      while (i < rawLines.length && rawLines[i].trim().startsWith('>') && !rawLines[i].trim().startsWith('>>')) {
+        quoteLines.push(rawLines[i].trim().replace(/^>\s?/, ''));
+        i++;
+      }
+      parsedBlocks.push({ type: 'quote', lines: quoteLines, expandable: false });
+      continue;
+    }
+
+    // 9. Checklist items (- [ ] / - [x])
+    if (/^[\-\*]\s+\[[\sxX]\]\s+/.test(trimmed)) {
+      const checkItems: { checked: boolean; text: string }[] = [];
+      while (i < rawLines.length && /^[\-\*]\s+\[[\sxX]\]\s+/.test(rawLines[i].trim())) {
+        const t = rawLines[i].trim();
+        const isChecked = /^[\-\*]\s+\[[xX]\]\s+/.test(t);
+        const itemText = t.replace(/^[\-\*]\s+\[[\sxX]\]\s+/, '');
+        checkItems.push({ checked: isChecked, text: itemText });
+        i++;
+      }
+      parsedBlocks.push({ type: 'checklist', items: checkItems });
+      continue;
+    }
+
+    // 10. Bullet or Numbered Lists
+    if (/^[\-\*]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed)) {
+      const listItems: { ordered: boolean; num?: string; text: string }[] = [];
+      while (i < rawLines.length) {
+        const t = rawLines[i].trim();
+        const numMatch = t.match(/^(\d+)\.\s+(.*)/);
+        if (numMatch) {
+          listItems.push({ ordered: true, num: numMatch[1], text: numMatch[2] });
+          i++;
+        } else if (/^[\-\*]\s+/.test(t)) {
+          listItems.push({ ordered: false, text: t.replace(/^[\-\*]\s+/, '') });
+          i++;
+        } else {
+          break;
+        }
+      }
+      parsedBlocks.push({ type: 'list', items: listItems });
+      continue;
+    }
+
+    // 11. Single Image: ![alt](url "title")
+    const imgMatch = trimmed.match(/^!\[(.*?)\]\((.*?)(?:\s+"(.*?)")?\)$/);
+    if (imgMatch) {
+      parsedBlocks.push({
+        type: 'image',
+        alt: imgMatch[1] || 'Изображение',
+        url: imgMatch[2],
+        title: imgMatch[3]
+      });
+      i++;
+      continue;
+    }
+
+    // 12. Video Tag / Audio Tag
+    if (trimmed.includes('<video') || trimmed.match(/!\[video\]\((.*?)\)/i)) {
+      const srcMatch = trimmed.match(/src=["'](.*?)["']/i) || trimmed.match(/!\[video\]\((.*?)\)/i);
+      if (srcMatch) {
+        parsedBlocks.push({ type: 'video', url: srcMatch[1] });
+        i++;
+        continue;
+      }
+    }
+
+    if (trimmed.includes('<audio') || trimmed.match(/!\[audio\]\((.*?)\)/i)) {
+      const srcMatch = trimmed.match(/src=["'](.*?)["']/i) || trimmed.match(/!\[audio\]\((.*?)\)/i);
+      if (srcMatch) {
+        parsedBlocks.push({ type: 'audio', url: srcMatch[1] });
+        i++;
+        continue;
+      }
+    }
+
+    // 13. Regular Paragraph (gather lines until blank line or special block start)
+    const pLines: string[] = [line];
+    i++;
+    while (i < rawLines.length) {
+      const nextTrim = rawLines[i].trim();
+      if (!nextTrim) break;
+      if (
+        nextTrim.startsWith('#') ||
+        nextTrim.startsWith('```') ||
+        nextTrim.startsWith('|') ||
+        nextTrim.startsWith('>') ||
+        nextTrim.startsWith('<details') ||
+        nextTrim.startsWith('<tg-collage') ||
+        nextTrim.startsWith('<tg-slideshow') ||
+        /^[\-\*]\s+/.test(nextTrim) ||
+        /^\d+\.\s+/.test(nextTrim)
+      ) {
+        break;
+      }
+      pLines.push(rawLines[i]);
+      i++;
+    }
+    parsedBlocks.push({ type: 'paragraph', lines: pLines });
+  }
 
   return (
-    <div className="space-y-2.5 text-xs text-slate-900 leading-relaxed font-sans">
-      {blocks.map((block, idx) => {
-        // Headings with clean gradient text (strictly require space after '#' to avoid hashtags like #smm)
-        if (block.match(/^#\s+(.+)$/)) {
-          return <h1 key={idx} className="text-base font-extrabold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent pt-1">{renderInlineMarkdown(block.replace(/^#\s+/, ''))}</h1>;
-        }
-        if (block.match(/^##\s+(.+)$/)) {
-          return <h2 key={idx} className="text-sm font-extrabold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent pt-1">{renderInlineMarkdown(block.replace(/^##\s+/, ''))}</h2>;
-        }
-        if (block.match(/^###\s+(.+)$/)) {
-          return <h3 key={idx} className="text-xs font-bold text-pink-700 pt-1">{renderInlineMarkdown(block.replace(/^###\s+/, ''))}</h3>;
-        }
-        if (block.match(/^####\s+(.+)$/)) {
-          return <h4 key={idx} className="text-[11px] font-bold text-sky-700 pt-1">{renderInlineMarkdown(block.replace(/^####\s+/, ''))}</h4>;
+    <div className="space-y-3 text-sm text-slate-900 leading-relaxed font-sans">
+      {parsedBlocks.map((block, idx) => {
+        // H1 Heading
+        if (block.type === 'h1') {
+          return (
+            <h1 key={idx} className="text-xl font-extrabold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent my-2 leading-snug">
+              {renderInlineMarkdown(block.text)}
+            </h1>
+          );
         }
 
-        // <tg-collage>
-        if (block.includes('<tg-collage>')) {
-          const imgMatches = [...block.matchAll(/!\[(.*?)\]\((.*?)\)/g)];
-          const imgUrls = imgMatches.map(m => m[2]);
-          if (imgUrls.length > 0) {
+        // H2 Heading
+        if (block.type === 'h2') {
+          return (
+            <h2 key={idx} className="text-lg font-bold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent my-1.5 leading-snug">
+              {renderInlineMarkdown(block.text)}
+            </h2>
+          );
+        }
+
+        // H3 Heading
+        if (block.type === 'h3') {
+          return (
+            <h3 key={idx} className="text-base font-bold text-pink-700 my-1 leading-snug">
+              {renderInlineMarkdown(block.text)}
+            </h3>
+          );
+        }
+
+        // H4 Heading
+        if (block.type === 'h4') {
+          return (
+            <h4 key={idx} className="text-sm font-bold text-sky-700 my-1 leading-snug">
+              {renderInlineMarkdown(block.text)}
+            </h4>
+          );
+        }
+
+        // H5 Heading
+        if (block.type === 'h5') {
+          return (
+            <h5 key={idx} className="text-sm font-semibold text-slate-800 my-0.5 leading-snug">
+              {renderInlineMarkdown(block.text)}
+            </h5>
+          );
+        }
+
+        // H6 Heading
+        if (block.type === 'h6') {
+          return (
+            <h6 key={idx} className="text-sm font-medium text-slate-700 my-0.5 leading-snug">
+              {renderInlineMarkdown(block.text)}
+            </h6>
+          );
+        }
+
+        // Markdown Table Block
+        if (block.type === 'table') {
+          const parsed = parseMarkdownTableBlock(block.lines);
+          if (!parsed) {
             return (
-              <div key={idx} className="my-2 space-y-1">
-                <div className="text-[10px] text-pink-600 font-mono flex items-center space-x-1">
-                  <ImageIcon size={12} />
-                  <span>Коллаж ({imgUrls.length} фото):</span>
-                </div>
-                <div className={`grid gap-1.5 rounded-xl overflow-hidden ${imgUrls.length === 1 ? 'grid-cols-1' : imgUrls.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                  {imgUrls.map((url, i) => (
-                    <div key={i} className="aspect-video bg-white/80 overflow-hidden relative rounded-lg border border-pink-200">
-                      <img src={url} alt="collage" className="w-full h-full object-cover" />
-                    </div>
+              <div key={idx} className="whitespace-pre-wrap font-mono text-sm bg-white/80 p-2 rounded-xl border border-pink-200">
+                {block.lines.join('\n')}
+              </div>
+            );
+          }
+
+          const { headers, rows, alignments } = parsed;
+
+          return (
+            <div key={idx} className="overflow-x-auto my-2.5 rounded-xl border border-pink-200 bg-white/95 shadow-xs">
+              <table className="w-full text-sm border-collapse">
+                {headers && (
+                  <thead>
+                    <tr className="bg-gradient-to-r from-sky-100 via-pink-100 to-orange-100 font-extrabold text-slate-900 border-b border-pink-200">
+                      {headers.map((hCell, hIdx) => {
+                        const align = alignments[hIdx] || 'left';
+                        const alignClass = align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
+                        return (
+                          <th
+                            key={hIdx}
+                            className={`px-3 py-2.5 ${alignClass} border-r border-pink-200 last:border-r-0 font-bold text-slate-900 text-sm`}
+                          >
+                            {renderInlineMarkdown(hCell)}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                )}
+                <tbody>
+                  {rows.map((rowCells, rIdx) => (
+                    <tr key={rIdx} className="border-t border-pink-100 hover:bg-pink-50/60 transition-colors">
+                      {rowCells.map((cell, cIdx) => {
+                        const align = alignments[cIdx] || 'left';
+                        const alignClass = align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
+                        return (
+                          <td
+                            key={cIdx}
+                            className={`px-3 py-2 ${alignClass} border-r border-pink-100 last:border-r-0 text-slate-800 text-sm`}
+                          >
+                            {renderInlineMarkdown(cell)}
+                          </td>
+                        );
+                      })}
+                    </tr>
                   ))}
-                </div>
-              </div>
-            );
-          }
+                </tbody>
+              </table>
+            </div>
+          );
         }
 
-        // <tg-slideshow>
-        if (block.includes('<tg-slideshow>')) {
-          const imgMatches = [...block.matchAll(/!\[(.*?)\]\((.*?)\)/g)];
-          const imgUrls = imgMatches.map(m => m[2]);
-          if (imgUrls.length > 0) {
-            const currentIdx = slideshowIndices[idx] || 0;
-            return (
-              <div key={idx} className="my-2 space-y-1.5 bg-white/80 p-2.5 rounded-xl border border-pink-200">
-                <div className="flex items-center justify-between text-[10px] text-pink-700 font-mono">
-                  <span className="flex items-center space-x-1 font-bold">
-                    <ImageIcon size={12} />
-                    <span>Слайдер изображений</span>
-                  </span>
-                  <span className="bg-pink-100 px-2 py-0.5 rounded border border-pink-200 font-semibold">{currentIdx + 1} / {imgUrls.length}</span>
-                </div>
+        // Code Block
+        if (block.type === 'code') {
+          return (
+            <div key={idx} className="my-2 rounded-xl overflow-hidden border border-pink-200 shadow-xs">
+              <TelegramCodeBlock code={block.code} language={block.lang} />
+            </div>
+          );
+        }
 
-                <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-pink-200">
-                  <img src={imgUrls[currentIdx]} alt="slide" className="w-full h-full object-contain" />
-
-                  {imgUrls.length > 1 && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setSlideIndex(idx, (currentIdx - 1 + imgUrls.length) % imgUrls.length)}
-                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-slate-800 p-1.5 rounded-full cursor-pointer transition-all shadow-md border border-pink-200"
-                      >
-                        <ChevronLeft size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSlideIndex(idx, (currentIdx + 1) % imgUrls.length)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-slate-800 p-1.5 rounded-full cursor-pointer transition-all shadow-md border border-pink-200"
-                      >
-                        <ChevronRight size={16} />
-                      </button>
-                    </>
-                  )}
-                </div>
+        // Collapsible Details
+        if (block.type === 'details') {
+          return (
+            <details key={idx} open className="bg-white/90 border border-pink-200 rounded-xl p-3 my-2 text-sm shadow-xs">
+              <summary className="font-bold text-pink-700 select-none flex items-center justify-between cursor-pointer">
+                <span>{block.summary}</span>
+              </summary>
+              <div className="mt-2 pt-2 border-t border-pink-100 text-slate-800 whitespace-pre-wrap leading-relaxed text-sm">
+                {renderInlineMarkdown(block.content)}
               </div>
-            );
-          }
+            </details>
+          );
+        }
+
+        // Quotes and Expandable Quotes
+        if (block.type === 'quote') {
+          const isExpanded = expandedQuotes[idx] ?? true;
+          return (
+            <div key={idx} className="border-l-4 border-pink-400 pl-3 py-1.5 my-2 bg-white/80 rounded-r-xl text-slate-800 text-sm italic shadow-2xs">
+              {block.expandable && (
+                <div className="flex items-center justify-between not-italic pb-1 text-xs text-pink-600 font-bold select-none cursor-pointer" onClick={() => toggleQuote(idx)}>
+                  <span>Цитата (раскрываемая)</span>
+                  <span>{isExpanded ? '▲ скрыть' : '▼ раскрыть'}</span>
+                </div>
+              )}
+              {isExpanded && (
+                <div className="whitespace-pre-wrap">
+                  {renderInlineMarkdown(block.lines.join('\n'))}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // Checklist
+        if (block.type === 'checklist') {
+          return (
+            <div key={idx} className="space-y-1.5 my-2">
+              {block.items.map((item, cIdx) => (
+                <div key={cIdx} className="flex items-start space-x-2 text-slate-800 text-sm">
+                  <span className={`inline-flex items-center justify-center w-5 h-5 rounded border ${item.checked ? 'border-pink-400 bg-pink-100 text-pink-700 font-bold' : 'border-pink-300 bg-white text-slate-400 font-bold'} shrink-0 mt-0.5 select-none text-xs`}>
+                    {item.checked ? '✓' : '☐'}
+                  </span>
+                  <div className={`flex-1 leading-relaxed ${item.checked ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                    {renderInlineMarkdown(item.text)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        // Lists (Bullet or Numbered)
+        if (block.type === 'list') {
+          return (
+            <div key={idx} className="space-y-1 my-2">
+              {block.items.map((item, lIdx) => (
+                <div key={lIdx} className="flex items-start space-x-2 text-slate-800 pl-1 text-sm">
+                  {item.ordered ? (
+                    <span className="text-pink-700 font-mono font-bold select-none">{item.num}.</span>
+                  ) : (
+                    <span className="text-pink-600 font-bold select-none">•</span>
+                  )}
+                  <div className="flex-1 leading-relaxed">{renderInlineMarkdown(item.text)}</div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        // Image
+        if (block.type === 'image') {
+          return (
+            <div key={idx} className="my-2 space-y-1 rounded-xl overflow-hidden bg-white/90 border border-pink-200 p-1.5 shadow-xs">
+              <img src={block.url} alt={block.alt} className="w-full max-h-64 object-cover rounded-lg" />
+              {block.title && (
+                <div className="text-sm text-slate-600 px-2 py-1 italic font-medium">
+                  {block.title}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // Collage
+        if (block.type === 'collage') {
+          return (
+            <div key={idx} className="my-2 space-y-1">
+              <div className="text-sm text-pink-600 font-medium flex items-center space-x-1">
+                <ImageIcon size={14} />
+                <span>Коллаж ({block.urls.length} фото):</span>
+              </div>
+              <div className={`grid gap-1.5 rounded-xl overflow-hidden ${block.urls.length === 1 ? 'grid-cols-1' : block.urls.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {block.urls.map((url, i) => (
+                  <div key={i} className="aspect-video bg-white/80 overflow-hidden relative rounded-lg border border-pink-200">
+                    <img src={url} alt="collage" className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        // Slideshow
+        if (block.type === 'slideshow') {
+          const currentIdx = slideshowIndices[idx] || 0;
+          return (
+            <div key={idx} className="my-2 space-y-1.5 bg-white/90 p-3 rounded-xl border border-pink-200 shadow-xs">
+              <div className="flex items-center justify-between text-sm text-pink-700">
+                <span className="flex items-center space-x-1 font-bold">
+                  <ImageIcon size={16} />
+                  <span>Слайдер изображений</span>
+                </span>
+                <span className="bg-pink-100 px-2.5 py-0.5 rounded border border-pink-200 font-semibold text-sm">{currentIdx + 1} / {block.urls.length}</span>
+              </div>
+
+              <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-pink-200">
+                <img src={block.urls[currentIdx]} alt="slide" className="w-full h-full object-contain" />
+
+                {block.urls.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setSlideIndex(idx, (currentIdx - 1 + block.urls.length) % block.urls.length)}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-slate-800 p-1.5 rounded-full cursor-pointer transition-all shadow-md border border-pink-200"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSlideIndex(idx, (currentIdx + 1) % block.urls.length)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-slate-800 p-1.5 rounded-full cursor-pointer transition-all shadow-md border border-pink-200"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
         }
 
         // Video
-        if (block.includes('<video') || block.match(/!\[video\]\((.*?)\)/i)) {
-          const srcMatch = block.match(/src=["'](.*?)["']/i) || block.match(/!\[video\]\((.*?)\)/i);
-          const videoUrl = srcMatch ? srcMatch[1] : '';
+        if (block.type === 'video') {
           return (
             <div key={idx} className="my-2 space-y-1">
-              <div className="text-[10px] text-pink-600 font-mono flex items-center space-x-1">
-                <Video size={12} />
+              <div className="text-sm text-pink-600 font-medium flex items-center space-x-1">
+                <Video size={14} />
                 <span>Видеозапись:</span>
               </div>
-              <video controls className="w-full max-h-56 rounded-xl bg-black border border-pink-200" src={videoUrl}>
+              <video controls className="w-full max-h-56 rounded-xl bg-black border border-pink-200" src={block.url}>
                 Ваш браузер не поддерживает видео.
               </video>
             </div>
@@ -816,188 +1235,32 @@ function RichPreviewRenderer({
         }
 
         // Audio
-        if (block.includes('<audio') || block.match(/!\[audio\]\((.*?)\)/i)) {
-          const srcMatch = block.match(/src=["'](.*?)["']/i) || block.match(/!\[audio\]\((.*?)\)/i);
-          const audioUrl = srcMatch ? srcMatch[1] : '';
+        if (block.type === 'audio') {
           return (
-            <div key={idx} className="my-2 p-3 bg-white/90 rounded-xl border border-pink-200 space-y-2">
-              <div className="flex items-center space-x-2 text-xs text-pink-700 font-semibold">
-                <Volume2 size={16} />
+            <div key={idx} className="my-2 p-3 bg-white/90 rounded-xl border border-pink-200 space-y-2 shadow-xs">
+              <div className="flex items-center space-x-2 text-sm text-pink-700 font-semibold">
+                <Volume2 size={18} />
                 <span>Аудиосообщение</span>
               </div>
-              <audio controls className="w-full h-8" src={audioUrl} />
-            </div>
-          );
-        }
-
-        // Markdown Single Image: ![alt](url "title") or ![alt](url)
-        const singleImgMatch = block.match(/^!\[(.*?)\]\((.*?)(?:\s+"(.*?)")?\)$/);
-        if (singleImgMatch) {
-          const altText = singleImgMatch[1];
-          const imgUrl = singleImgMatch[2];
-          const captionTitle = singleImgMatch[3];
-          return (
-            <div key={idx} className="my-2 space-y-1 rounded-xl overflow-hidden bg-white/80 border border-pink-200 p-1">
-              <img src={imgUrl} alt={altText || 'Image'} className="w-full max-h-64 object-cover rounded-lg" />
-              {captionTitle && (
-                <div className="text-[11px] text-slate-600 px-2 py-1 italic font-medium">
-                  {captionTitle}
-                </div>
-              )}
-            </div>
-          );
-        }
-
-        // <details> Collapsible Block
-        if (block.includes('<details') || block.includes('</details>')) {
-          const summaryMatch = block.match(/<summary>(.*?)<\/summary>/i);
-          const summaryText = summaryMatch ? summaryMatch[1] : 'Раскрыть подробности';
-          let detailsContent = block
-            .replace(/<details.*?>/gi, '')
-            .replace(/<\/details>/gi, '')
-            .replace(/<summary>.*?<\/summary>/gi, '')
-            .trim();
-
-          return (
-            <details key={idx} open className="bg-white/80 border border-pink-200 rounded-xl p-3 my-2 text-xs group cursor-pointer shadow-xs">
-              <summary className="font-bold text-pink-700 select-none flex items-center justify-between">
-                <span>{summaryText}</span>
-              </summary>
-              <div className="mt-2 pt-2 border-t border-pink-100 text-slate-800 whitespace-pre-wrap leading-relaxed">
-                {renderContentWithTables(detailsContent)}
-              </div>
-            </details>
-          );
-        }
-
-        // Markdown Table Parser (handles both multiline and single-line inline tables)
-        if (block.includes('|')) {
-          let rawRows = block.split(/\n|\|\|/).map(r => r.trim()).filter(Boolean);
-          let tableRows = rawRows.filter(r => !r.match(/^\|?\s*:?---+\s*:?/));
-
-          let parsedMatrix: string[][] = [];
-          tableRows.forEach(rowStr => {
-            const cells = rowStr.split('|').map(c => c.trim()).filter(c => c.length > 0 && !c.match(/^:?---*:?$/));
-            if (cells.length > 0) {
-              parsedMatrix.push(cells);
-            }
-          });
-
-          if (parsedMatrix.length > 0) {
-            const hasHeader = parsedMatrix.length > 1;
-            const headers = parsedMatrix[0];
-            const dataRows = hasHeader ? parsedMatrix.slice(1) : [parsedMatrix[0]];
-
-            return (
-              <div key={idx} className="overflow-x-auto my-2 rounded-xl border border-pink-200 bg-white/90 shadow-xs">
-                <table className="w-full text-[11px] border-collapse">
-                  {hasHeader && (
-                    <thead>
-                      <tr className="bg-gradient-to-r from-sky-100 via-pink-100 to-orange-100 font-extrabold text-slate-900 border-b border-pink-200">
-                        {headers.map((headerCell, hIdx) => (
-                          <th key={hIdx} className="p-2.5 text-left border-r border-pink-200 last:border-r-0 font-bold text-slate-900">
-                            {renderInlineMarkdown(headerCell)}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                  )}
-                  <tbody>
-                    {dataRows.map((rowCells, rIdx) => (
-                      <tr key={rIdx} className="border-t border-pink-100 hover:bg-pink-50/50 transition-colors">
-                        {(hasHeader ? headers : rowCells).map((_, cIdx) => (
-                          <td key={cIdx} className="p-2 border-r border-pink-100 last:border-r-0 text-slate-800">
-                            {renderInlineMarkdown(rowCells[cIdx] || '')}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            );
-          }
-        }
-
-        // Blockquotes
-        if (block.startsWith('>') || block.includes('<blockquote>')) {
-          const cleanQuote = block.replace(/<\/?blockquote>/g, '').replace(/<\/?cite>/g, '').replace(/^>\s?/gm, '');
-          return (
-            <div key={idx} className="border-l-3 border-pink-400 pl-3 py-1.5 my-2 bg-white/70 rounded-r-xl text-slate-800 italic">
-              {renderInlineMarkdown(cleanQuote)}
-            </div>
-          );
-        }
-
-        // Standard Paragraph or Lists
-        const blockLines = block.split('\n');
-        const hasList = blockLines.some(l => {
-          const t = l.trim();
-          return t.startsWith('- ') || t.startsWith('* ') || t.startsWith('- [') || t.startsWith('* [') || /^\d+\.\s/.test(t);
-        });
-
-        if (hasList) {
-          return (
-            <div key={idx} className="space-y-1 my-1.5">
-              {blockLines.map((line, lIdx) => {
-                const trimmed = line.trim();
-                if (trimmed.startsWith('- [ ] ') || trimmed.startsWith('* [ ] ')) {
-                  const content = trimmed.slice(6);
-                  return (
-                    <div key={lIdx} className="flex items-start space-x-2 text-slate-800">
-                      <span className="inline-flex items-center justify-center w-4 h-4 rounded border border-pink-300 bg-white text-[10px] text-slate-400 shrink-0 mt-0.5 select-none font-bold">
-                        ☐
-                      </span>
-                      <div className="flex-1 leading-relaxed">{renderInlineMarkdown(content)}</div>
-                    </div>
-                  );
-                }
-                if (trimmed.startsWith('- [x] ') || trimmed.startsWith('* [x] ') || trimmed.startsWith('- [X] ') || trimmed.startsWith('* [X] ')) {
-                  const content = trimmed.slice(6);
-                  return (
-                    <div key={lIdx} className="flex items-start space-x-2 text-slate-800">
-                      <span className="inline-flex items-center justify-center w-4 h-4 rounded border border-pink-400 bg-pink-100 text-[10px] text-pink-700 shrink-0 mt-0.5 select-none font-bold">
-                        ✓
-                      </span>
-                      <div className="flex-1 leading-relaxed line-through text-slate-400">{renderInlineMarkdown(content)}</div>
-                    </div>
-                  );
-                }
-                if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-                  const content = trimmed.slice(2);
-                  return (
-                    <div key={lIdx} className="flex items-start space-x-2 text-slate-800 pl-1">
-                      <span className="text-pink-600 font-bold select-none">•</span>
-                      <div className="flex-1 leading-relaxed">{renderInlineMarkdown(content)}</div>
-                    </div>
-                  );
-                }
-                const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
-                if (numMatch) {
-                  return (
-                    <div key={lIdx} className="flex items-start space-x-2 text-slate-800 pl-1">
-                      <span className="text-pink-700 font-mono font-bold text-[11px] select-none">{numMatch[1]}.</span>
-                      <div className="flex-1 leading-relaxed">{renderInlineMarkdown(numMatch[2])}</div>
-                    </div>
-                  );
-                }
-                return (
-                  <p key={lIdx} className="whitespace-pre-wrap">
-                    {renderInlineMarkdown(line)}
-                  </p>
-                );
-              })}
+              <audio controls className="w-full h-8" src={block.url} />
             </div>
           );
         }
 
         // Standard Paragraph
         return (
-          <p key={idx} className="whitespace-pre-wrap">
-            {renderInlineMarkdown(block)}
+          <p key={idx} className="whitespace-pre-wrap text-sm text-slate-900 leading-relaxed">
+            {renderInlineMarkdown(block.lines.join('\n'))}
           </p>
         );
       })}
+
+      {/* Signature if present */}
+      {signature && signature.trim() && (
+        <div className="text-sm text-slate-600 italic pt-1 border-t border-pink-100">
+          {renderInlineMarkdown(signature.trim())}
+        </div>
+      )}
 
       {/* Telegram Link Preview inside Message Bubble */}
       {linkPreviewEnabled && (
@@ -1108,53 +1371,13 @@ export default function PromptEditor({
   const [attachmentType, setAttachmentType] = useState<'none' | 'photo' | 'document' | 'video' | 'audio' | 'album' | 'video_note'>('none');
   const [audioFormat, setAudioFormat] = useState<'audio' | 'voice'>('audio');
   const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState<boolean>(false);
-  const [isConvertingVoiceOgg, setIsConvertingVoiceOgg] = useState<boolean>(false);
   const [photoUrl, setPhotoUrl] = useState<string>('');
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [videoNoteUrl, setVideoNoteUrl] = useState<string>('');
   const [albumUrls, setAlbumUrls] = useState<string[]>(['', '']); // Up to 10 files
   const [audioUrls, setAudioUrls] = useState<string[]>(['', '']); // Up to 10 files
+  const [voiceUrl, setVoiceUrl] = useState<string>(''); // Dedicated voice message URL
   const [documentUrls, setDocumentUrls] = useState<string[]>(['', '']); // Up to 10 files
-
-  // Audio-to-OGG conversion helper
-  const handleConvertToVoiceOgg = async (targetIndex = 0) => {
-    const currentUrl = audioUrls[targetIndex]?.trim();
-    if (!currentUrl) {
-      alert('Сначала введите или загрузите аудиофайл для конвертации');
-      return;
-    }
-
-    setIsConvertingVoiceOgg(true);
-    try {
-      const res = await fetch('/api/convert-audio-to-ogg', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audioUrl: currentUrl })
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Ошибка конвертации (код ${res.status})`);
-      }
-
-      const data = await res.json();
-      if (data.success && data.url) {
-        const finalUrl = data.proxyUrl || data.shortUrl || data.url;
-        setAudioUrls(prev => {
-          const copy = [...prev];
-          copy[targetIndex] = finalUrl;
-          return copy;
-        });
-        setAudioFormat('voice');
-      } else {
-        throw new Error('Сервер не вернул ссылку на сконвертированный OGG файл');
-      }
-    } catch (err: any) {
-      alert('Ошибка при конвертации аудио в OGG: ' + (err.message || 'Ошибка'));
-    } finally {
-      setIsConvertingVoiceOgg(false);
-    }
-  };
 
   // Helper to extract active attachment URL & URLs array based on selected attachmentType
   const getActiveAttachmentData = () => {
@@ -1172,9 +1395,15 @@ export default function PromptEditor({
       urls = valid.length > 0 ? valid : undefined;
       url = valid[0] || '';
     } else if (attachmentType === 'audio') {
-      const valid = audioUrls.filter(u => u && u.trim() !== '');
-      urls = valid.length > 0 ? valid : undefined;
-      url = valid[0] || '';
+      if (audioFormat === 'voice') {
+        const vUrl = (voiceUrl || audioUrls[0] || '').trim();
+        url = vUrl;
+        urls = vUrl ? [vUrl] : undefined;
+      } else {
+        const valid = audioUrls.filter(u => u && u.trim() !== '');
+        urls = valid.length > 0 ? valid : undefined;
+        url = valid[0] || '';
+      }
     } else if (attachmentType === 'document') {
       const valid = documentUrls.filter(u => u && u.trim() !== '');
       urls = valid.length > 0 ? valid : undefined;
@@ -1345,6 +1574,11 @@ export default function PromptEditor({
           if (type === 'photo') setPhotoUrl(preset.url);
           else if (type === 'video') setVideoUrl(preset.url);
           else if (type === 'video_note') setVideoNoteUrl(preset.url);
+          else if (type === 'voice') {
+            setAttachmentType('audio');
+            setAudioFormat('voice');
+            setVoiceUrl(preset.url);
+          }
           else if (type === 'audio') setAudioUrls([preset.url, '']);
           else if (type === 'document') setDocumentUrls([preset.url, '']);
           else if (type === 'album') setAlbumUrls([preset.url, '']);
@@ -1380,10 +1614,13 @@ export default function PromptEditor({
       if (type === 'voice') {
         type = 'audio';
         setAudioFormat('voice');
+        setVoiceUrl(mainUrl);
       } else if (activeRequest.audioFormat === 'voice') {
         setAudioFormat('voice');
+        setVoiceUrl((activeRequest as any).voiceUrl || mainUrl);
       } else {
         setAudioFormat('audio');
+        setVoiceUrl((activeRequest as any).voiceUrl || '');
       }
       setAttachmentType(type as any);
 
@@ -1794,8 +2031,9 @@ export default function PromptEditor({
 
   // Inline Button Constructor logic
   const handleAddButtonRow = () => {
+    const nextRowIdx = inlineButtons.length + 1;
     setInlineButtons(prev => [...prev, [
-      { id: `b_${Date.now()}`, text: 'Новая кнопка', type: 'url', url: 'https://', style: 'default' }
+      { id: `b_${Date.now()}`, text: 'Кнопка', type: 'callback', callbackData: `action_${nextRowIdx}_1`, style: 'default' }
     ]]);
   };
 
@@ -1806,9 +2044,10 @@ export default function PromptEditor({
         alert('Максимум 4 кнопки в одном ряду');
         return prev;
       }
+      const nextBtnIdx = updated[rowIndex].length + 1;
       updated[rowIndex] = [
         ...updated[rowIndex],
-        { id: `b_${Date.now()}`, text: 'Кнопка', type: 'callback', callbackData: 'action', style: 'default' }
+        { id: `b_${Date.now()}`, text: 'Кнопка', type: 'callback', callbackData: `action_${rowIndex + 1}_${nextBtnIdx}`, style: 'default' }
       ];
       return updated;
     });
@@ -1827,7 +2066,30 @@ export default function PromptEditor({
   const handleUpdateButton = (rowIndex: number, btnIndex: number, field: keyof InlineButton, value: any) => {
     setInlineButtons(prev => {
       const updated = [...prev];
-      const btn = { ...updated[rowIndex][btnIndex], [field]: value };
+      const existing = updated[rowIndex][btnIndex];
+      const btn = { ...existing, [field]: value };
+
+      if (field === 'type') {
+        if (value === 'callback') {
+          delete btn.url;
+          delete btn.webAppUrl;
+          btn.callbackData = (existing.callbackData && existing.callbackData !== 'https://' && existing.callbackData !== '') 
+            ? existing.callbackData 
+            : `action_${rowIndex + 1}_${btnIndex + 1}`;
+        } else if (value === 'url') {
+          delete btn.callbackData;
+          delete btn.webAppUrl;
+          btn.url = (existing.url && existing.url !== `action_${rowIndex + 1}_${btnIndex + 1}` && existing.url !== 'action') 
+            ? existing.url 
+            : 'https://';
+        } else if (value === 'webapp') {
+          delete btn.callbackData;
+          btn.url = (existing.url && existing.url !== `action_${rowIndex + 1}_${btnIndex + 1}` && existing.url !== 'action') 
+            ? existing.url 
+            : 'https://';
+        }
+      }
+
       updated[rowIndex][btnIndex] = btn;
       return updated;
     });
@@ -2869,31 +3131,25 @@ export default function PromptEditor({
                   <div className="flex items-center space-x-2">
                     <input
                       type="url"
-                      value={audioUrls[0] || ''}
+                      value={voiceUrl}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setAudioUrls(prev => {
-                          const copy = [...prev];
-                          copy[0] = val;
-                          return copy;
-                        });
+                        setVoiceUrl(val);
+                        syncAttachmentToRequest('audio', val);
                       }}
                       placeholder="https://... ссылка на аудио или запишите голос"
                       className="flex-1 bg-white/90 border border-pink-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-pink-500 font-mono shadow-2xs"
                     />
-                    <CopyButton value={audioUrls[0] || ''} />
+                    <CopyButton value={voiceUrl} />
                     <FileUpload
                       variant="compact"
                       buttonLabel="Загрузить"
                       accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac"
                       convertVoiceOgg={true}
                       onUploaded={(key, url) => {
-                        setAudioUrls(prev => {
-                          const copy = [...prev];
-                          copy[0] = url;
-                          return copy;
-                        });
+                        setVoiceUrl(url);
                         setAudioFormat('voice');
+                        syncAttachmentToRequest('audio', url);
                       }}
                     />
                     <button
@@ -2904,15 +3160,12 @@ export default function PromptEditor({
                     >
                       <Mic size={16} />
                     </button>
-                    {audioUrls[0] && (
+                    {voiceUrl && (
                       <button
                         type="button"
                         onClick={() => {
-                          setAudioUrls(prev => {
-                            const copy = [...prev];
-                            copy[0] = '';
-                            return copy;
-                          });
+                          setVoiceUrl('');
+                          syncAttachmentToRequest('audio', '');
                         }}
                         className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                         title="Очистить"
@@ -2923,7 +3176,7 @@ export default function PromptEditor({
                   </div>
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-slate-600 leading-relaxed">
-                      💡 Голосовое сообщение: аудиофайл любого формата (.mp3, .wav, .m4a) автоматически конвертируется сервером в формат OGG Opus для Telegram.
+                      💡 Голосовое сообщение: аудиофайл (.mp3, .wav, .m4a, .ogg) отправляется строго как голосовая заметка с автоконвертацией в OGG Opus.
                     </p>
                   </div>
                 </div>
@@ -3510,18 +3763,18 @@ export default function PromptEditor({
                           <div>
                             <label className="block text-[9px] font-mono text-slate-500 uppercase">Тип</label>
                             <select
-                              value={btn.type}
+                              value={btn.type || 'callback'}
                               onChange={(e) => handleUpdateButton(rIdx, bIdx, 'type', e.target.value as any)}
                               className="w-full bg-transparent border border-pink-200 rounded px-2 py-1 text-[11px] text-slate-900 font-semibold"
                             >
+                              <option value="callback">Callback (Действие)</option>
                               <option value="url">Ссылка (URL)</option>
-                              <option value="callback">Callback</option>
-                              <option value="webapp">Web App</option>
+                              <option value="webapp">Web App (Mini App)</option>
                             </select>
                           </div>
 
                           <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase">Цветовой стиль (Telegram Bot API)</label>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase">Цветовой стиль</label>
                             <select
                               value={btn.style || 'default'}
                               onChange={(e) => handleUpdateButton(rIdx, bIdx, 'style', e.target.value as any)}
@@ -3536,11 +3789,21 @@ export default function PromptEditor({
                         </div>
 
                         <div>
-                          <label className="block text-[9px] font-mono text-slate-500 uppercase">Ссылка / Callback</label>
+                          <label className="block text-[9px] font-mono text-slate-500 uppercase">
+                            {btn.type === 'callback' ? 'Действие (Callback Data)' : btn.type === 'webapp' ? 'Ссылка на Web App' : 'Ссылка (URL)'}
+                          </label>
                           <input
                             type="text"
-                            value={btn.url || btn.callbackData || ''}
-                            onChange={(e) => handleUpdateButton(rIdx, bIdx, btn.type === 'url' || btn.type === 'webapp' ? 'url' : 'callbackData', e.target.value)}
+                            value={btn.type === 'callback' ? (btn.callbackData || '') : (btn.url || '')}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (btn.type === 'callback') {
+                                handleUpdateButton(rIdx, bIdx, 'callbackData', val);
+                              } else {
+                                handleUpdateButton(rIdx, bIdx, 'url', val);
+                              }
+                            }}
+                            placeholder={btn.type === 'callback' ? 'Например: action_1, menu, pay' : 'https://example.com'}
                             className="w-full bg-transparent border border-pink-200 rounded px-2 py-1 text-[11px] text-slate-900 font-mono"
                           />
                         </div>
@@ -3574,7 +3837,7 @@ export default function PromptEditor({
                       if (styleKey === 'primary') {
                         btnColorClasses = 'bg-[#2481cc] hover:bg-[#1d70b3] text-white shadow-2xs border border-[#1b6ca8]';
                       } else if (styleKey === 'success') {
-                        btnColorClasses = 'bg-[#2fa84f] hover:bg-[#258d41] text-white shadow-2xs border border-[#1f7836]';
+                        btnColorClasses = 'bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 hover:opacity-95 text-white shadow-2xs border border-pink-400';
                       } else if (styleKey === 'danger') {
                         btnColorClasses = 'bg-[#e53935] hover:bg-[#c62828] text-white shadow-2xs border border-[#b71c1c]';
                       }
@@ -3586,15 +3849,15 @@ export default function PromptEditor({
                       return (
                         <div
                           key={btn.id || bIdx}
-                          className={`px-3 py-2 rounded-xl text-xs font-bold text-center truncate cursor-pointer transition-all flex items-center justify-center space-x-1.5 ${btnColorClasses}`}
+                          className={`px-3 py-2 rounded-xl text-sm font-bold text-center truncate cursor-pointer transition-all flex items-center justify-center space-x-1.5 ${btnColorClasses}`}
                           title={isWebApp ? `Web App: ${btn.url || 'https://...'}` : isUrl ? `Ссылка: ${btn.url || 'https://...'}` : `Callback: ${btn.callbackData || btn.text}`}
                         >
                           {isWebApp && (
-                            <span className="text-xs font-bold shrink-0 opacity-90" title="Web App">⊞</span>
+                            <span className="text-sm font-bold shrink-0 opacity-90" title="Web App">⊞</span>
                           )}
                           <span className="truncate">{btn.text || 'Кнопка'}</span>
                           {isUrl && !isWebApp && (
-                            <span className="text-[11px] font-bold shrink-0 opacity-80" title="Внешняя ссылка">↗</span>
+                            <span className="text-sm font-bold shrink-0 opacity-80" title="Внешняя ссылка">↗</span>
                           )}
                           {isCallback && (
                             <span className="text-[10px] font-bold shrink-0 opacity-70" title="Callback действие">⚡</span>
@@ -3940,7 +4203,7 @@ export default function PromptEditor({
                     if (styleKey === 'primary') {
                       btnColorClasses = 'bg-[#2481cc] hover:bg-[#1d70b3] text-white border border-[#1b6ca8] shadow-2xs';
                     } else if (styleKey === 'success') {
-                      btnColorClasses = 'bg-[#2fa84f] hover:bg-[#258d41] text-white border border-[#1f7836] shadow-2xs';
+                      btnColorClasses = 'bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 hover:opacity-95 text-white border border-pink-400 shadow-2xs';
                     } else if (styleKey === 'danger') {
                       btnColorClasses = 'bg-[#e53935] hover:bg-[#c62828] text-white border border-[#b71c1c] shadow-2xs';
                     }
@@ -3955,18 +4218,18 @@ export default function PromptEditor({
                         href={btn.url || '#'}
                         target="_blank"
                         rel="noreferrer"
-                        className={`px-2.5 py-2 rounded-xl text-[11px] font-bold text-center truncate flex items-center justify-center space-x-1.5 transition-all ${btnColorClasses}`}
+                        className={`px-3 py-2 rounded-xl text-sm font-bold text-center truncate flex items-center justify-center space-x-1.5 transition-all ${btnColorClasses}`}
                         title={isWebApp ? `Web App: ${btn.url || 'https://...'}` : isUrl ? `Ссылка: ${btn.url || 'https://...'}` : `Callback: ${btn.callbackData || btn.text}`}
                       >
                         {isWebApp && (
-                          <span className="text-xs font-bold shrink-0 opacity-90" title="Web App">⊞</span>
+                          <span className="text-sm font-bold shrink-0 opacity-90" title="Web App">⊞</span>
                         )}
                         <span className="truncate">{btn.text || 'Кнопка'}</span>
                         {isUrl && !isWebApp && (
-                          <span className="text-[11px] font-bold shrink-0 opacity-80" title="Ссылка">↗</span>
+                          <span className="text-sm font-bold shrink-0 opacity-80" title="Ссылка">↗</span>
                         )}
                         {isCallback && (
-                          <span className="text-[10px] font-bold shrink-0 opacity-70" title="Callback действие">⚡</span>
+                          <span className="text-xs font-bold shrink-0 opacity-70" title="Callback действие">⚡</span>
                         )}
                       </a>
                     );

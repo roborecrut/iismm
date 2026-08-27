@@ -19,7 +19,7 @@ import { getUserNotificationsFromDb, markNotificationAsReadInDb, markAllNotifica
 import { addTransactionWithBalanceUpdate, getUserTransactionsFromDb, getAllTransactionsFromDb } from './db/transactionsTable';
 import { 
   ensureDefaultFoldersForUser, getFoldersForUser, registerFileInStorage,
-  getStorageFilesForUser, slugifyFilename
+  getStorageFilesForUser, slugifyFilename, fixUtf8Filename
 } from './db/filesTable';
 import { 
   getTeamsByOwnerOrMember, seedDefaultTeams, addMemberToTeamInDb, 
@@ -2144,6 +2144,7 @@ apiRouter.post('/publications/publish', async (req: Request, res: Response) => {
     uppercaseHeader,
     signature,
     attachmentType,
+    audioFormat,
     attachmentUrl,
     attachmentUrls,
     inlineButtons,
@@ -2182,6 +2183,7 @@ apiRouter.post('/publications/publish', async (req: Request, res: Response) => {
       signature,
       linkPreviewEnabled: linkPreviewEnabled !== undefined ? linkPreviewEnabled : (dayRequest.linkPreviewEnabled !== false),
       attachmentType,
+      audioFormat,
       attachmentUrl,
       attachmentUrls,
       inlineButtons,
@@ -5126,7 +5128,7 @@ apiRouter.post('/upload', uploadMiddleware.single('file'), async (req: Request, 
     let height = Number(req.body?.height) || 0;
 
     if (req.file) {
-      originalFilename = req.file.originalname || 'file.bin';
+      originalFilename = fixUtf8Filename(req.file.originalname) || 'file.bin';
       mimeType = req.file.mimetype || '';
       fileSize = req.file.size || req.file.buffer.length || 0;
       let uploadBuffer = req.file.buffer;
@@ -5144,6 +5146,22 @@ apiRouter.post('/upload', uploadMiddleware.single('file'), async (req: Request, 
         }
       }
 
+      // Generate local storage backup
+      const slugName = slugifyFilename(originalFilename);
+      const randomKey = crypto.randomBytes(4).toString('hex');
+      const diskFilename = `${Date.now()}_${randomKey}_${slugName}`;
+      
+      const publicUploads = path.join(process.cwd(), 'public', 'uploads');
+      const distUploads = path.join(process.cwd(), 'dist', 'uploads');
+      try {
+        if (!fs.existsSync(publicUploads)) fs.mkdirSync(publicUploads, { recursive: true });
+        if (!fs.existsSync(distUploads)) fs.mkdirSync(distUploads, { recursive: true });
+        fs.writeFileSync(path.join(publicUploads, diskFilename), uploadBuffer);
+        fs.writeFileSync(path.join(distUploads, diskFilename), uploadBuffer);
+      } catch (fsErr: any) {
+        console.warn('[upload] Disk save warning:', fsErr.message);
+      }
+
       const isPng = mimeType === 'image/png' || originalFilename.toLowerCase().endsWith('.png');
       const targetUploadUrl = isPng ? "https://filestore.pro-talk.ru/up" : "https://file.pro-talk.ru/tgf";
 
@@ -5157,13 +5175,12 @@ apiRouter.post('/upload', uploadMiddleware.single('file'), async (req: Request, 
       const formBuffer = formData.getBuffer();
 
       let response: any = null;
-      let lastErr: any = null;
 
-      // Robust upload with up to 3 attempts and timeout
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      // Fast remote upload with short timeout and fallback to local disk
+      for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 25000);
+          const timeoutId = setTimeout(() => controller.abort(), 4000);
 
           response = await fetch(targetUploadUrl, {
             method: "POST",
@@ -5177,83 +5194,77 @@ apiRouter.post('/upload', uploadMiddleware.single('file'), async (req: Request, 
           });
           clearTimeout(timeoutId);
 
-          if (!response.ok && isPng) {
-            const fallbackController = new AbortController();
-            const fbTimeoutId = setTimeout(() => fallbackController.abort(), 25000);
-            response = await fetch("https://file.pro-talk.ru/tgf", {
-              method: "POST",
-              headers: {
-                "X-Upload-Token": uploadToken,
-                "X-Preserve-Alpha": "true",
-                ...formHeaders
-              },
-              body: formBuffer,
-              signal: fallbackController.signal
-            });
-            clearTimeout(fbTimeoutId);
-          }
-
-          if (response.ok) {
+          if (response && response.ok) {
             break;
           }
         } catch (err: any) {
-          lastErr = err;
-          console.warn(`[upload] Attempt ${attempt} failed:`, err.message);
-          if (attempt < 3) {
-            await new Promise(r => setTimeout(r, 400 * attempt));
+          // Timeout or abort is expected when remote server is slow; fallback gracefully
+          if (attempt === 2) {
+            console.info(`[upload] Remote service unavailable or slow (${err.message}). Using local storage fallback.`);
           }
         }
       }
 
-      if (!response || !response.ok) {
-        throw new Error(lastErr?.message || `Upload server responded with status ${response?.status || 'unknown'}`);
+      if (response && response.ok) {
+        try {
+          const resText = await response.text();
+          let data: any = {};
+          try {
+            data = JSON.parse(resText);
+          } catch (e) {
+            const trimmed = resText.trim().replace(/^["']|["']$/g, '');
+            if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+              data = { url: trimmed, key: trimmed.split('/').pop() || '' };
+            }
+          }
+          uploadedUrl = data.url || data.link || (typeof data === 'string' ? data : '');
+          uploadedKey = data.key || data.file_key || (uploadedUrl ? uploadedUrl.split('/').pop() : '');
+        } catch (e) {}
       }
 
-      const resText = await response.text();
-      let data: any = {};
-      try {
-        data = JSON.parse(resText);
-      } catch (e) {
-        const trimmed = resText.trim().replace(/^["']|["']$/g, '');
-        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-          data = { url: trimmed, key: trimmed.split('/').pop() || '' };
-        } else {
-          throw new Error(`ProTalk response error: ${resText}`);
-        }
+      // If remote upload did not provide a URL, use verified local file
+      if (!uploadedUrl) {
+        uploadedUrl = `/uploads/${diskFilename}`;
+        uploadedKey = randomKey;
       }
-      uploadedUrl = data.url || data.link || (typeof data === 'string' ? data : '');
-      uploadedKey = data.key || data.file_key || (uploadedUrl ? uploadedUrl.split('/').pop() : '');
     } else if (req.body && req.body.url) {
-      uploadedUrl = req.body.url;
-      originalFilename = req.body.originalName || req.body.name || req.body.url.split('/').pop()?.split('?')[0] || 'file.bin';
+      const inputUrl = req.body.url;
+      originalFilename = req.body.originalName || req.body.name || inputUrl.split('/').pop()?.split('?')[0] || 'file.bin';
 
-      const response = await fetch("https://file.pro-talk.ru/tgf", {
-        method: "POST",
-        headers: {
-          "X-Upload-Token": uploadToken,
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: new URLSearchParams({ url: req.body.url }).toString()
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload server responded with status ${response.status}`);
-      }
-
-      const resText = await response.text();
-      let data: any = {};
       try {
-        data = JSON.parse(resText);
-      } catch (e) {
-        const trimmed = resText.trim().replace(/^["']|["']$/g, '');
-        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-          data = { url: trimmed, key: trimmed.split('/').pop() || '' };
-        } else {
-          throw new Error(`ProTalk response error: ${resText}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch("https://file.pro-talk.ru/tgf", {
+          method: "POST",
+          headers: {
+            "X-Upload-Token": uploadToken,
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body: new URLSearchParams({ url: inputUrl }).toString(),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const resText = await response.text();
+          let data: any = {};
+          try {
+            data = JSON.parse(resText);
+          } catch (e) {
+            const trimmed = resText.trim().replace(/^["']|["']$/g, '');
+            if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+              data = { url: trimmed, key: trimmed.split('/').pop() || '' };
+            }
+          }
+          uploadedUrl = data.url || data.link || (typeof data === 'string' ? data : '');
+          uploadedKey = data.key || data.file_key || (uploadedUrl ? uploadedUrl.split('/').pop() : '');
         }
+      } catch (err) {}
+
+      if (!uploadedUrl) {
+        uploadedUrl = inputUrl;
+        uploadedKey = inputUrl.split('/').pop()?.split('?')[0] || 'file.bin';
       }
-      uploadedUrl = data.url || data.link || (typeof data === 'string' ? data : '');
-      uploadedKey = data.key || data.file_key || (uploadedUrl ? uploadedUrl.split('/').pop() : '');
     } else {
       return res.status(400).json({ error: 'Не передан файл или URL для загрузки' });
     }
@@ -5303,10 +5314,10 @@ apiRouter.post('/convert-audio-to-ogg', uploadMiddleware.single('file'), async (
 
     if (req.file) {
       inputBuffer = req.file.buffer;
-      originalName = req.file.originalname || 'voice_message.ogg';
+      originalName = fixUtf8Filename(req.file.originalname) || 'voice_message.ogg';
     } else if (req.body && (req.body.audioUrl || req.body.url)) {
       const targetUrl = req.body.audioUrl || req.body.url;
-      originalName = targetUrl.split('/').pop()?.split('?')[0] || 'voice_message.ogg';
+      originalName = fixUtf8Filename(decodeURIComponent(targetUrl.split('/').pop()?.split('?')[0] || '')) || 'voice_message.ogg';
       const fileRes = await fetch(targetUrl);
       if (!fileRes.ok) {
         throw new Error(`Не удалось скачать аудиофайл по URL: ${targetUrl} (HTTP ${fileRes.status})`);

@@ -234,10 +234,19 @@ app.get(["/file/:id", "/file/:id/:filename"], async (req, res) => {
     const targetUrl = file.original_url || file.originalUrl || file.fullUrl;
 
     if (targetUrl.startsWith('/')) {
-      const localRelPath = path.join(process.cwd(), "public", targetUrl);
-      if (fs.existsSync(localRelPath) && fs.statSync(localRelPath).isFile()) {
-        return res.sendFile(localRelPath);
+      const candidates = [
+        path.join(process.cwd(), "public", targetUrl),
+        path.join(process.cwd(), "dist", targetUrl),
+        path.join(process.cwd(), targetUrl.replace(/^\//, '')),
+        path.join(process.cwd(), "public", "uploads", path.basename(targetUrl)),
+        path.join(process.cwd(), "dist", "uploads", path.basename(targetUrl))
+      ];
+      for (const cand of candidates) {
+        if (cand && fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+          return res.sendFile(cand);
+        }
       }
+      return res.status(404).send("Local file not found");
     }
 
     const fileRes = await fetch(targetUrl);
@@ -257,14 +266,15 @@ app.get(["/file/:id", "/file/:id/:filename"], async (req, res) => {
   }
 });
 
-// Ensure uploads folder exists in dist
-const uploadsDir = path.join(process.cwd(), "dist", "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+// Ensure uploads folders exist
+const publicUploadsDir = path.join(process.cwd(), "public", "uploads");
+const distUploadsDir = path.join(process.cwd(), "dist", "uploads");
+if (!fs.existsSync(publicUploadsDir)) fs.mkdirSync(publicUploadsDir, { recursive: true });
+if (!fs.existsSync(distUploadsDir)) fs.mkdirSync(distUploadsDir, { recursive: true });
 
-// Serve uploaded voice recorder files statically
-app.use("/uploads", express.static(uploadsDir));
+// Serve uploaded files statically
+app.use("/uploads", express.static(publicUploadsDir));
+app.use("/uploads", express.static(distUploadsDir));
 
 // Initialize Gemini Client safely
 let ai: GoogleGenAI | null = null;
@@ -836,9 +846,12 @@ app.post("/api/ai/upload-voice", async (req, res) => {
 
   try {
     const filename = `voice_${Date.now()}.${extension || "webm"}`;
-    const filePath = path.join(uploadsDir, filename);
+    const filePath = path.join(publicUploadsDir, filename);
     const buffer = Buffer.from(audioBase64, "base64");
     fs.writeFileSync(filePath, buffer);
+    try {
+      fs.writeFileSync(path.join(distUploadsDir, filename), buffer);
+    } catch (e) {}
 
     const fileUrl = `/uploads/${filename}`;
     console.log(`[ИИSMM] Аудиофайл успешно сохранён по ссылке: ${fileUrl}`);

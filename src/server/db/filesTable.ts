@@ -1,23 +1,88 @@
 import { Database } from 'sql.js';
 import { saveDatabaseToDisk } from './index';
 
+/**
+ * Fixes broken Latin1/Mojibake UTF-8 encodings and URL percent-encodings in filenames.
+ */
+export function fixUtf8Filename(rawName: string): string {
+  if (!rawName || typeof rawName !== 'string') return '';
+  let name = rawName.trim();
+
+  // 1. Decode percent-encoding if present
+  try {
+    if (name.includes('%')) {
+      const decoded = decodeURIComponent(name);
+      if (decoded && !decoded.includes('\ufffd')) {
+        name = decoded;
+      }
+    }
+  } catch (e) {}
+
+  // 2. Decode Latin1 -> UTF-8 mojibake (e.g. РћС‚С‡РµС‚ -> Отчет)
+  try {
+    const converted = Buffer.from(name, 'latin1').toString('utf8');
+    if (!converted.includes('\ufffd') && /[а-яА-ЯёЁіІїЇєЄґҐ]/.test(converted)) {
+      name = converted;
+    }
+  } catch (e) {}
+
+  // 3. Remove dangerous control characters & quotes that break HTTP headers / URLs
+  name = name.replace(/[\0\r\n\t"]/g, '').replace(/[\/\\]+/g, '_');
+
+  return name;
+}
+
+/**
+ * Robust and clean slug generation for file URLs:
+ * - Decodes mojibake and cleans symbols
+ * - Transliterates Cyrillic and international characters to standard Latin
+ * - Converts known symbols to words (№ -> no, + -> and, % -> pct, @ -> at)
+ * - Removes invalid URL characters without collapsing everything into 'file'
+ */
 export function slugifyFilename(name: string): string {
   if (!name) return 'file.bin';
+  
+  const cleanName = fixUtf8Filename(name);
+
   const ruToEn: Record<string, string> = {
     'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
     'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
-    'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'ts',
-    'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+    'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
+    'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+    'і': 'i', 'ї': 'yi', 'є': 'ye', 'ґ': 'g', 'ў': 'u'
   };
 
-  const parts = name.split('.');
-  const ext = parts.length > 1 ? parts.pop()!.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
-  const base = parts.join('.');
-  
-  let slug = base.toLowerCase().split('').map(ch => ruToEn[ch] !== undefined ? ruToEn[ch] : ch).join('');
-  slug = slug.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  if (!slug) slug = 'file';
-  
+  const parts = cleanName.split('.');
+  const ext = parts.length > 1 ? parts.pop()!.toLowerCase().replace(/[^a-z0-9]/gi, '') : '';
+  const rawBase = parts.join('.');
+
+  // Replace special characters with natural transliterated equivalents
+  let base = rawBase
+    .replace(/[№#]/g, ' no ')
+    .replace(/&/g, ' and ')
+    .replace(/\+/g, ' and ')
+    .replace(/%/g, ' pct ')
+    .replace(/@/g, ' at ')
+    .replace(/[«»„“"''`]/g, '')
+    .replace(/[()[\]{}<>|\\^~*]/g, ' ')
+    .toLowerCase();
+
+  // Transliterate Cyrillic characters
+  let transliterated = '';
+  for (let i = 0; i < base.length; i++) {
+    const ch = base[i];
+    transliterated += ruToEn[ch] !== undefined ? ruToEn[ch] : ch;
+  }
+
+  // Replace any non-alphanumeric characters with a single hyphen
+  let slug = transliterated
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  if (!slug) {
+    slug = ext ? 'document' : 'file';
+  }
+
   return ext ? `${slug}.${ext}` : slug;
 }
 
@@ -95,6 +160,25 @@ export function initFilesTable(db: Database) {
 
   // Seed permanent essential database assets
   seedEssentialFiles(db);
+
+  // Self-heal any existing files in file_storage with broken Latin1/mojibake names
+  try {
+    const stmt = db.prepare("SELECT id, name, slug_name FROM file_storage");
+    const toUpdate: { id: number; name: string; slug: string }[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as any;
+      if (row && row.name) {
+        const fixed = fixUtf8Filename(row.name);
+        if (fixed && fixed !== row.name) {
+          toUpdate.push({ id: row.id, name: fixed, slug: slugifyFilename(fixed) });
+        }
+      }
+    }
+    stmt.free();
+    for (const item of toUpdate) {
+      db.run("UPDATE file_storage SET name = ?, slug_name = ? WHERE id = ?", [item.name, item.slug, item.id]);
+    }
+  } catch (e) {}
 }
 
 export const ESSENTIAL_FILE_STORAGE_ITEMS = [

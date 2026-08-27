@@ -175,7 +175,7 @@ export class FileUploadService {
                 if (xhr.status >= 200 && xhr.status < 300) {
                     try {
                         const proxyData = JSON.parse(xhr.responseText);
-                        if (proxyData && (proxyData.url || proxyData.proxyUrl)) {
+                        if (proxyData && (proxyData.url || proxyData.proxyUrl || proxyData.shortUrl)) {
                             if (onProgress) {
                                 onProgress({
                                     stage: 'done',
@@ -194,29 +194,22 @@ export class FileUploadService {
                     } catch (e) {}
                 }
 
-                // If proxy failed, try fallback
                 try {
-                    const fallbackRes = await this.uploadFromFile(file, optionsOrFolderIds);
-                    if (onProgress) {
-                        onProgress({ stage: 'done', percent: 100 });
-                    }
-                    resolve(fallbackRes);
-                } catch (err) {
-                    reject(err);
+                    const errData = JSON.parse(xhr.responseText);
+                    reject(new Error(errData.error || `Ошибка загрузки (HTTP ${xhr.status})`));
+                } catch (e) {
+                    reject(new Error(`Ошибка загрузки: ${xhr.statusText || xhr.status}`));
                 }
             };
 
-            xhr.onerror = async () => {
+            xhr.onerror = () => {
                 cleanupTimer();
-                try {
-                    const fallbackRes = await this.uploadFromFile(file, optionsOrFolderIds);
-                    if (onProgress) {
-                        onProgress({ stage: 'done', percent: 100 });
-                    }
-                    resolve(fallbackRes);
-                } catch (err) {
-                    reject(err);
-                }
+                reject(new Error('Сетевая ошибка при загрузке файла'));
+            };
+
+            xhr.onabort = () => {
+                cleanupTimer();
+                reject(new Error('Загрузка была прервана'));
             };
 
             xhr.open('POST', '/api/upload', true);
@@ -257,7 +250,7 @@ export class FileUploadService {
                 body: formData
             });
             const proxyData = await proxyRes.json();
-            if (proxyRes.ok && (proxyData.url || proxyData.proxyUrl)) {
+            if (proxyRes.ok && (proxyData.url || proxyData.proxyUrl || proxyData.shortUrl)) {
                 return {
                     url: proxyData.proxyUrl || proxyData.shortUrl || proxyData.url,
                     proxyUrl: proxyData.proxyUrl,
