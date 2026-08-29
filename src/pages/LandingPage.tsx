@@ -1201,7 +1201,7 @@ export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, 
       <LiquidGlassBackground />
       
       {/* 1. Global Navigation header block (Apple Liquid Glass) */}
-      <header className="sticky top-0 z-40 bg-white/45 backdrop-blur-xl border-b border-white/30 shadow-xs px-4 py-3 sm:px-6 relative z-10">
+      <header className="sticky top-0 z-40 bg-white/45 backdrop-blur-xl border-b border-white/30 shadow-xs px-4 py-3 sm:px-6 relative z-10 rounded-b-2xl sm:rounded-b-3xl">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           
           {/* Brand Logo */}
@@ -2497,7 +2497,7 @@ export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, 
       )}
 
       {/* 5. Pure Landing Footer on landing page */}
-      <footer className="mt-auto py-10 bg-white/50 backdrop-blur-xl text-slate-700 border-t border-white/60 px-4">
+      <footer className="mt-auto py-10 bg-white/50 backdrop-blur-xl text-slate-700 border-t border-white/60 px-4 rounded-t-2xl sm:rounded-t-3xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6 text-xs font-semibold">
           
           {/* Brand & Copy */}
@@ -2529,16 +2529,9 @@ export default function LandingPage({ onLogin, user, onUpdateUser, currentPath, 
               <a 
                 href="/oferta" 
                 onClick={(e) => { e.preventDefault(); onNavigate('/oferta'); }}
-                className="text-pink-600 hover:text-pink-700 font-bold underline cursor-pointer"
+                className="text-pink-600 hover:text-pink-700 font-bold underline cursor-pointer hover:scale-102 transition-transform"
               >
-                📄 Публичная оферта и регламент ИИрок
-              </a>
-              <a 
-                href="/tarif/pay" 
-                onClick={(e) => { e.preventDefault(); onNavigate('/tarif/pay'); }}
-                className="text-orange-600 hover:text-orange-700 font-bold underline cursor-pointer"
-              >
-                🪙 Тарифы и оплата ИИрок
+                Оферта
               </a>
             </div>
           </div>

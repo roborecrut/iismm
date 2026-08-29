@@ -9,12 +9,12 @@
       "firstName": "Dr.White",
       "lastName": "SAV AI",
       "username": "shishkarnem",
-      "photoUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/photos/file_532.jpg",
-      "avatarUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/photos/file_532.jpg",
+      "photoUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/photos/file_519.jpg",
+      "avatarUrl": "https://api.telegram.org/file/bot8142466188:AAHmgvq2mvwvKl4v1IOsSkFxE3FxPmfXn_o/photos/file_519.jpg",
       "bio": "@SAV_AIbot заказать ИИ-Продавца | @RentROP - Аренда РОПа | @SAV_AI Нейросети для бизнеса | @Rentrop_HR_bot Устроиться РОПом",
       "status": "Активный",
-      "tariff": "Разгон",
-      "balance": 900,
+      "tariff": "Космос",
+      "balance": 3870,
       "referredBy": 80926979801,
       "referralRewardBalance": 0,
       "createdAt": "2026-08-04T23:46:55.564Z"
@@ -22,147 +22,6 @@
   ],
   "prompts": [],
   "publications": [
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "# 🚀 Обновление платформы\n\nМы подготовили для вас свежий релиз с новыми возможностями:\n\n- [x] Автоматический парсер Markdown V2\n- [x] Поддержка Rich HTML блоков\n- [ ] Интеграция с внешней аналитикой\n\n<tg-collage>\n![](https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500)\n![](https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=500)\n</tg-collage>",
-      "channel": "@restreamsav",
-      "messageId": "181",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_89xb9fi6c",
-      "publishedAt": "2026-08-27T01:40:40.125Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "<blockquote>\nЭтот блок представляет собой красивую Telegram цитату (blockquote) с левой вертикальной линией и источником.\n<cite>Ахматова Анна</cite>\n</blockquote>\n\n### 🌍 Метрики и результаты\n| Показатель | Значение | Тренд |\n|:---|:---:|:---|\n| Рост аудитории | +24% | 📈 |\n| Конверсия | 4.8% | 🔥 |\n\n### 💎 Премиум эмодзи и время\nВот кастомные эмодзи: ![👍](tg://emoji?id=5368324170671202286) ![🔥](tg://emoji?id=5368324170671202287)\nПубликация запланирована на: <tg-time unix=\"1784727120\" format=\"wDT\">Вторник, 15:00</tg-time>\n\n<details open><summary>Раскрыть подробности акции</summary>\n\nСкидка 30% действует при оформлении подписки в течение 24 часов!\n</details>",
-      "channel": "@restreamsav",
-      "messageId": "180",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_1a3i684i5",
-      "publishedAt": "2026-08-27T01:39:39.856Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "**Привет!** Это *классный* пост с ~~ошибкой~~, <u>подчеркнутым текстом</u> и [ссылкой на наш канал](https://t.me/SAV_AI).\n\nА вот тут у нас ||секретный текст-спойлер||, на который в Telegram клиенте можно нажать для прочтения.\n\nПользователь: @durov\nХэштег: #rich_message",
-      "channel": "@restreamsav",
-      "messageId": "179",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_6ltvcbols",
-      "publishedAt": "2026-08-27T01:38:19.521Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "**Привет!** Это *классный* пост с ~~ошибкой~~, <u>подчеркнутым текстом</u> и [ссылкой на наш канал](https://t.me/SAV_AI).\n\nА вот тут у нас ||секретный текст-спойлер||, на который в Telegram клиенте можно нажать для прочтения.\n\nПользователь: @durov\nХэштег: #rich_message",
-      "channel": "@restreamsav",
-      "messageId": "178",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_l8t9k3sfb",
-      "publishedAt": "2026-08-27T01:35:19.978Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "<blockquote>\nЭтот блок представляет собой красивую Telegram цитату (blockquote) с левой вертикальной линией и источником.\n<cite>Ахматова Анна</cite>\n</blockquote>\n\n### 🌍 Метрики и результаты\n| Показатель | Значение | Тренд |\n|:---|:---:|:---|\n| Рост аудитории | +24% | 📈 |\n| Конверсия | 4.8% | 🔥 |\n\n### 💎 Премиум эмодзи и время\nВот кастомные эмодзи: ![👍](tg://emoji?id=5368324170671202286) ![🔥](tg://emoji?id=5368324170671202287)\nПубликация запланирована на: <tg-time unix=\"1784727120\" format=\"wDT\">Вторник, 15:00</tg-time>\n\n<details open><summary>Раскрыть подробности акции</summary>\n\nСкидка 30% действует при оформлении подписки в течение 24 часов!\n</details>",
-      "channel": "@restreamsav",
-      "messageId": "177",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_davxzzpkq",
-      "publishedAt": "2026-08-27T01:19:56.973Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "Обычный текст\n*жирный*\n_курсив_\n__подчеркивание__\n~зачеркнут~\n||спойлер||\n`моно код`\n```код копировать```\n[текст ссылки](https://url.com)",
-      "channel": "@restreamsav",
-      "messageId": "173",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_k1eqe34b4",
-      "publishedAt": "2026-08-27T01:18:27.712Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "Обычный текст\n*жирный*\n_курсив_\n__подчеркивание__\n~зачеркнут~\n||спойлер||\n`моно код`\n```код копировать```\n[текст ссылки](https://url.com)",
-      "channel": "@restreamsav",
-      "status": false,
-      "response": "Ошибка отправки. Ошибка для @restreamsav: Ошибка Telegram API",
-      "id": "pub_n3qe3uoqh",
-      "publishedAt": "2026-08-27T01:15:37.918Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "Обычный текст\n*жирный*\n_курсив_\n__подчеркивание__\n~зачеркнут~\n||спойлер||\n`моно код`\n```код копировать```\n[текст ссылки](https://url.com)",
-      "channel": "@restreamsav",
-      "status": false,
-      "response": "Ошибка отправки. Ошибка для @restreamsav: Bad Request: failed to get HTTP URL content",
-      "id": "pub_gtqp9w07g",
-      "publishedAt": "2026-08-27T01:14:38.340Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "Обычный текст\n*жирный*\n_курсив_\n__подчеркивание__\n~зачеркнут~\n||спойлер||\n`моно код`\n```код копировать```\n[текст ссылки](https://url.com)",
-      "channel": "@restreamsav",
-      "messageId": "169",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_hcsczvpvs",
-      "publishedAt": "2026-08-27T01:03:01.763Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "Обычный текст\n*жирный*\n_курсив_\n__подчеркивание__\n~зачеркнут~\n||спойлер||\n`моно код`\n```код копировать```\n[текст ссылки](https://url.com)",
-      "channel": "@restreamsav",
-      "messageId": "168",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_7qijvxmqt",
-      "publishedAt": "2026-08-27T01:02:18.063Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "Обычный текст\n*жирный*\n_курсив_\n__подчеркивание__\n~зачеркнут~\n||спойлер||\n`моно код`\n```код копировать```\n[текст ссылки](https://url.com)",
-      "channel": "@restreamsav",
-      "messageId": "164",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_3ujd9gocp",
-      "publishedAt": "2026-08-27T01:01:41.527Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "Обычный текст\n*жирный*\n_курсив_\n__подчеркивание__\n~зачеркнут~\n||спойлер||\n`моно код`\n```код копировать```\n[текст ссылки](https://url.com)",
-      "channel": "@restreamsav",
-      "messageId": "163",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_4lqk710yo",
-      "publishedAt": "2026-08-27T01:00:39.174Z"
-    },
-    {
-      "userId": "16926299042",
-      "promptTitle": "Новый пост без названия",
-      "text": "Обычный текст\n*жирный*\n_курсив_\n__подчеркивание__\n~зачеркнут~\n||спойлер||\n`моно код`\n```код копировать```\n[текст ссылки](https://url.com)",
-      "channel": "@restreamsav",
-      "messageId": "162",
-      "status": true,
-      "response": "Опубликовано",
-      "id": "pub_6ypo14b4n",
-      "publishedAt": "2026-08-27T01:00:04.719Z"
-    },
     {
       "userId": "",
       "promptTitle": "Ошибка тест",
@@ -385,13 +244,13 @@
       "channels": [
         "@restreamsav"
       ],
-      "signature": "",
-      "messageFormat": "v2",
+      "signature": "Присылайте полученные варианты в комментариях!",
+      "messageFormat": "rich",
       "uppercaseHeader": true,
       "attachmentType": "photo",
-      "attachmentUrl": "http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/33/photo-2026-03-23-13-05-58.jpg",
+      "attachmentUrl": "http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/17/pnwozcvnu4ixeloo7fmsl8o5.jpg",
       "attachmentUrls": [
-        "http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/33/photo-2026-03-23-13-05-58.jpg"
+        "http://ais-dev-nu7hzq3bn6iq7ljl65ri7f-885963282101.europe-west2.run.app/file/17/pnwozcvnu4ixeloo7fmsl8o5.jpg"
       ],
       "inlineButtons": [],
       "uniquenessMemoryCount": 0,
@@ -411,8 +270,7 @@
         "enabled": false,
         "notifyUser": true
       },
-      "imagePrompt": "",
-      "linkPreviewEnabled": true
+      "imagePrompt": ""
     }
   ],
   "publicationLogs": [
@@ -555,97 +413,6 @@
       "details": "Ошибка для @non_existent_channel_123456789_xyz: Bad Request: chat not found",
       "id": "log_84f7h873n",
       "timestamp": "2026-08-20T11:28:17.073Z"
-    },
-    {
-      "publicationId": "pub_6ypo14b4n",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_jcslkbb52",
-      "timestamp": "2026-08-27T01:00:04.720Z"
-    },
-    {
-      "publicationId": "pub_4lqk710yo",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_55fbdn6dg",
-      "timestamp": "2026-08-27T01:00:39.175Z"
-    },
-    {
-      "publicationId": "pub_3ujd9gocp",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_c188xly2b",
-      "timestamp": "2026-08-27T01:01:41.528Z"
-    },
-    {
-      "publicationId": "pub_7qijvxmqt",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_8g7bzh97m",
-      "timestamp": "2026-08-27T01:02:18.064Z"
-    },
-    {
-      "publicationId": "pub_hcsczvpvs",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_ope09zd0t",
-      "timestamp": "2026-08-27T01:03:01.764Z"
-    },
-    {
-      "publicationId": "pub_gtqp9w07g",
-      "action": "FAILED",
-      "details": "Ошибка для @restreamsav: Bad Request: failed to get HTTP URL content",
-      "id": "log_yoog1kkti",
-      "timestamp": "2026-08-27T01:14:38.341Z"
-    },
-    {
-      "publicationId": "pub_n3qe3uoqh",
-      "action": "FAILED",
-      "details": "Ошибка для @restreamsav: Ошибка Telegram API",
-      "id": "log_1r96jaqky",
-      "timestamp": "2026-08-27T01:15:37.920Z"
-    },
-    {
-      "publicationId": "pub_k1eqe34b4",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_p7hpa5ki5",
-      "timestamp": "2026-08-27T01:18:27.713Z"
-    },
-    {
-      "publicationId": "pub_davxzzpkq",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_ps16asa04",
-      "timestamp": "2026-08-27T01:19:56.974Z"
-    },
-    {
-      "publicationId": "pub_l8t9k3sfb",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_ive3snumr",
-      "timestamp": "2026-08-27T01:35:19.979Z"
-    },
-    {
-      "publicationId": "pub_6ltvcbols",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_r0i26ip1a",
-      "timestamp": "2026-08-27T01:38:19.522Z"
-    },
-    {
-      "publicationId": "pub_1a3i684i5",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_lzl61cooi",
-      "timestamp": "2026-08-27T01:39:39.857Z"
-    },
-    {
-      "publicationId": "pub_89xb9fi6c",
-      "action": "PUBLISHED",
-      "details": "Публикация отправлена в Telegram",
-      "id": "log_ktxd5fhpn",
-      "timestamp": "2026-08-27T01:40:40.126Z"
     }
   ],
   "settings": {
@@ -705,105 +472,5 @@
     }
   ],
   "scenarios": [],
-  "scenarioLogs": [],
-  "files": [
-    {
-      "id": "15",
-      "userId": "admin",
-      "originalName": "heart.png",
-      "name": "heart.png",
-      "fullUrl": "",
-      "shortKey": "",
-      "shortUrl": "/file/A06uq4Tj/heart.png",
-      "fileType": "photo",
-      "mimeType": "image/png",
-      "fileSize": 339451,
-      "sizeFormatted": "",
-      "createdAt": "2026-08-14 01:27:36"
-    },
-    {
-      "id": "14",
-      "userId": "admin",
-      "originalName": "setka2.png",
-      "name": "setka2.png",
-      "fullUrl": "",
-      "shortKey": "",
-      "shortUrl": "/file/FpnVFwTE/setka2.png",
-      "fileType": "photo",
-      "mimeType": "image/png",
-      "fileSize": 23417,
-      "sizeFormatted": "",
-      "createdAt": "2026-08-14 01:10:41"
-    },
-    {
-      "id": "13",
-      "userId": "admin",
-      "originalName": "VKlogo.png",
-      "name": "VKlogo.png",
-      "fullUrl": "",
-      "shortKey": "",
-      "shortUrl": "/file/ZGjXvZtz/vklogo.png",
-      "fileType": "photo",
-      "mimeType": "image/png",
-      "fileSize": 30574,
-      "sizeFormatted": "",
-      "createdAt": "2026-08-14 01:10:39"
-    },
-    {
-      "id": "12",
-      "userId": "admin",
-      "originalName": "OKlogo.png",
-      "name": "OKlogo.png",
-      "fullUrl": "",
-      "shortKey": "",
-      "shortUrl": "/file/9PYJd0pr/oklogo.png",
-      "fileType": "photo",
-      "mimeType": "image/png",
-      "fileSize": 36324,
-      "sizeFormatted": "",
-      "createdAt": "2026-08-14 01:10:38"
-    },
-    {
-      "id": "11",
-      "userId": "admin",
-      "originalName": "Maxlogo.png",
-      "name": "Maxlogo.png",
-      "fullUrl": "",
-      "shortKey": "",
-      "shortUrl": "/file/lgpokeop/maxlogo.png",
-      "fileType": "photo",
-      "mimeType": "image/png",
-      "fileSize": 36229,
-      "sizeFormatted": "",
-      "createdAt": "2026-08-14 01:10:36"
-    },
-    {
-      "id": "10",
-      "userId": "admin",
-      "originalName": "social iismm.png",
-      "name": "social iismm.png",
-      "fullUrl": "",
-      "shortKey": "",
-      "shortUrl": "/file/6L4ApDcy/social-iismm.png",
-      "fileType": "photo",
-      "mimeType": "image/png",
-      "fileSize": 47844,
-      "sizeFormatted": "",
-      "createdAt": "2026-08-14 01:10:34"
-    },
-    {
-      "id": "9",
-      "userId": "admin",
-      "originalName": "iismmlogo.png",
-      "name": "iismmlogo.png",
-      "fullUrl": "",
-      "shortKey": "",
-      "shortUrl": "/file/nI19WoBu/iismmlogo.png",
-      "fileType": "photo",
-      "mimeType": "image/png",
-      "fileSize": 58579,
-      "sizeFormatted": "",
-      "createdAt": "2026-08-14 01:10:31"
-    }
-  ]
+  "scenarioLogs": []
 }

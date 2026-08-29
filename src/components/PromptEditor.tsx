@@ -186,8 +186,27 @@ __подчеркивание__
 \`\`\`код копировать\`\`\`
 [текст ссылки](https://url.com)`;
 
-// Built-in Rich Draft Templates
+// Built-in Draft Templates for V2 and Rich
 const BUILTIN_DRAFTS = [
+  // V2 Templates
+  {
+    id: 'v2_standard',
+    title: 'Стандартный шаблон Markdown V2',
+    subtitle: 'Текст со всеми типами форматирования (жирный, курсив, спойлеры, код, ссылки)',
+    badge: '📄',
+    format: 'v2',
+    content: DEFAULT_MARKDOWN_V2_TEMPLATE
+  },
+  {
+    id: 'v2_empty',
+    title: 'Чистый лист V2',
+    subtitle: 'Пустой пост без предварительного текста',
+    badge: '📝',
+    format: 'v2',
+    content: ''
+  },
+
+  // Rich Templates
   {
     id: 'rich_full',
     title: 'Rich HTML Полноприводный',
@@ -306,14 +325,6 @@ function calculateBonus(score: number): number {
 ![](https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800)
 ![](https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=800)
 </tg-slideshow>`
-  },
-  {
-    id: 'empty_tpl',
-    title: 'Пустой шаблон',
-    subtitle: 'Начать писать со стандартным V2 шаблоном',
-    badge: '📄',
-    format: 'v2',
-    content: DEFAULT_MARKDOWN_V2_TEMPLATE
   }
 ];
 
@@ -434,6 +445,39 @@ function TelegramCodeBlock({ code }: { code: string; key?: React.Key }) {
   );
 }
 
+// Interactive Telegram Spoiler Component with animated shimmer dots and click-to-reveal
+export function TelegramSpoiler({ children }: { children: React.ReactNode; key?: React.Key }) {
+  const [isRevealed, setIsRevealed] = useState(false);
+
+  return (
+    <span
+      onClick={(e) => {
+        e.stopPropagation();
+        setIsRevealed(prev => !prev);
+      }}
+      className={`relative inline-block cursor-pointer select-none transition-all duration-200 rounded-md align-middle mx-0.5 ${
+        isRevealed
+          ? 'bg-pink-100/70 border border-pink-300 text-slate-900 px-1.5 py-0.5'
+          : 'bg-pink-200/90 text-transparent border border-pink-300/80 px-1.5 py-0.5 overflow-hidden'
+      }`}
+      title={isRevealed ? 'Спойлер открыт (нажмите, чтобы скрыть)' : 'Нажмите, чтобы прочитать спойлер'}
+    >
+      {!isRevealed && (
+        <span
+          className="absolute inset-0 pointer-events-none opacity-85 animate-pulse"
+          style={{
+            backgroundImage: 'radial-gradient(#ec4899 1.5px, transparent 1.5px)',
+            backgroundSize: '5px 5px',
+          }}
+        />
+      )}
+      <span className={isRevealed ? '' : 'invisible'}>
+        {children}
+      </span>
+    </span>
+  );
+}
+
 // Universal Telegram Formatting Renderer for both V2 and Rich modes
 export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'): React.ReactNode {
   if (!text) return null;
@@ -444,9 +488,20 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
   }
 
   // Regex ordered strictly by specificity:
+  // 1. Code blocks (```...```)
+  // 2. Inline code (`...`)
+  // 3. Spoilers (||...|| or <tg-spoiler>...</tg-spoiler>)
+  // 4. Underline (__...__ or <u>...</u> or <ins>...</ins>)
+  // 5. Bold (**...** or *...* or <b>...</b> or <strong>...</strong>)
+  // 6. Strikethrough (~~...~~ or ~...~ or <s>...</s> or <del>...</s> or <strike>...</strike>)
+  // 7. Italic (_..._ or <i>...</i> or <em>...</em>)
+  // 8. Custom Emojis (![...](tg://emoji?...) or [...](tg://emoji?...) or <tg-emoji...>...</tg-emoji>)
+  // 9. Time tags (<tg-time...>...</tg-time>)
+  // 10. Links ([...](...) or <a href="...">...</a>)
+  // 11. Math formulas ($...$)
   const regex = format === 'v2'
-    ? /(```[\s\S]*?```|`[^`\n]+`|\|\|[\s\S]+?\|\||__[^_\n]+__|(?:\*\*[^*\n]+\*\*|\*[^*\n]+\*)|(?:~~[^~\n]+~~|~[^~\n]+~)|_[^_\n]+_|\[[^\]]+\]\([^\)]+\)|\$[^\$\n]+\$)/g
-    : /(```[\s\S]*?```|`[^`\n]+`|\|\|[\s\S]+?\|\||<tg-spoiler>[\s\S]+?<\/tg-spoiler>|<tg-emoji[\s\S]+?<\/tg-emoji>|__[^_\n]+__|<u>[\s\S]+?<\/u>|\*\*[^*\n]+\*\*|<b>[\s\S]+?<\/b>|<strong>[\s\S]+?<\/strong>|~~[^~\n]+~~|<s>[\s\S]+?<\/s>|<del>[\s\S]+?<\/del>|\*[^*\n]+\*|_[^_\n]+_|<i>[\s\S]+?<\/i>|<em>[\s\S]+?<\/em>|\[[^\]]+\]\([^\)]+\)|<tg-time[\s\S]+?<\/tg-time>|\$[^\$\n]+\$)/g;
+    ? /(```[\s\S]*?```|`[^`\n]+`|\|\|[\s\S]+?\|\||__[^_\n]+__|(?:\*\*[^*\n]+\*\*|\*[^*\n]+\*)|(?:~~[^~\n]+~~|~[^~\n]+~)|_[^_\n]+_|!?\[[^\]]+\]\(tg:\/\/emoji\?[^\)]+\)|<tg-emoji[\s\S]*?<\/tg-emoji>|<tg-time[\s\S]*?<\/tg-time>|\[[^\]]+\]\([^\)]+\)|\$[^\$\n]+\$)/g
+    : /(```[\s\S]*?```|`[^`\n]+`|\|\|[\s\S]+?\|\||<tg-spoiler>[\s\S]*?<\/tg-spoiler>|__[^_\n]+__|<u>[\s\S]+?<\/u>|<ins>[\s\S]+?<\/ins>|(?:\*\*[^*\n]+\*\*|\*[^*\n]+\*)|<b>[\s\S]+?<\/b>|<strong>[\s\S]+?<\/strong>|(?:~~[^~\n]+~~|~[^~\n]+~)|<s>[\s\S]+?<\/s>|<del>[\s\S]+?<\/del>|<strike>[\s\S]+?<\/strike>|_[^_\n]+_|<i>[\s\S]+?<\/i>|<em>[\s\S]+?<\/em>|!?\[[^\]]+\]\(tg:\/\/emoji\?[^\)]+\)|<tg-emoji[\s\S]*?<\/tg-emoji>|<tg-time[\s\S]*?<\/tg-time>|\[[^\]]+\]\([^\)]+\)|<a\s+[^>]*href=["'][^"']+["'][^>]*>[\s\S]*?<\/a>|\$[^\$\n]+\$)/g;
 
   const parts = cleanedText.split(regex);
 
@@ -465,46 +520,30 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
         if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
           const content = part.slice(1, -1);
           return (
-            <code key={index} className="bg-white/95 text-pink-700 font-mono text-sm px-1.5 py-0.5 rounded border border-pink-300 shadow-2xs select-all">
+            <code key={index} className="bg-white/95 text-pink-700 font-mono text-[13px] px-1.5 py-0.5 rounded border border-pink-300 shadow-2xs select-all">
               {content}
             </code>
           );
         }
 
         // 3. Spoilers ||spoiler|| or <tg-spoiler>spoiler</tg-spoiler>
-        if (
-          (part.startsWith('||') && part.endsWith('||') && part.length >= 4) ||
-          (part.startsWith('<tg-spoiler>') && part.endsWith('</tg-spoiler>'))
-        ) {
+        if ((part.startsWith('||') && part.endsWith('||') && part.length >= 4) ||
+            (part.startsWith('<tg-spoiler>') && part.endsWith('</tg-spoiler>'))) {
           const content = part.startsWith('<tg-spoiler>') ? part.slice(12, -13) : part.slice(2, -2);
           return (
-            <span
-              key={index}
-              className="bg-pink-200/60 text-transparent hover:text-slate-900 rounded px-1 cursor-pointer transition-colors select-none font-sans border border-pink-300"
-              title="Нажмите, чтобы показать спойлер"
-            >
+            <TelegramSpoiler key={index}>
               {renderFormattedText(content, format)}
-            </span>
+            </TelegramSpoiler>
           );
         }
 
-        // 4. Custom Emoji <tg-emoji emoji-id="123">alt</tg-emoji>
-        if (part.startsWith('<tg-emoji') && part.endsWith('</tg-emoji>')) {
-          const idMatch = part.match(/emoji-id=["'](\d+)["']/i);
-          const innerText = part.replace(/<[^>]+>/g, '') || '✨';
-          return (
-            <span key={index} className="inline-flex items-center space-x-1 bg-white/90 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700 font-bold text-sm" title={`Custom Emoji ID: ${idMatch ? idMatch[1] : ''}`}>
-              <span>{innerText}</span>
-            </span>
-          );
-        }
-
-        // 5. Underline __text__ or <u>text</u>
+        // 4. Underline __text__ or <u>text</u> or <ins>text</ins>
         if (
           (part.startsWith('__') && part.endsWith('__') && part.length >= 4) ||
-          (part.startsWith('<u>') && part.endsWith('</u>'))
+          (part.startsWith('<u>') && part.endsWith('</u>')) ||
+          (part.startsWith('<ins>') && part.endsWith('</ins>'))
         ) {
-          const content = part.startsWith('<u>') ? part.slice(3, -4) : part.slice(2, -2);
+          const content = part.startsWith('<u>') ? part.slice(3, -4) : (part.startsWith('<ins>') ? part.slice(5, -6) : part.slice(2, -2));
           return (
             <span key={index} className="underline decoration-pink-500 font-medium">
               {renderFormattedText(content, format)}
@@ -512,85 +551,124 @@ export function renderFormattedText(text: string, format: 'v2' | 'rich' = 'rich'
           );
         }
 
-        // 6. Bold in Rich (**text**, <b>text</b>, <strong>text</strong>) or in V2 (*text*, **text**)
+        // 5. Bold **text**, *text*, <b>text</b>, <strong>text</strong>
         if (
           (part.startsWith('**') && part.endsWith('**') && part.length >= 4) ||
           (part.startsWith('<b>') && part.endsWith('</b>')) ||
           (part.startsWith('<strong>') && part.endsWith('</strong>')) ||
-          (format === 'v2' && part.startsWith('*') && part.endsWith('*') && part.length >= 2)
+          (part.startsWith('*') && part.endsWith('*') && part.length >= 2)
         ) {
-          const content = part.startsWith('<strong>') 
-            ? part.slice(8, -9) 
-            : (part.startsWith('<b>') ? part.slice(3, -4) : (part.startsWith('**') ? part.slice(2, -2) : part.slice(1, -1)));
+          const content = part.startsWith('<b>')
+            ? part.slice(3, -4)
+            : (part.startsWith('<strong>')
+              ? part.slice(8, -9)
+              : (part.startsWith('**') ? part.slice(2, -2) : part.slice(1, -1)));
           return <strong key={index} className="font-bold text-slate-950">{renderFormattedText(content, format)}</strong>;
         }
 
-        // 7. Strikethrough ~~text~~, ~text~, <s>text</s>, <del>text</del>
+        // 6. Strikethrough ~~text~~, ~text~, <s>text</s>, <del>text</del>, <strike>text</strike>
         if (
           (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) ||
           (part.startsWith('<s>') && part.endsWith('</s>')) ||
           (part.startsWith('<del>') && part.endsWith('</del>')) ||
-          (format === 'v2' && part.startsWith('~') && part.endsWith('~') && part.length >= 2)
+          (part.startsWith('<strike>') && part.endsWith('</strike>')) ||
+          (part.startsWith('~') && part.endsWith('~') && part.length >= 2)
         ) {
-          const content = part.startsWith('<del>')
-            ? part.slice(5, -6)
-            : (part.startsWith('<s>') ? part.slice(3, -4) : (part.startsWith('~~') ? part.slice(2, -2) : part.slice(1, -1)));
+          const content = part.startsWith('<s>')
+            ? part.slice(3, -4)
+            : (part.startsWith('<del>')
+              ? part.slice(5, -6)
+              : (part.startsWith('<strike>')
+                ? part.slice(8, -9)
+                : (part.startsWith('~~') ? part.slice(2, -2) : part.slice(1, -1))));
           return <del key={index} className="line-through text-slate-500">{renderFormattedText(content, format)}</del>;
         }
 
-        // 8. Italic in Rich (*text*, _text_, <i>text</i>, <em>text</em>) or in V2 (_text_)
+        // 7. Italic _text_, <i>text</i>, <em>text</em>
         if (
           (part.startsWith('_') && part.endsWith('_') && part.length >= 2) ||
           (part.startsWith('<i>') && part.endsWith('</i>')) ||
-          (part.startsWith('<em>') && part.endsWith('</em>')) ||
-          (format === 'rich' && part.startsWith('*') && part.endsWith('*') && part.length >= 2)
+          (part.startsWith('<em>') && part.endsWith('</em>'))
         ) {
-          const content = part.startsWith('<em>')
-            ? part.slice(4, -5)
-            : (part.startsWith('<i>') ? part.slice(3, -4) : part.slice(1, -1));
+          const content = part.startsWith('<i>') ? part.slice(3, -4) : (part.startsWith('<em>') ? part.slice(4, -5) : part.slice(1, -1));
           return <em key={index} className="italic text-slate-800">{renderFormattedText(content, format)}</em>;
         }
 
-        // 8. Links [label](url)
-        if (part.startsWith('[') && part.includes('](') && part.endsWith(')')) {
-          const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
-          if (linkMatch) {
-            const label = linkMatch[1];
-            const url = linkMatch[2];
+        // 8. Custom Emoji (![alt](tg://emoji?id=...) or [alt](tg://emoji?id=...) or <tg-emoji emoji-id="...">alt</tg-emoji>)
+        if (part.includes('tg://emoji') || part.includes('<tg-emoji')) {
+          let emojiId = '';
+          let emojiChar = '✨';
 
-            if (url.startsWith('tg://emoji')) {
-              const idMatch = url.match(/id=(\d+)/);
-              const emojiId = idMatch ? idMatch[1] : '';
-              return (
-                <span key={index} className="inline-flex items-center space-x-1 bg-white/90 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700 font-bold text-sm" title={`Custom Emoji ID: ${emojiId}`}>
-                  <span>{label || '✨'}</span>
-                </span>
-              );
+          const mdEmojiMatch = part.match(/^!?\[(.*?)\]\(tg:\/\/emoji\?id=(\d+)\)$/);
+          if (mdEmojiMatch) {
+            emojiChar = mdEmojiMatch[1] || '✨';
+            emojiId = mdEmojiMatch[2] || '';
+          } else {
+            const htmlEmojiMatch = part.match(/<tg-emoji.*?emoji-id=["']?(\d+)["']?>(.*?)<\/tg-emoji>/i);
+            if (htmlEmojiMatch) {
+              emojiId = htmlEmojiMatch[1] || '';
+              emojiChar = htmlEmojiMatch[2] || '✨';
             }
+          }
 
+          return (
+            <span
+              key={index}
+              className="inline-flex items-center space-x-1 bg-white/90 border border-pink-300 px-1.5 py-0.5 rounded-lg text-pink-700 font-bold text-sm shadow-2xs mx-0.5"
+              title={`Telegram Premium Emoji ID: ${emojiId}`}
+            >
+              <span>{emojiChar}</span>
+              <span className="text-[10px] text-pink-500 font-normal">💎</span>
+            </span>
+          );
+        }
+
+        // 9. Time tags <tg-time...>
+        if (part.includes('<tg-time')) {
+          const timeMatch = part.match(/<tg-time.*?>(.*?)<\/tg-time>/i);
+          const timeLabel = timeMatch ? timeMatch[1] : 'Время';
+          return (
+            <span key={index} className="inline-flex items-center space-x-1.5 bg-white/90 border border-pink-300 px-2 py-0.5 rounded-lg text-pink-700 font-mono text-xs font-semibold shadow-2xs mx-0.5">
+              <Clock size={13} className="text-pink-600 shrink-0" />
+              <span>{timeLabel}</span>
+            </span>
+          );
+        }
+
+        // 10. Links [label](url) or <a href="...">label</a>
+        if ((part.startsWith('[') && part.includes('](') && part.endsWith(')')) ||
+            (part.startsWith('<a') && part.includes('href=') && part.endsWith('</a>'))) {
+          let label = '';
+          let url = '';
+
+          const mdLinkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
+          if (mdLinkMatch) {
+            label = mdLinkMatch[1];
+            url = mdLinkMatch[2];
+          } else {
+            const htmlLinkMatch = part.match(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+            if (htmlLinkMatch) {
+              url = htmlLinkMatch[1];
+              label = htmlLinkMatch[2];
+            }
+          }
+
+          if (url) {
             return (
-              <a key={index} href={url} target="_blank" rel="noreferrer" className="text-pink-600 font-semibold underline hover:text-pink-700">
-                {label}
+              <a
+                key={index}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-pink-600 font-semibold underline decoration-pink-300 hover:text-pink-700 hover:decoration-pink-600 transition-colors"
+              >
+                {label || url}
               </a>
             );
           }
         }
 
-        // 9. Time tags <tg-time...>
-        if (part.includes('<tg-time')) {
-          const timeMatch = part.match(/<tg-time.*?unix=["'](\d+)["'].*?>(.*?)<\/tg-time>/i);
-          if (timeMatch) {
-            const timeLabel = timeMatch[2];
-            return (
-              <span key={index} className="inline-flex items-center space-x-1 bg-white/90 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700 font-mono text-sm">
-                <Clock size={14} />
-                <span>{timeLabel}</span>
-              </span>
-            );
-          }
-        }
-
-        // 10. Math formulas $...$
+        // 11. Math formulas $...$
         if (part.startsWith('$') && part.endsWith('$') && part.length >= 2) {
           const formula = part.slice(1, -1);
           return <RenderMathPreview key={index} formula={formula} />;
@@ -606,46 +684,339 @@ function renderInlineMarkdown(text: string, format: 'v2' | 'rich' = 'rich') {
   return renderFormattedText(text, format);
 }
 
-// Markdown Table Parser and Formatter Helper
-interface ParsedTableData {
-  headers: string[] | null;
-  rows: string[][];
-  alignments: ('left' | 'center' | 'right')[];
-}
+type ParsedRichBlock =
+  | { type: 'h1'; content: string }
+  | { type: 'h2'; content: string }
+  | { type: 'h3'; content: string }
+  | { type: 'h4'; content: string }
+  | { type: 'table'; headers: string[]; alignments: ('left' | 'center' | 'right')[]; rows: string[][] }
+  | { type: 'details'; summary: string; content: string }
+  | { type: 'blockquote'; content: string; cite?: string }
+  | { type: 'collage'; urls: string[] }
+  | { type: 'slideshow'; urls: string[] }
+  | { type: 'video'; url: string }
+  | { type: 'audio'; url: string }
+  | { type: 'image'; alt: string; url: string; title?: string }
+  | { type: 'codeblock'; code: string; lang?: string }
+  | { type: 'list'; items: { kind: 'task' | 'task-done' | 'bullet' | 'ordered'; num?: string; text: string }[] }
+  | { type: 'paragraph'; lines: string[] };
 
-function parseMarkdownTableBlock(tableLines: string[]): ParsedTableData | null {
-  const separatorRegex = /^\|?\s*:?-+:?\s*(\|?\s*:?-+:?\s*)*\|?$/;
-  let alignments: ('left' | 'center' | 'right')[] = [];
+function parseRichBlocks(text: string): ParsedRichBlock[] {
+  if (!text || !text.trim()) return [];
 
-  const sepLine = tableLines.find(l => separatorRegex.test(l.trim()));
-  if (sepLine) {
-    const rawCols = sepLine.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
-    alignments = rawCols.map(c => {
-      const trimmed = c.trim();
-      if (trimmed.startsWith(':') && trimmed.endsWith(':')) return 'center';
-      if (trimmed.endsWith(':')) return 'right';
-      return 'left';
-    });
+  const blocks: ParsedRichBlock[] = [];
+  const lines = text.split('\n');
+  let i = 0;
+
+  while (i < lines.length) {
+    const rawLine = lines[i];
+    const trimmedLine = rawLine.trim();
+
+    // 1. Skip empty lines
+    if (!trimmedLine) {
+      i++;
+      continue;
+    }
+
+    // 2. <details> block
+    if (trimmedLine.startsWith('<details') || trimmedLine.includes('<details')) {
+      let detailsLines = [rawLine];
+      i++;
+      while (i < lines.length) {
+        detailsLines.push(lines[i]);
+        if (lines[i].includes('</details>')) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      const fullDetailsText = detailsLines.join('\n');
+      const summaryMatch = fullDetailsText.match(/<summary>(.*?)<\/summary>/i);
+      const summary = summaryMatch ? summaryMatch[1] : 'Раскрыть подробности';
+      const content = fullDetailsText
+        .replace(/<details.*?>/gi, '')
+        .replace(/<\/details>/gi, '')
+        .replace(/<summary>[\s\S]*?<\/summary>/gi, '')
+        .trim();
+      blocks.push({ type: 'details', summary, content });
+      continue;
+    }
+
+    // 3. <blockquote> HTML block
+    if (trimmedLine.startsWith('<blockquote') || trimmedLine.includes('<blockquote')) {
+      let quoteLines = [rawLine];
+      i++;
+      while (i < lines.length) {
+        quoteLines.push(lines[i]);
+        if (lines[i].includes('</blockquote>')) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      const fullQuoteText = quoteLines.join('\n');
+      let citeAuthor = '';
+      const citeMatch = fullQuoteText.match(/<cite>(.*?)<\/cite>/i);
+      if (citeMatch) {
+        citeAuthor = citeMatch[1].trim();
+      }
+      const cleanQuote = fullQuoteText
+        .replace(/<\/?blockquote[^>]*>/gi, '')
+        .replace(/<cite>[\s\S]*?<\/cite>/gi, '')
+        .trim();
+      blocks.push({ type: 'blockquote', content: cleanQuote, cite: citeAuthor });
+      continue;
+    }
+
+    // 4. <tg-collage> block
+    if (trimmedLine.startsWith('<tg-collage') || trimmedLine.includes('<tg-collage')) {
+      let collageLines = [rawLine];
+      i++;
+      while (i < lines.length) {
+        collageLines.push(lines[i]);
+        if (lines[i].includes('</tg-collage>')) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      const collageText = collageLines.join('\n');
+      const imgMatches = [...collageText.matchAll(/!\[(.*?)\]\((.*?)\)/g)];
+      const imgUrls = imgMatches.map(m => m[2]);
+      blocks.push({ type: 'collage', urls: imgUrls });
+      continue;
+    }
+
+    // 5. <tg-slideshow> block
+    if (trimmedLine.startsWith('<tg-slideshow') || trimmedLine.includes('<tg-slideshow')) {
+      let slideshowLines = [rawLine];
+      i++;
+      while (i < lines.length) {
+        slideshowLines.push(lines[i]);
+        if (lines[i].includes('</tg-slideshow>')) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      const slideshowText = slideshowLines.join('\n');
+      const imgMatches = [...slideshowText.matchAll(/!\[(.*?)\]\((.*?)\)/g)];
+      const imgUrls = imgMatches.map(m => m[2]);
+      blocks.push({ type: 'slideshow', urls: imgUrls });
+      continue;
+    }
+
+    // 6. Triple Backtick Code Block ```...```
+    if (trimmedLine.startsWith('```')) {
+      const lang = trimmedLine.slice(3).trim();
+      let codeLines: string[] = [];
+      i++;
+      while (i < lines.length) {
+        if (lines[i].trim().startsWith('```')) {
+          i++;
+          break;
+        }
+        codeLines.push(lines[i]);
+        i++;
+      }
+      blocks.push({ type: 'codeblock', code: codeLines.join('\n'), lang });
+      continue;
+    }
+
+    // 7. Headings (# , ## , ### , #### )
+    if (trimmedLine.startsWith('# ') && !trimmedLine.startsWith('# #')) {
+      blocks.push({ type: 'h1', content: trimmedLine.slice(2).trim() });
+      i++;
+      continue;
+    }
+    if (trimmedLine.startsWith('## ')) {
+      blocks.push({ type: 'h2', content: trimmedLine.slice(3).trim() });
+      i++;
+      continue;
+    }
+    if (trimmedLine.startsWith('### ')) {
+      blocks.push({ type: 'h3', content: trimmedLine.slice(4).trim() });
+      i++;
+      continue;
+    }
+    if (trimmedLine.startsWith('#### ')) {
+      blocks.push({ type: 'h4', content: trimmedLine.slice(5).trim() });
+      i++;
+      continue;
+    }
+
+    // 8. Markdown Table lines
+    const isTableStart = (trimmedLine.startsWith('|') && trimmedLine.endsWith('|')) ||
+                         (trimmedLine.includes('|') && trimmedLine.split('|').length >= 3);
+    if (isTableStart) {
+      const tableLines: string[] = [rawLine];
+      i++;
+      while (i < lines.length) {
+        const nextTrimmed = lines[i].trim();
+        if (nextTrimmed && (nextTrimmed.startsWith('|') || nextTrimmed.includes('|'))) {
+          tableLines.push(lines[i]);
+          i++;
+        } else {
+          break;
+        }
+      }
+
+      const splitCells = (line: string): string[] => {
+        let trimmed = line.trim();
+        if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
+        if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
+        return trimmed.split('|').map(c => c.trim());
+      };
+
+      const rawRows = tableLines.map(splitCells).filter(cells => cells.length > 0);
+
+      if (rawRows.length > 0) {
+        const headers = rawRows[0];
+        let alignments: ('left' | 'center' | 'right')[] = headers.map(() => 'left');
+        let dataRows: string[][] = [];
+
+        if (rawRows.length > 1) {
+          const secondRow = rawRows[1];
+          const isDelimiter = secondRow.every(c => /^:?-+:?$/.test(c));
+
+          if (isDelimiter) {
+            alignments = secondRow.map(c => {
+              const starts = c.startsWith(':');
+              const ends = c.endsWith(':');
+              if (starts && ends) return 'center';
+              if (ends) return 'right';
+              return 'left';
+            });
+            while (alignments.length < headers.length) alignments.push('left');
+            dataRows = rawRows.slice(2);
+          } else {
+            dataRows = rawRows.slice(1);
+          }
+        }
+
+        const normalizedRows = dataRows.map(row => {
+          const rowCopy = [...row];
+          while (rowCopy.length < headers.length) rowCopy.push('');
+          return rowCopy.slice(0, headers.length);
+        });
+
+        blocks.push({
+          type: 'table',
+          headers,
+          alignments: alignments.slice(0, headers.length),
+          rows: normalizedRows,
+        });
+        continue;
+      }
+    }
+
+    // 9. Markdown Quotes (> ...)
+    if (trimmedLine.startsWith('>')) {
+      let quoteLines = [trimmedLine.replace(/^>\s?/, '')];
+      i++;
+      while (i < lines.length && lines[i].trim().startsWith('>')) {
+        quoteLines.push(lines[i].trim().replace(/^>\s?/, ''));
+        i++;
+      }
+      blocks.push({ type: 'blockquote', content: quoteLines.join('\n') });
+      continue;
+    }
+
+    // 10. List items (- , * , - [ ] , 1. )
+    const isListItem = trimmedLine.startsWith('- [') || trimmedLine.startsWith('* [') ||
+                       trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ') ||
+                       /^\d+\.\s/.test(trimmedLine);
+    if (isListItem) {
+      let listItems: { kind: 'task' | 'task-done' | 'bullet' | 'ordered'; num?: string; text: string }[] = [];
+      while (i < lines.length) {
+        const currentTrim = lines[i].trim();
+        if (currentTrim.startsWith('- [ ] ') || currentTrim.startsWith('* [ ] ')) {
+          listItems.push({ kind: 'task', text: currentTrim.slice(6) });
+          i++;
+        } else if (currentTrim.startsWith('- [x] ') || currentTrim.startsWith('* [x] ') ||
+                   currentTrim.startsWith('- [X] ') || currentTrim.startsWith('* [X] ')) {
+          listItems.push({ kind: 'task-done', text: currentTrim.slice(6) });
+          i++;
+        } else if (currentTrim.startsWith('- ') || currentTrim.startsWith('* ')) {
+          listItems.push({ kind: 'bullet', text: currentTrim.slice(2) });
+          i++;
+        } else {
+          const numMatch = currentTrim.match(/^(\d+)\.\s+(.*)/);
+          if (numMatch) {
+            listItems.push({ kind: 'ordered', num: numMatch[1], text: numMatch[2] });
+            i++;
+          } else {
+            break;
+          }
+        }
+      }
+      if (listItems.length > 0) {
+        blocks.push({ type: 'list', items: listItems });
+        continue;
+      }
+    }
+
+    // 11. Standalone Video or Audio
+    if (trimmedLine.includes('<video') || trimmedLine.match(/^!\[video\]\((.*?)\)$/i)) {
+      const srcMatch = trimmedLine.match(/src=["'](.*?)["']/i) || trimmedLine.match(/!\[video\]\((.*?)\)/i);
+      const url = srcMatch ? srcMatch[1] : '';
+      blocks.push({ type: 'video', url });
+      i++;
+      continue;
+    }
+
+    if (trimmedLine.includes('<audio') || trimmedLine.match(/^!\[audio\]\((.*?)\)$/i)) {
+      const srcMatch = trimmedLine.match(/src=["'](.*?)["']/i) || trimmedLine.match(/!\[audio\]\((.*?)\)/i);
+      const url = srcMatch ? srcMatch[1] : '';
+      blocks.push({ type: 'audio', url });
+      i++;
+      continue;
+    }
+
+    // 12. Standalone image (not tg://emoji)
+    const singleImgMatch = trimmedLine.match(/^!\[(.*?)\]\((.*?)(?:\s+"(.*?)")?\)$/);
+    if (singleImgMatch && !singleImgMatch[2].startsWith('tg://emoji')) {
+      blocks.push({
+        type: 'image',
+        alt: singleImgMatch[1],
+        url: singleImgMatch[2],
+        title: singleImgMatch[3]
+      });
+      i++;
+      continue;
+    }
+
+    // 13. Regular paragraph lines (group until next block/empty line)
+    let paragraphLines = [rawLine];
+    i++;
+    while (i < lines.length) {
+      const nextTrimmed = lines[i].trim();
+      if (!nextTrimmed) break;
+      if (nextTrimmed.startsWith('#') ||
+          nextTrimmed.startsWith('<details') ||
+          nextTrimmed.startsWith('<blockquote') ||
+          nextTrimmed.startsWith('<tg-collage') ||
+          nextTrimmed.startsWith('<tg-slideshow') ||
+          nextTrimmed.startsWith('```') ||
+          nextTrimmed.startsWith('>') ||
+          nextTrimmed.startsWith('- ') ||
+          nextTrimmed.startsWith('* ') ||
+          nextTrimmed.startsWith('- [') ||
+          /^\d+\.\s/.test(nextTrimmed) ||
+          ((nextTrimmed.startsWith('|') && nextTrimmed.endsWith('|')) || (nextTrimmed.includes('|') && nextTrimmed.split('|').length >= 3))) {
+        break;
+      }
+      paragraphLines.push(lines[i]);
+      i++;
+    }
+
+    blocks.push({ type: 'paragraph', lines: paragraphLines });
   }
 
-  const contentLines = tableLines.filter(l => !separatorRegex.test(l.trim()) && l.trim().length > 0);
-  if (contentLines.length === 0) return null;
-
-  const matrix: string[][] = contentLines.map(line => {
-    let clean = line.trim();
-    if (clean.startsWith('|')) clean = clean.slice(1);
-    if (clean.endsWith('|')) clean = clean.slice(0, -1);
-    return clean.split('|').map(c => c.trim());
-  });
-
-  const hasHeader = matrix.length > 1;
-  const headers = hasHeader ? matrix[0] : null;
-  const rows = hasHeader ? matrix.slice(1) : matrix;
-
-  return { headers, rows, alignments };
+  return blocks;
 }
 
-// Complete Rich Markdown Telegram Preview Renderer with Full H1-H6 and Tables Support
+// Complete Rich Markdown Telegram Preview Renderer
 function RichPreviewRenderer({
   postText,
   signature,
@@ -660,607 +1031,266 @@ function RichPreviewRenderer({
   linkPreviewEnabled?: boolean;
 }) {
   const [slideshowIndices, setSlideshowIndices] = useState<{ [key: number]: number }>({});
-  const [expandedQuotes, setExpandedQuotes] = useState<{ [key: number]: boolean }>({});
 
   const setSlideIndex = (blockIdx: number, newIndex: number) => {
     setSlideshowIndices(prev => ({ ...prev, [blockIdx]: newIndex }));
-  };
-
-  const toggleQuote = (quoteIdx: number) => {
-    setExpandedQuotes(prev => ({ ...prev, [quoteIdx]: !prev[quoteIdx] }));
   };
 
   if (!postText && !signature) {
     return <p className="text-sm text-slate-500 italic">Текст вашего сообщения появится здесь...</p>;
   }
 
-  // Tokenize the markdown into block units
-  const rawLines = (postText || '').split('\n');
-  type BlockItem =
-    | { type: 'h1'; text: string }
-    | { type: 'h2'; text: string }
-    | { type: 'h3'; text: string }
-    | { type: 'h4'; text: string }
-    | { type: 'h5'; text: string }
-    | { type: 'h6'; text: string }
-    | { type: 'table'; lines: string[] }
-    | { type: 'code'; lang: string; code: string }
-    | { type: 'details'; summary: string; content: string }
-    | { type: 'quote'; lines: string[]; expandable?: boolean }
-    | { type: 'collage'; urls: string[] }
-    | { type: 'slideshow'; urls: string[] }
-    | { type: 'video'; url: string }
-    | { type: 'audio'; url: string }
-    | { type: 'image'; alt: string; url: string; title?: string }
-    | { type: 'checklist'; items: { checked: boolean; text: string }[] }
-    | { type: 'list'; items: { ordered: boolean; num?: string; text: string }[] }
-    | { type: 'paragraph'; lines: string[] };
+  const parsedBlocks = parseRichBlocks(postText);
 
-  const parsedBlocks: BlockItem[] = [];
-  let i = 0;
+  const renderBlockNode = (block: ParsedRichBlock, idx: number): React.ReactNode => {
+    switch (block.type) {
+      case 'h1':
+        return (
+          <h1 key={idx} className="text-lg font-extrabold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent pt-1.5 pb-0.5">
+            {renderInlineMarkdown(block.content)}
+          </h1>
+        );
 
-  while (i < rawLines.length) {
-    const line = rawLines[i];
-    const trimmed = line.trim();
+      case 'h2':
+        return (
+          <h2 key={idx} className="text-base font-extrabold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent pt-1 pb-0.5">
+            {renderInlineMarkdown(block.content)}
+          </h2>
+        );
 
-    // 1. Empty lines
-    if (!trimmed) {
-      i++;
-      continue;
-    }
+      case 'h3':
+        return (
+          <h3 key={idx} className="text-sm font-bold text-pink-700 pt-1 pb-0.5">
+            {renderInlineMarkdown(block.content)}
+          </h3>
+        );
 
-    // 2. Code blocks (```lang\n...\n```)
-    if (trimmed.startsWith('```')) {
-      const lang = trimmed.slice(3).trim();
-      const codeLines: string[] = [];
-      i++;
-      while (i < rawLines.length && !rawLines[i].trim().startsWith('```')) {
-        codeLines.push(rawLines[i]);
-        i++;
+      case 'h4':
+        return (
+          <h4 key={idx} className="text-xs font-bold text-sky-700 pt-1 pb-0.5">
+            {renderInlineMarkdown(block.content)}
+          </h4>
+        );
+
+      case 'table':
+        return (
+          <div key={idx} className="overflow-x-auto my-3 rounded-2xl border border-pink-300 bg-white/95 shadow-sm">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 font-extrabold text-slate-900 border-b border-pink-300">
+                  {block.headers.map((headerCell, hIdx) => {
+                    const align = block.alignments?.[hIdx] || 'left';
+                    const alignClass = align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
+                    return (
+                      <th key={hIdx} className={`p-3 border-r border-pink-200 last:border-r-0 font-bold text-slate-900 ${alignClass}`}>
+                        {renderInlineMarkdown(headerCell)}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {block.rows.map((rowCells, rIdx) => (
+                  <tr key={rIdx} className="border-t border-pink-100/80 hover:bg-pink-50/40 transition-colors even:bg-pink-50/20">
+                    {block.headers.map((_, cIdx) => {
+                      const align = block.alignments?.[cIdx] || 'left';
+                      const alignClass = align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
+                      return (
+                        <td key={cIdx} className={`p-3 border-r border-pink-100/80 last:border-r-0 text-slate-800 text-sm ${alignClass}`}>
+                          {renderInlineMarkdown(rowCells[cIdx] || '')}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+
+      case 'details': {
+        const innerBlocks = parseRichBlocks(block.content);
+        return (
+          <details key={idx} open className="bg-white/80 border border-pink-300/80 rounded-xl p-3 my-2 text-xs group cursor-pointer shadow-xs">
+            <summary className="font-bold text-pink-700 select-none flex items-center justify-between text-sm">
+              <span>{block.summary}</span>
+            </summary>
+            <div className="mt-2.5 pt-2 border-t border-pink-100 text-slate-800 space-y-2 leading-relaxed">
+              {innerBlocks.map((innerB, inIdx) => renderBlockNode(innerB, inIdx))}
+            </div>
+          </details>
+        );
       }
-      if (i < rawLines.length) i++; // skip closing ```
-      parsedBlocks.push({ type: 'code', lang, code: codeLines.join('\n') });
-      continue;
-    }
 
-    // 3. Collapsible block (<details><summary>...</summary>...</details>)
-    if (trimmed.startsWith('<details') || trimmed.includes('<details>')) {
-      let detailsLines: string[] = [];
-      while (i < rawLines.length) {
-        detailsLines.push(rawLines[i]);
-        if (rawLines[i].includes('</details>')) {
-          i++;
-          break;
-        }
-        i++;
-      }
-      const fullDetails = detailsLines.join('\n');
-      const sumMatch = fullDetails.match(/<summary>(.*?)<\/summary>/i);
-      const summary = sumMatch ? sumMatch[1] : 'Подробнее';
-      const content = fullDetails
-        .replace(/<details.*?>/gi, '')
-        .replace(/<\/details>/gi, '')
-        .replace(/<summary>.*?<\/summary>/gi, '')
-        .trim();
-      parsedBlocks.push({ type: 'details', summary, content });
-      continue;
-    }
-
-    // 4. Custom media containers (<tg-collage>, <tg-slideshow>)
-    if (trimmed.includes('<tg-collage>')) {
-      let collageLines: string[] = [];
-      while (i < rawLines.length) {
-        collageLines.push(rawLines[i]);
-        if (rawLines[i].includes('</tg-collage>')) {
-          i++;
-          break;
-        }
-        i++;
-      }
-      const collageText = collageLines.join('\n');
-      const imgMatches = [...collageText.matchAll(/!\[(.*?)\]\((.*?)\)/g)];
-      const urls = imgMatches.map(m => m[2]);
-      if (urls.length > 0) {
-        parsedBlocks.push({ type: 'collage', urls });
-      }
-      continue;
-    }
-
-    if (trimmed.includes('<tg-slideshow>')) {
-      let slideLines: string[] = [];
-      while (i < rawLines.length) {
-        slideLines.push(rawLines[i]);
-        if (rawLines[i].includes('</tg-slideshow>')) {
-          i++;
-          break;
-        }
-        i++;
-      }
-      const slideText = slideLines.join('\n');
-      const imgMatches = [...slideText.matchAll(/!\[(.*?)\]\((.*?)\)/g)];
-      const urls = imgMatches.map(m => m[2]);
-      if (urls.length > 0) {
-        parsedBlocks.push({ type: 'slideshow', urls });
-      }
-      continue;
-    }
-
-    // 5. Headings H1 to H6 (# to ######)
-    const h1Match = line.match(/^#\s+(.+)$/);
-    if (h1Match) {
-      parsedBlocks.push({ type: 'h1', text: h1Match[1] });
-      i++;
-      continue;
-    }
-    const h2Match = line.match(/^##\s+(.+)$/);
-    if (h2Match) {
-      parsedBlocks.push({ type: 'h2', text: h2Match[1] });
-      i++;
-      continue;
-    }
-    const h3Match = line.match(/^###\s+(.+)$/);
-    if (h3Match) {
-      parsedBlocks.push({ type: 'h3', text: h3Match[1] });
-      i++;
-      continue;
-    }
-    const h4Match = line.match(/^####\s+(.+)$/);
-    if (h4Match) {
-      parsedBlocks.push({ type: 'h4', text: h4Match[1] });
-      i++;
-      continue;
-    }
-    const h5Match = line.match(/^#####\s+(.+)$/);
-    if (h5Match) {
-      parsedBlocks.push({ type: 'h5', text: h5Match[1] });
-      i++;
-      continue;
-    }
-    const h6Match = line.match(/^######\s+(.+)$/);
-    if (h6Match) {
-      parsedBlocks.push({ type: 'h6', text: h6Match[1] });
-      i++;
-      continue;
-    }
-
-    // 6. Markdown Tables (Lines containing | and table separators)
-    if (trimmed.startsWith('|') || (trimmed.includes('|') && (trimmed.endsWith('|') || rawLines[i + 1]?.trim().startsWith('|')))) {
-      const tableLines: string[] = [];
-      while (i < rawLines.length) {
-        const currentTrim = rawLines[i].trim();
-        if (currentTrim.includes('|')) {
-          tableLines.push(rawLines[i]);
-          i++;
-        } else {
-          break;
-        }
-      }
-      if (tableLines.length > 0) {
-        parsedBlocks.push({ type: 'table', lines: tableLines });
-        continue;
-      }
-    }
-
-    // 7. Expandable Quotes (>> quote)
-    if (trimmed.startsWith('>>')) {
-      const quoteLines: string[] = [];
-      while (i < rawLines.length && rawLines[i].trim().startsWith('>>')) {
-        quoteLines.push(rawLines[i].trim().replace(/^>>\s?/, ''));
-        i++;
-      }
-      parsedBlocks.push({ type: 'quote', lines: quoteLines, expandable: true });
-      continue;
-    }
-
-    // 8. Standard Quotes (> quote)
-    if (trimmed.startsWith('>')) {
-      const quoteLines: string[] = [];
-      while (i < rawLines.length && rawLines[i].trim().startsWith('>') && !rawLines[i].trim().startsWith('>>')) {
-        quoteLines.push(rawLines[i].trim().replace(/^>\s?/, ''));
-        i++;
-      }
-      parsedBlocks.push({ type: 'quote', lines: quoteLines, expandable: false });
-      continue;
-    }
-
-    // 9. Checklist items (- [ ] / - [x])
-    if (/^[\-\*]\s+\[[\sxX]\]\s+/.test(trimmed)) {
-      const checkItems: { checked: boolean; text: string }[] = [];
-      while (i < rawLines.length && /^[\-\*]\s+\[[\sxX]\]\s+/.test(rawLines[i].trim())) {
-        const t = rawLines[i].trim();
-        const isChecked = /^[\-\*]\s+\[[xX]\]\s+/.test(t);
-        const itemText = t.replace(/^[\-\*]\s+\[[\sxX]\]\s+/, '');
-        checkItems.push({ checked: isChecked, text: itemText });
-        i++;
-      }
-      parsedBlocks.push({ type: 'checklist', items: checkItems });
-      continue;
-    }
-
-    // 10. Bullet or Numbered Lists
-    if (/^[\-\*]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed)) {
-      const listItems: { ordered: boolean; num?: string; text: string }[] = [];
-      while (i < rawLines.length) {
-        const t = rawLines[i].trim();
-        const numMatch = t.match(/^(\d+)\.\s+(.*)/);
-        if (numMatch) {
-          listItems.push({ ordered: true, num: numMatch[1], text: numMatch[2] });
-          i++;
-        } else if (/^[\-\*]\s+/.test(t)) {
-          listItems.push({ ordered: false, text: t.replace(/^[\-\*]\s+/, '') });
-          i++;
-        } else {
-          break;
-        }
-      }
-      parsedBlocks.push({ type: 'list', items: listItems });
-      continue;
-    }
-
-    // 11. Single Image: ![alt](url "title")
-    const imgMatch = trimmed.match(/^!\[(.*?)\]\((.*?)(?:\s+"(.*?)")?\)$/);
-    if (imgMatch) {
-      parsedBlocks.push({
-        type: 'image',
-        alt: imgMatch[1] || 'Изображение',
-        url: imgMatch[2],
-        title: imgMatch[3]
-      });
-      i++;
-      continue;
-    }
-
-    // 12. Video Tag / Audio Tag
-    if (trimmed.includes('<video') || trimmed.match(/!\[video\]\((.*?)\)/i)) {
-      const srcMatch = trimmed.match(/src=["'](.*?)["']/i) || trimmed.match(/!\[video\]\((.*?)\)/i);
-      if (srcMatch) {
-        parsedBlocks.push({ type: 'video', url: srcMatch[1] });
-        i++;
-        continue;
-      }
-    }
-
-    if (trimmed.includes('<audio') || trimmed.match(/!\[audio\]\((.*?)\)/i)) {
-      const srcMatch = trimmed.match(/src=["'](.*?)["']/i) || trimmed.match(/!\[audio\]\((.*?)\)/i);
-      if (srcMatch) {
-        parsedBlocks.push({ type: 'audio', url: srcMatch[1] });
-        i++;
-        continue;
-      }
-    }
-
-    // 13. Regular Paragraph (gather lines until blank line or special block start)
-    const pLines: string[] = [line];
-    i++;
-    while (i < rawLines.length) {
-      const nextTrim = rawLines[i].trim();
-      if (!nextTrim) break;
-      if (
-        nextTrim.startsWith('#') ||
-        nextTrim.startsWith('```') ||
-        nextTrim.startsWith('|') ||
-        nextTrim.startsWith('>') ||
-        nextTrim.startsWith('<details') ||
-        nextTrim.startsWith('<tg-collage') ||
-        nextTrim.startsWith('<tg-slideshow') ||
-        /^[\-\*]\s+/.test(nextTrim) ||
-        /^\d+\.\s+/.test(nextTrim)
-      ) {
-        break;
-      }
-      pLines.push(rawLines[i]);
-      i++;
-    }
-    parsedBlocks.push({ type: 'paragraph', lines: pLines });
-  }
-
-  return (
-    <div className="space-y-3 text-sm text-slate-900 leading-relaxed font-sans">
-      {parsedBlocks.map((block, idx) => {
-        // H1 Heading
-        if (block.type === 'h1') {
-          return (
-            <h1 key={idx} className="text-xl font-extrabold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent my-2 leading-snug">
-              {renderInlineMarkdown(block.text)}
-            </h1>
-          );
-        }
-
-        // H2 Heading
-        if (block.type === 'h2') {
-          return (
-            <h2 key={idx} className="text-lg font-bold bg-gradient-to-r from-sky-600 via-pink-600 to-orange-600 bg-clip-text text-transparent my-1.5 leading-snug">
-              {renderInlineMarkdown(block.text)}
-            </h2>
-          );
-        }
-
-        // H3 Heading
-        if (block.type === 'h3') {
-          return (
-            <h3 key={idx} className="text-base font-bold text-pink-700 my-1 leading-snug">
-              {renderInlineMarkdown(block.text)}
-            </h3>
-          );
-        }
-
-        // H4 Heading
-        if (block.type === 'h4') {
-          return (
-            <h4 key={idx} className="text-sm font-bold text-sky-700 my-1 leading-snug">
-              {renderInlineMarkdown(block.text)}
-            </h4>
-          );
-        }
-
-        // H5 Heading
-        if (block.type === 'h5') {
-          return (
-            <h5 key={idx} className="text-sm font-semibold text-slate-800 my-0.5 leading-snug">
-              {renderInlineMarkdown(block.text)}
-            </h5>
-          );
-        }
-
-        // H6 Heading
-        if (block.type === 'h6') {
-          return (
-            <h6 key={idx} className="text-sm font-medium text-slate-700 my-0.5 leading-snug">
-              {renderInlineMarkdown(block.text)}
-            </h6>
-          );
-        }
-
-        // Markdown Table Block
-        if (block.type === 'table') {
-          const parsed = parseMarkdownTableBlock(block.lines);
-          if (!parsed) {
-            return (
-              <div key={idx} className="whitespace-pre-wrap font-mono text-sm bg-white/80 p-2 rounded-xl border border-pink-200">
-                {block.lines.join('\n')}
+      case 'blockquote':
+        return (
+          <div key={idx} className="border-l-3 border-pink-500 pl-3 py-2 my-2 bg-white/70 rounded-r-xl text-slate-800 italic space-y-1 shadow-2xs text-sm">
+            <div>{renderInlineMarkdown(block.content)}</div>
+            {block.cite && (
+              <div className="not-italic text-xs font-bold text-pink-700 pt-1 border-t border-pink-100 flex items-center space-x-1">
+                <span>—</span>
+                <span>{block.cite}</span>
               </div>
-            );
-          }
+            )}
+          </div>
+        );
 
-          const { headers, rows, alignments } = parsed;
-
-          return (
-            <div key={idx} className="overflow-x-auto my-2.5 rounded-xl border border-pink-200 bg-white/95 shadow-xs">
-              <table className="w-full text-sm border-collapse">
-                {headers && (
-                  <thead>
-                    <tr className="bg-gradient-to-r from-sky-100 via-pink-100 to-orange-100 font-extrabold text-slate-900 border-b border-pink-200">
-                      {headers.map((hCell, hIdx) => {
-                        const align = alignments[hIdx] || 'left';
-                        const alignClass = align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
-                        return (
-                          <th
-                            key={hIdx}
-                            className={`px-3 py-2.5 ${alignClass} border-r border-pink-200 last:border-r-0 font-bold text-slate-900 text-sm`}
-                          >
-                            {renderInlineMarkdown(hCell)}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                )}
-                <tbody>
-                  {rows.map((rowCells, rIdx) => (
-                    <tr key={rIdx} className="border-t border-pink-100 hover:bg-pink-50/60 transition-colors">
-                      {rowCells.map((cell, cIdx) => {
-                        const align = alignments[cIdx] || 'left';
-                        const alignClass = align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
-                        return (
-                          <td
-                            key={cIdx}
-                            className={`px-3 py-2 ${alignClass} border-r border-pink-100 last:border-r-0 text-slate-800 text-sm`}
-                          >
-                            {renderInlineMarkdown(cell)}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      case 'collage':
+        if (block.urls.length === 0) return null;
+        return (
+          <div key={idx} className="my-2.5 space-y-1">
+            <div className="text-xs text-pink-700 font-mono flex items-center space-x-1">
+              <ImageIcon size={14} />
+              <span>Коллаж ({block.urls.length} фото):</span>
             </div>
-          );
-        }
-
-        // Code Block
-        if (block.type === 'code') {
-          return (
-            <div key={idx} className="my-2 rounded-xl overflow-hidden border border-pink-200 shadow-xs">
-              <TelegramCodeBlock code={block.code} language={block.lang} />
-            </div>
-          );
-        }
-
-        // Collapsible Details
-        if (block.type === 'details') {
-          return (
-            <details key={idx} open className="bg-white/90 border border-pink-200 rounded-xl p-3 my-2 text-sm shadow-xs">
-              <summary className="font-bold text-pink-700 select-none flex items-center justify-between cursor-pointer">
-                <span>{block.summary}</span>
-              </summary>
-              <div className="mt-2 pt-2 border-t border-pink-100 text-slate-800 whitespace-pre-wrap leading-relaxed text-sm">
-                {renderInlineMarkdown(block.content)}
-              </div>
-            </details>
-          );
-        }
-
-        // Quotes and Expandable Quotes
-        if (block.type === 'quote') {
-          const isExpanded = expandedQuotes[idx] ?? true;
-          return (
-            <div key={idx} className="border-l-4 border-pink-400 pl-3 py-1.5 my-2 bg-white/80 rounded-r-xl text-slate-800 text-sm italic shadow-2xs">
-              {block.expandable && (
-                <div className="flex items-center justify-between not-italic pb-1 text-xs text-pink-600 font-bold select-none cursor-pointer" onClick={() => toggleQuote(idx)}>
-                  <span>Цитата (раскрываемая)</span>
-                  <span>{isExpanded ? '▲ скрыть' : '▼ раскрыть'}</span>
-                </div>
-              )}
-              {isExpanded && (
-                <div className="whitespace-pre-wrap">
-                  {renderInlineMarkdown(block.lines.join('\n'))}
-                </div>
-              )}
-            </div>
-          );
-        }
-
-        // Checklist
-        if (block.type === 'checklist') {
-          return (
-            <div key={idx} className="space-y-1.5 my-2">
-              {block.items.map((item, cIdx) => (
-                <div key={cIdx} className="flex items-start space-x-2 text-slate-800 text-sm">
-                  <span className={`inline-flex items-center justify-center w-5 h-5 rounded border ${item.checked ? 'border-pink-400 bg-pink-100 text-pink-700 font-bold' : 'border-pink-300 bg-white text-slate-400 font-bold'} shrink-0 mt-0.5 select-none text-xs`}>
-                    {item.checked ? '✓' : '☐'}
-                  </span>
-                  <div className={`flex-1 leading-relaxed ${item.checked ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-                    {renderInlineMarkdown(item.text)}
-                  </div>
+            <div className={`grid gap-1.5 rounded-xl overflow-hidden ${block.urls.length === 1 ? 'grid-cols-1' : block.urls.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+              {block.urls.map((url, i) => (
+                <div key={i} className="aspect-video bg-white/80 overflow-hidden relative rounded-lg border border-pink-200">
+                  <img src={url} alt="collage" className="w-full h-full object-cover" />
                 </div>
               ))}
             </div>
-          );
-        }
+          </div>
+        );
 
-        // Lists (Bullet or Numbered)
-        if (block.type === 'list') {
-          return (
-            <div key={idx} className="space-y-1 my-2">
-              {block.items.map((item, lIdx) => (
-                <div key={lIdx} className="flex items-start space-x-2 text-slate-800 pl-1 text-sm">
-                  {item.ordered ? (
-                    <span className="text-pink-700 font-mono font-bold select-none">{item.num}.</span>
-                  ) : (
+      case 'slideshow':
+        if (block.urls.length === 0) return null;
+        const currentIdx = slideshowIndices[idx] || 0;
+        return (
+          <div key={idx} className="my-2.5 space-y-1.5 bg-white/80 p-2.5 rounded-xl border border-pink-200">
+            <div className="flex items-center justify-between text-xs text-pink-700 font-mono">
+              <span className="flex items-center space-x-1 font-bold">
+                <ImageIcon size={14} />
+                <span>Слайдер изображений</span>
+              </span>
+              <span className="bg-pink-100 px-2 py-0.5 rounded border border-pink-200 font-semibold">{currentIdx + 1} / {block.urls.length}</span>
+            </div>
+
+            <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-pink-200">
+              <img src={block.urls[currentIdx]} alt="slide" className="w-full h-full object-contain" />
+
+              {block.urls.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSlideIndex(idx, (currentIdx - 1 + block.urls.length) % block.urls.length)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-slate-800 p-1.5 rounded-full cursor-pointer transition-all shadow-md border border-pink-200"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSlideIndex(idx, (currentIdx + 1) % block.urls.length)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-slate-800 p-1.5 rounded-full cursor-pointer transition-all shadow-md border border-pink-200"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        );
+
+      case 'video':
+        return (
+          <div key={idx} className="my-2.5 space-y-1">
+            <div className="text-xs text-pink-600 font-mono flex items-center space-x-1">
+              <Video size={14} />
+              <span>Видеозапись:</span>
+            </div>
+            <video controls className="w-full max-h-56 rounded-xl bg-black border border-pink-200" src={block.url}>
+              Ваш браузер не поддерживает видео.
+            </video>
+          </div>
+        );
+
+      case 'audio':
+        return (
+          <div key={idx} className="my-2.5 p-3 bg-white/90 rounded-xl border border-pink-200 space-y-2">
+            <div className="flex items-center space-x-2 text-xs text-pink-700 font-semibold">
+              <Volume2 size={16} />
+              <span>Аудиосообщение</span>
+            </div>
+            <audio controls className="w-full h-8" src={block.url} />
+          </div>
+        );
+
+      case 'image':
+        return (
+          <div key={idx} className="my-2.5 space-y-1 rounded-xl overflow-hidden bg-white/80 border border-pink-200 p-1">
+            <img src={block.url} alt={block.alt || 'Image'} className="w-full max-h-64 object-cover rounded-lg" />
+            {block.title && (
+              <div className="text-xs text-slate-600 px-2 py-1 italic font-medium">
+                {block.title}
+              </div>
+            )}
+          </div>
+        );
+
+      case 'codeblock':
+        return (
+          <div key={idx} className="my-2.5">
+            <TelegramCodeBlock code={block.code} />
+          </div>
+        );
+
+      case 'list':
+        return (
+          <div key={idx} className="space-y-1.5 my-2">
+            {block.items.map((item, lIdx) => {
+              if (item.kind === 'task') {
+                return (
+                  <div key={lIdx} className="flex items-start space-x-2 text-slate-800 text-sm">
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded border border-pink-300 bg-white text-xs text-slate-400 shrink-0 mt-0.5 select-none font-bold">
+                      ☐
+                    </span>
+                    <div className="flex-1 leading-relaxed">{renderInlineMarkdown(item.text)}</div>
+                  </div>
+                );
+              }
+              if (item.kind === 'task-done') {
+                return (
+                  <div key={lIdx} className="flex items-start space-x-2 text-slate-800 text-sm">
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded border border-pink-400 bg-pink-100 text-xs text-pink-700 shrink-0 mt-0.5 select-none font-bold">
+                      ✓
+                    </span>
+                    <div className="flex-1 leading-relaxed line-through text-slate-400">{renderInlineMarkdown(item.text)}</div>
+                  </div>
+                );
+              }
+              if (item.kind === 'bullet') {
+                return (
+                  <div key={lIdx} className="flex items-start space-x-2 text-slate-800 pl-1 text-sm">
                     <span className="text-pink-600 font-bold select-none">•</span>
-                  )}
+                    <div className="flex-1 leading-relaxed">{renderInlineMarkdown(item.text)}</div>
+                  </div>
+                );
+              }
+              return (
+                <div key={lIdx} className="flex items-start space-x-2 text-slate-800 pl-1 text-sm">
+                  <span className="text-pink-700 font-mono font-bold text-xs select-none">{item.num}.</span>
                   <div className="flex-1 leading-relaxed">{renderInlineMarkdown(item.text)}</div>
                 </div>
-              ))}
-            </div>
-          );
-        }
+              );
+            })}
+          </div>
+        );
 
-        // Image
-        if (block.type === 'image') {
-          return (
-            <div key={idx} className="my-2 space-y-1 rounded-xl overflow-hidden bg-white/90 border border-pink-200 p-1.5 shadow-xs">
-              <img src={block.url} alt={block.alt} className="w-full max-h-64 object-cover rounded-lg" />
-              {block.title && (
-                <div className="text-sm text-slate-600 px-2 py-1 italic font-medium">
-                  {block.title}
-                </div>
-              )}
-            </div>
-          );
-        }
-
-        // Collage
-        if (block.type === 'collage') {
-          return (
-            <div key={idx} className="my-2 space-y-1">
-              <div className="text-sm text-pink-600 font-medium flex items-center space-x-1">
-                <ImageIcon size={14} />
-                <span>Коллаж ({block.urls.length} фото):</span>
-              </div>
-              <div className={`grid gap-1.5 rounded-xl overflow-hidden ${block.urls.length === 1 ? 'grid-cols-1' : block.urls.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                {block.urls.map((url, i) => (
-                  <div key={i} className="aspect-video bg-white/80 overflow-hidden relative rounded-lg border border-pink-200">
-                    <img src={url} alt="collage" className="w-full h-full object-cover" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        }
-
-        // Slideshow
-        if (block.type === 'slideshow') {
-          const currentIdx = slideshowIndices[idx] || 0;
-          return (
-            <div key={idx} className="my-2 space-y-1.5 bg-white/90 p-3 rounded-xl border border-pink-200 shadow-xs">
-              <div className="flex items-center justify-between text-sm text-pink-700">
-                <span className="flex items-center space-x-1 font-bold">
-                  <ImageIcon size={16} />
-                  <span>Слайдер изображений</span>
-                </span>
-                <span className="bg-pink-100 px-2.5 py-0.5 rounded border border-pink-200 font-semibold text-sm">{currentIdx + 1} / {block.urls.length}</span>
-              </div>
-
-              <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-pink-200">
-                <img src={block.urls[currentIdx]} alt="slide" className="w-full h-full object-contain" />
-
-                {block.urls.length > 1 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setSlideIndex(idx, (currentIdx - 1 + block.urls.length) % block.urls.length)}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-slate-800 p-1.5 rounded-full cursor-pointer transition-all shadow-md border border-pink-200"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSlideIndex(idx, (currentIdx + 1) % block.urls.length)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-slate-800 p-1.5 rounded-full cursor-pointer transition-all shadow-md border border-pink-200"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        }
-
-        // Video
-        if (block.type === 'video') {
-          return (
-            <div key={idx} className="my-2 space-y-1">
-              <div className="text-sm text-pink-600 font-medium flex items-center space-x-1">
-                <Video size={14} />
-                <span>Видеозапись:</span>
-              </div>
-              <video controls className="w-full max-h-56 rounded-xl bg-black border border-pink-200" src={block.url}>
-                Ваш браузер не поддерживает видео.
-              </video>
-            </div>
-          );
-        }
-
-        // Audio
-        if (block.type === 'audio') {
-          return (
-            <div key={idx} className="my-2 p-3 bg-white/90 rounded-xl border border-pink-200 space-y-2 shadow-xs">
-              <div className="flex items-center space-x-2 text-sm text-pink-700 font-semibold">
-                <Volume2 size={18} />
-                <span>Аудиосообщение</span>
-              </div>
-              <audio controls className="w-full h-8" src={block.url} />
-            </div>
-          );
-        }
-
-        // Standard Paragraph
+      case 'paragraph':
         return (
-          <p key={idx} className="whitespace-pre-wrap text-sm text-slate-900 leading-relaxed">
+          <p key={idx} className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900">
             {renderInlineMarkdown(block.lines.join('\n'))}
           </p>
         );
-      })}
 
-      {/* Signature if present */}
-      {signature && signature.trim() && (
-        <div className="text-sm text-slate-600 italic pt-1 border-t border-pink-100">
-          {renderInlineMarkdown(signature.trim())}
-        </div>
-      )}
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="space-y-2.5 text-sm text-slate-900 leading-relaxed font-sans">
+      {parsedBlocks.map((block, idx) => renderBlockNode(block, idx))}
 
       {/* Telegram Link Preview inside Message Bubble */}
       {linkPreviewEnabled && (
@@ -1447,6 +1477,15 @@ export default function PromptEditor({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  // Auto-dismiss statusMessage after 15 seconds
+  useEffect(() => {
+    if (!statusMessage) return;
+    const timer = setTimeout(() => {
+      setStatusMessage(null);
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [statusMessage]);
 
   // Timer effect for AI Generation (0 to 120s)
   useEffect(() => {
@@ -2211,6 +2250,9 @@ export default function PromptEditor({
     setStatusMessage(null);
 
     const { url: activeUrl, urls: activeUrls } = getActiveAttachmentData();
+    const effectiveAttachmentType = messageFormat === 'rich' ? 'none' : attachmentType;
+    const effectiveAttachmentUrl = messageFormat === 'rich' ? '' : activeUrl;
+    const effectiveAttachmentUrls = messageFormat === 'rich' ? undefined : activeUrls;
 
     try {
       await onSaveDayRequest({
@@ -2226,9 +2268,9 @@ export default function PromptEditor({
         linkPreviewEnabled,
         channel: selectedChannels[0] || '@SAV_AI',
         channels: selectedChannels,
-        attachmentType,
-        attachmentUrl: activeUrl,
-        attachmentUrls: activeUrls,
+        attachmentType: effectiveAttachmentType,
+        attachmentUrl: effectiveAttachmentUrl,
+        attachmentUrls: effectiveAttachmentUrls,
         inlineButtons,
         uniquenessMemoryCount,
         triggerSchedule: {
@@ -2263,7 +2305,11 @@ export default function PromptEditor({
     setStatusMessage(null);
 
     const { url: activeUrl, urls: activeUrls, audioFormat: activeAudioFormat } = getActiveAttachmentData();
-    const effectiveButtons = (messageFormat === 'v2' && attachmentType !== 'none') ? [] : inlineButtons;
+    const effectiveAttachmentType = messageFormat === 'rich' ? 'none' : attachmentType;
+    const effectiveAttachmentUrl = messageFormat === 'rich' ? '' : activeUrl;
+    const effectiveAttachmentUrls = messageFormat === 'rich' ? undefined : activeUrls;
+    const effectiveAudioFormat = messageFormat === 'rich' ? undefined : activeAudioFormat;
+    const effectiveButtons = (messageFormat === 'v2' && effectiveAttachmentType !== 'none') ? [] : inlineButtons;
 
     try {
       await onPublishToTelegram(title.trim(), postText, selectedId || 'req_1', {
@@ -2271,10 +2317,10 @@ export default function PromptEditor({
         uppercaseHeader,
         signature: '',
         linkPreviewEnabled,
-        attachmentType,
-        attachmentUrl: activeUrl,
-        attachmentUrls: activeUrls,
-        audioFormat: activeAudioFormat,
+        attachmentType: effectiveAttachmentType,
+        attachmentUrl: effectiveAttachmentUrl,
+        attachmentUrls: effectiveAttachmentUrls,
+        audioFormat: effectiveAudioFormat,
         inlineButtons: effectiveButtons,
         channels: selectedChannels
       });
@@ -2488,6 +2534,12 @@ export default function PromptEditor({
     );
   };
 
+  // Condition to show Link Preview and Inline Buttons
+  // In V2: shown for 'none' (Без медиа), 'video_note' (Кружок), 'audio' (Аудио), 'document' (Файл).
+  // In V2: hidden for 'photo' (Фото), 'album' (Альбом), 'video' (Видео).
+  // In Rich: always shown.
+  const canShowButtonsAndLinkPreview = messageFormat === 'rich' || ['none', 'video_note', 'audio', 'document'].includes(attachmentType);
+
   // Render Editor Column
   const renderEditorColumn = () => (
     <div className="space-y-6">
@@ -2606,6 +2658,7 @@ export default function PromptEditor({
               type="button"
               onClick={() => {
                 setMessageFormat('v2');
+                setSelectedDraftId('v2_standard');
                 if (!postText || postText.trim() === '') {
                   setPostText(DEFAULT_MARKDOWN_V2_TEMPLATE);
                 }
@@ -2630,7 +2683,18 @@ export default function PromptEditor({
 
             <button
               type="button"
-              onClick={() => setMessageFormat('rich')}
+              onClick={() => {
+                setMessageFormat('rich');
+                setSelectedDraftId('rich_full');
+                setAttachmentType('none');
+                setPhotoUrl('');
+                setVideoUrl('');
+                setVideoNoteUrl('');
+                setAlbumUrls(['', '']);
+                setAudioUrls(['', '']);
+                setVoiceUrl('');
+                setDocumentUrls(['', '']);
+              }}
               className={`flex items-center space-x-3 p-3.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                 messageFormat === 'rich'
                   ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-md'
@@ -3206,81 +3270,85 @@ export default function PromptEditor({
 
       {/* Main Post Text Editor */}
       <div className="iirky-card-block rounded-2xl p-6 space-y-4">
-        {/* Template selector dropdown (Available only in Rich mode) */}
-        {messageFormat === 'rich' && (
-          <div className="relative">
-            <div className="flex items-center justify-between bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 p-3 rounded-xl border border-pink-300 shadow-2xs">
-              <div className="flex items-center space-x-2">
-                <Sparkles size={16} className="text-pink-600" />
-                <span className="text-xs font-bold text-slate-800">Выбор готового шаблона:</span>
-                <span className="text-xs text-pink-700 font-extrabold bg-white/80 px-2.5 py-0.5 rounded-lg border border-pink-300 shadow-2xs">
-                  {BUILTIN_DRAFTS.find(d => d.id === selectedDraftId)?.title || 'Выберите шаблон'}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDraftsMenu(!showDraftsMenu)}
-                className="flex items-center space-x-1.5 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer shadow-2xs transition-all"
-              >
-                <span>Все шаблоны</span>
-                <ChevronDown size={14} className={`transition-transform ${showDraftsMenu ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
-
-            {showDraftsMenu && (
-              <>
-                <div
-                  className="fixed inset-0 z-20"
-                  onClick={() => setShowDraftsMenu(false)}
-                />
-                <div className="absolute top-full left-0 right-0 mt-2 bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-2xl shadow-xl p-3 z-30 space-y-2 max-h-80 overflow-y-auto">
-                  <div className="flex items-center justify-between pb-2 border-b border-pink-200 px-1">
-                    <span className="text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider">
-                      Выберите готовый шаблон
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowDraftsMenu(false)}
-                      className="text-slate-500 hover:text-slate-800 p-1 rounded-lg hover:bg-white/60 cursor-pointer"
-                      title="Закрыть"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                  {BUILTIN_DRAFTS.map(draft => (
-                    <button
-                      key={draft.id}
-                      type="button"
-                      onClick={() => handleSelectDraft(draft)}
-                      className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                        selectedDraftId === draft.id
-                          ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-2xs'
-                          : 'bg-white/80 border-pink-200 text-slate-800 hover:bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2.5">
-                        <span className="text-lg">{draft.badge}</span>
-                        <div>
-                          <div className="text-xs font-bold">{draft.title}</div>
-                          <div className={`text-[10px] ${selectedDraftId === draft.id ? 'text-white/90' : 'text-slate-500'}`}>{draft.subtitle}</div>
-                        </div>
-                      </div>
-                      {draft.format && (
-                        <span className={`text-[9px] px-2 py-0.5 rounded-md font-mono font-bold ${
-                          selectedDraftId === draft.id
-                            ? 'bg-white/20 text-white'
-                            : draft.format === 'rich' ? 'bg-pink-100 text-pink-700 border border-pink-300' : 'bg-sky-100 text-sky-700 border border-sky-300'
-                        }`}>
-                          {draft.format === 'rich' ? 'Rich' : 'V2'}
-                        </span>
-                      )}
-                    </button>
-                  ))}
+        {/* Template selector dropdown (Available for both V2 and Rich mode) */}
+        {(() => {
+          const availableDrafts = BUILTIN_DRAFTS.filter(d => (d.format || 'v2') === messageFormat);
+          const currentDraft = availableDrafts.find(d => d.id === selectedDraftId) || availableDrafts[0];
+          return (
+            <div className="relative">
+              <div className="flex items-center justify-between bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 p-3 rounded-xl border border-pink-300 shadow-2xs">
+                <div className="flex items-center space-x-2">
+                  <Sparkles size={16} className="text-pink-600" />
+                  <span className="text-xs font-bold text-slate-800">Шаблоны {messageFormat === 'rich' ? 'Rich' : 'Markdown V2'}:</span>
+                  <span className="text-xs text-pink-700 font-extrabold bg-white/80 px-2.5 py-0.5 rounded-lg border border-pink-300 shadow-2xs">
+                    {currentDraft?.title || 'Выберите шаблон'}
+                  </span>
                 </div>
-              </>
-            )}
-          </div>
-        )}
+                <button
+                  type="button"
+                  onClick={() => setShowDraftsMenu(!showDraftsMenu)}
+                  className="flex items-center space-x-1.5 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer shadow-2xs transition-all"
+                >
+                  <span>Все шаблоны ({availableDrafts.length})</span>
+                  <ChevronDown size={14} className={`transition-transform ${showDraftsMenu ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+
+              {showDraftsMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-20"
+                    onClick={() => setShowDraftsMenu(false)}
+                  />
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-2xl shadow-xl p-3 z-30 space-y-2 max-h-80 overflow-y-auto">
+                    <div className="flex items-center justify-between pb-2 border-b border-pink-200 px-1">
+                      <span className="text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider">
+                        Выберите шаблон {messageFormat === 'rich' ? 'Rich' : 'Markdown V2'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowDraftsMenu(false)}
+                        className="text-slate-500 hover:text-slate-800 p-1 rounded-lg hover:bg-white/60 cursor-pointer"
+                        title="Закрыть"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    {availableDrafts.map(draft => (
+                      <button
+                        key={draft.id}
+                        type="button"
+                        onClick={() => handleSelectDraft(draft)}
+                        className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                          selectedDraftId === draft.id
+                            ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-2xs'
+                            : 'bg-white/80 border-pink-200 text-slate-800 hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2.5">
+                          <span className="text-lg">{draft.badge}</span>
+                          <div>
+                            <div className="text-xs font-bold">{draft.title}</div>
+                            <div className={`text-[10px] ${selectedDraftId === draft.id ? 'text-white/90' : 'text-slate-500'}`}>{draft.subtitle}</div>
+                          </div>
+                        </div>
+                        {draft.format && (
+                          <span className={`text-[9px] px-2 py-0.5 rounded-md font-mono font-bold ${
+                            selectedDraftId === draft.id
+                              ? 'bg-white/20 text-white'
+                              : draft.format === 'rich' ? 'bg-pink-100 text-pink-700 border border-pink-300' : 'bg-sky-100 text-sky-700 border border-sky-300'
+                          }`}>
+                            {draft.format === 'rich' ? 'Rich' : 'V2'}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Post Title Input (At the top of the editor) */}
         <div>
@@ -3626,48 +3694,50 @@ export default function PromptEditor({
         />
 
         {/* Link Preview Control & Card */}
-        <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-xl p-3.5 space-y-2 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <label className="flex items-center space-x-2 text-xs font-bold text-slate-800 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={linkPreviewEnabled}
-                onChange={(e) => setLinkPreviewEnabled(e.target.checked)}
-                className="rounded border-pink-300 text-pink-500 h-4 w-4 cursor-pointer"
-              />
-              <span>Предпросмотр ссылки в Telegram</span>
-            </label>
-            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border ${
-              linkPreviewEnabled 
-                ? 'bg-sky-100 text-sky-800 border-sky-300' 
-                : 'bg-slate-100 text-slate-600 border-slate-300'
-            }`}>
-              {linkPreviewEnabled ? 'Включен' : 'Выключен'}
-            </span>
-          </div>
+        {canShowButtonsAndLinkPreview && (
+          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-xl p-3.5 space-y-2 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center space-x-2 text-xs font-bold text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={linkPreviewEnabled}
+                  onChange={(e) => setLinkPreviewEnabled(e.target.checked)}
+                  className="rounded border-pink-300 text-pink-500 h-4 w-4 cursor-pointer"
+                />
+                <span>Предпросмотр ссылки в Telegram</span>
+              </label>
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border ${
+                linkPreviewEnabled 
+                  ? 'bg-sky-100 text-sky-800 border-sky-300' 
+                  : 'bg-slate-100 text-slate-600 border-slate-300'
+              }`}>
+                {linkPreviewEnabled ? 'Включен' : 'Выключен'}
+              </span>
+            </div>
 
-          {linkPreviewEnabled ? (
-            extractFirstUrl(postText) ? (
-              <div className="bg-white/80 border border-sky-200 rounded-lg p-2.5 space-y-1">
-                <div className="flex items-center justify-between text-[11px] text-sky-700 font-bold">
-                  <span>Обнаружена ссылка для превью:</span>
-                  <span className="font-mono text-slate-600">{extractFirstUrl(postText)?.domain}</span>
+            {linkPreviewEnabled ? (
+              extractFirstUrl(postText) ? (
+                <div className="bg-white/80 border border-sky-200 rounded-lg p-2.5 space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-sky-700 font-bold">
+                    <span>Обнаружена ссылка для превью:</span>
+                    <span className="font-mono text-slate-600">{extractFirstUrl(postText)?.domain}</span>
+                  </div>
+                  <div className="text-xs text-slate-800 font-medium truncate">
+                    {extractFirstUrl(postText)?.url}
+                  </div>
                 </div>
-                <div className="text-xs text-slate-800 font-medium truncate">
-                  {extractFirstUrl(postText)?.url}
+              ) : (
+                <div className="text-[11px] text-slate-600 leading-relaxed">
+                  В тексте поста пока нет ссылок. Вставьте ссылку (например, https://...), и Telegram автоматически сформирует сниппет предпросмотра при публикации.
                 </div>
-              </div>
+              )
             ) : (
               <div className="text-[11px] text-slate-600 leading-relaxed">
-                В тексте поста пока нет ссылок. Вставьте ссылку (например, https://...), и Telegram автоматически сформирует сниппет предпросмотра при публикации.
+                Предпросмотр ссылок отключен. При отправке в Telegram сниппеты сайтов и ссылок не будут отображаться под сообщением.
               </div>
-            )
-          ) : (
-            <div className="text-[11px] text-slate-600 leading-relaxed">
-              Предпросмотр ссылок отключен. При отправке в Telegram сниппеты сайтов и ссылок не будут отображаться под сообщением.
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Character Counter */}
         <div className="flex justify-between items-center text-xs font-mono pt-2 border-t border-pink-200">
@@ -3679,17 +3749,7 @@ export default function PromptEditor({
       </div>
 
       {/* INLINE BUTTONS CONSTRUCTOR */}
-      {messageFormat === 'v2' && attachmentType !== 'none' ? (
-        <div className="iirky-card-block rounded-2xl p-5 space-y-2 bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 shadow-2xs">
-          <div className="flex items-center space-x-2 text-xs font-bold text-slate-800">
-            <Smartphone size={16} className="text-pink-600 shrink-0" />
-            <span>Инлайн-кнопки отключены для медиафайлов в Markdown V2</span>
-          </div>
-          <p className="text-[11px] text-slate-600">
-            В Telegram прикрепленные медиафайлы (фото, видео, кружочки, аудио, документы, альбомы) в формате Markdown V2 отправляются с подписью к медиа. Кнопки в этом режиме отключены. Для использования инлайн-кнопок выберите формат <strong>Markdown Rich</strong> или переключите вложение на <strong>Без медиа</strong>.
-          </p>
-        </div>
-      ) : (
+      {canShowButtonsAndLinkPreview && (
         <div className="iirky-card-block rounded-2xl p-6 space-y-5">
           <div className="flex justify-between items-center border-b border-pink-200 pb-3">
             <div>
@@ -3837,7 +3897,7 @@ export default function PromptEditor({
                       if (styleKey === 'primary') {
                         btnColorClasses = 'bg-[#2481cc] hover:bg-[#1d70b3] text-white shadow-2xs border border-[#1b6ca8]';
                       } else if (styleKey === 'success') {
-                        btnColorClasses = 'bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 hover:opacity-95 text-white shadow-2xs border border-pink-400';
+                        btnColorClasses = 'bg-[#2fa84f] hover:bg-[#258d41] text-white shadow-2xs border border-[#1f7836]';
                       } else if (styleKey === 'danger') {
                         btnColorClasses = 'bg-[#e53935] hover:bg-[#c62828] text-white shadow-2xs border border-[#b71c1c]';
                       }
@@ -3849,15 +3909,15 @@ export default function PromptEditor({
                       return (
                         <div
                           key={btn.id || bIdx}
-                          className={`px-3 py-2 rounded-xl text-sm font-bold text-center truncate cursor-pointer transition-all flex items-center justify-center space-x-1.5 ${btnColorClasses}`}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold text-center truncate cursor-pointer transition-all flex items-center justify-center space-x-1.5 ${btnColorClasses}`}
                           title={isWebApp ? `Web App: ${btn.url || 'https://...'}` : isUrl ? `Ссылка: ${btn.url || 'https://...'}` : `Callback: ${btn.callbackData || btn.text}`}
                         >
                           {isWebApp && (
-                            <span className="text-sm font-bold shrink-0 opacity-90" title="Web App">⊞</span>
+                            <span className="text-xs font-bold shrink-0 opacity-90" title="Web App">⊞</span>
                           )}
                           <span className="truncate">{btn.text || 'Кнопка'}</span>
                           {isUrl && !isWebApp && (
-                            <span className="text-sm font-bold shrink-0 opacity-80" title="Внешняя ссылка">↗</span>
+                            <span className="text-[11px] font-bold shrink-0 opacity-80" title="Внешняя ссылка">↗</span>
                           )}
                           {isCallback && (
                             <span className="text-[10px] font-bold shrink-0 opacity-70" title="Callback действие">⚡</span>
@@ -3991,72 +4051,17 @@ export default function PromptEditor({
         </div>
       </div>
 
-      {/* Bottom Action Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-pink-200">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Button 1: Normal Gradient */}
-          <button
-            type="button"
-            onClick={handlePublishManual}
-            disabled={isPublishing}
-            className="flex items-center space-x-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all shadow-md cursor-pointer border border-white/40"
-          >
-            {isPublishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            <span>Опубликовать в Telegram сейчас (Бесплатно)</span>
-          </button>
-
-          {/* Button 2: Light Gradient (Alternating) */}
-          <button
-            type="button"
-            onClick={handleTestSendDM}
-            disabled={isPublishing}
-            className="flex items-center space-x-1.5 bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 hover:from-sky-200 hover:to-orange-200 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer border border-pink-300"
-            title="Отправить напрямую в личку пользователю 169262990 в Telegram"
-          >
-            <Send size={14} className="text-pink-600" />
-            <span>🧪 Тест в личку (169262990)</span>
-          </button>
-
-          {/* Button 3: Light Tone Gradient (Alternating) */}
-          {onDeleteDayRequest && selectedId && (
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirmModal(true)}
-              className="flex items-center space-x-1.5 bg-gradient-to-r from-pink-50 via-orange-50 to-pink-50 hover:bg-pink-100 text-rose-700 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-xs border border-rose-200"
-              title="Удалить пост из БД"
-            >
-              <Trash2 size={16} />
-              <span>Удалить пост</span>
-            </button>
-          )}
-        </div>
-
-        {/* Button 4: Normal Gradient (Alternating) */}
+      {/* Mobile helper button to switch to preview */}
+      <div className="block md:hidden pt-2">
         <button
           type="button"
-          onClick={() => {
-            handleSavePostConfig();
-            setShowSaveConfirmModal(true);
-          }}
-          disabled={isSaving}
-          className="flex items-center space-x-2 bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 hover:opacity-95 text-white px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all shadow-md cursor-pointer border border-white/40"
+          onClick={() => setMobileTab('preview')}
+          className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white py-3 px-4 rounded-2xl text-sm font-extrabold shadow-md cursor-pointer"
         >
-          {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-          <span>Сохранить изменения</span>
+          <Eye size={18} />
+          <span>Перейти к предпросмотру и публикации</span>
         </button>
       </div>
-
-      {/* Status Notification - Placed under the action buttons with our platform light gradient */}
-      {statusMessage && (
-        <div className={`p-4 rounded-2xl flex items-start space-x-3 text-xs font-semibold shadow-xs border transition-all ${
-          statusMessage.type === 'success' 
-            ? 'bg-gradient-to-r from-sky-50/95 via-pink-50/95 via-orange-50/95 via-pink-50/95 to-sky-50/95 border-pink-300 text-slate-900' 
-            : 'bg-gradient-to-r from-rose-50/95 via-pink-50/95 to-orange-50/95 border-rose-300 text-rose-900'
-        }`}>
-          <AlertCircle size={18} className={`shrink-0 mt-0.5 ${statusMessage.type === 'success' ? 'text-pink-600' : 'text-rose-600'}`} />
-          <span className="leading-relaxed">{statusMessage.text}</span>
-        </div>
-      )}
     </div>
   );
 
@@ -4171,7 +4176,7 @@ export default function PromptEditor({
                 <div className="whitespace-pre-wrap font-sans text-slate-900">
                   {renderFormattedText(postText, 'v2') || <span className="italic text-slate-500">Текст вашего сообщения появится здесь...</span>}
                 </div>
-                {linkPreviewEnabled && extractFirstUrl(postText) && (
+                {linkPreviewEnabled && canShowButtonsAndLinkPreview && extractFirstUrl(postText) && (
                   <TelegramLinkPreviewMockup link={extractFirstUrl(postText)!} />
                 )}
               </>
@@ -4193,7 +4198,7 @@ export default function PromptEditor({
           </div>
 
           {/* Inline Keyboard Buttons */}
-          {inlineButtons.length > 0 && !(messageFormat === 'v2' && attachmentType !== 'none') && (
+          {inlineButtons.length > 0 && canShowButtonsAndLinkPreview && (
             <div className="pt-2 space-y-1.5 border-t border-pink-200">
               {inlineButtons.map((row, rIdx) => (
                 <div key={rIdx} className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}>
@@ -4203,7 +4208,7 @@ export default function PromptEditor({
                     if (styleKey === 'primary') {
                       btnColorClasses = 'bg-[#2481cc] hover:bg-[#1d70b3] text-white border border-[#1b6ca8] shadow-2xs';
                     } else if (styleKey === 'success') {
-                      btnColorClasses = 'bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 hover:opacity-95 text-white border border-pink-400 shadow-2xs';
+                      btnColorClasses = 'bg-[#2fa84f] hover:bg-[#258d41] text-white border border-[#1f7836] shadow-2xs';
                     } else if (styleKey === 'danger') {
                       btnColorClasses = 'bg-[#e53935] hover:bg-[#c62828] text-white border border-[#b71c1c] shadow-2xs';
                     }
@@ -4218,18 +4223,18 @@ export default function PromptEditor({
                         href={btn.url || '#'}
                         target="_blank"
                         rel="noreferrer"
-                        className={`px-3 py-2 rounded-xl text-sm font-bold text-center truncate flex items-center justify-center space-x-1.5 transition-all ${btnColorClasses}`}
+                        className={`px-2.5 py-2 rounded-xl text-[11px] font-bold text-center truncate flex items-center justify-center space-x-1.5 transition-all ${btnColorClasses}`}
                         title={isWebApp ? `Web App: ${btn.url || 'https://...'}` : isUrl ? `Ссылка: ${btn.url || 'https://...'}` : `Callback: ${btn.callbackData || btn.text}`}
                       >
                         {isWebApp && (
-                          <span className="text-sm font-bold shrink-0 opacity-90" title="Web App">⊞</span>
+                          <span className="text-xs font-bold shrink-0 opacity-90" title="Web App">⊞</span>
                         )}
                         <span className="truncate">{btn.text || 'Кнопка'}</span>
                         {isUrl && !isWebApp && (
-                          <span className="text-sm font-bold shrink-0 opacity-80" title="Ссылка">↗</span>
+                          <span className="text-[11px] font-bold shrink-0 opacity-80" title="Ссылка">↗</span>
                         )}
                         {isCallback && (
-                          <span className="text-xs font-bold shrink-0 opacity-70" title="Callback действие">⚡</span>
+                          <span className="text-[10px] font-bold shrink-0 opacity-70" title="Callback действие">⚡</span>
                         )}
                       </a>
                     );
@@ -4239,6 +4244,87 @@ export default function PromptEditor({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Action Buttons - Placed directly under the post preview */}
+      <div className="bg-gradient-to-r from-sky-100/90 via-pink-100/90 via-orange-100/90 via-pink-100/90 to-sky-100/90 border border-pink-300 rounded-3xl p-4 md:p-5 shadow-sm space-y-3">
+        <div className="flex items-center justify-between border-b border-pink-200/80 pb-2.5">
+          <span className="text-sm font-extrabold text-slate-900 flex items-center space-x-2">
+            <Send size={16} className="text-pink-600" />
+            <span>Действия с публикацией</span>
+          </span>
+          <span className="text-xs text-slate-600 font-medium">
+            {selectedChannels.length > 0 && selectedChannels[0] !== 'bot_dm' ? `${selectedChannels.length} канал(ов)` : 'Личные сообщения'}
+          </span>
+        </div>
+
+        <div className="flex flex-col space-y-2.5">
+          {/* Button 1: Опубликовать в Telegram сейчас (Бесплатно) */}
+          <button
+            type="button"
+            onClick={handlePublishManual}
+            disabled={isPublishing}
+            className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 hover:opacity-95 text-white px-5 py-3 rounded-2xl text-sm font-extrabold transition-all shadow-md cursor-pointer border border-white/40 active:scale-[0.99]"
+          >
+            {isPublishing ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+            <span>Опубликовать в Telegram сейчас (Бесплатно)</span>
+          </button>
+
+          {/* Button 2: 🧪 Тест в личку (169262990) */}
+          <button
+            type="button"
+            onClick={handleTestSendDM}
+            disabled={isPublishing}
+            className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 hover:from-sky-200 hover:to-orange-200 text-slate-900 px-4 py-2.5 rounded-2xl text-sm font-extrabold transition-all shadow-xs cursor-pointer border border-pink-300 active:scale-[0.99]"
+            title="Отправить напрямую в личку пользователю 169262990 в Telegram"
+          >
+            <Send size={16} className="text-pink-600" />
+            <span>🧪 Тест в личку (169262990)</span>
+          </button>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+            {/* Button 3: Удалить пост */}
+            {onDeleteDayRequest && selectedId && (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirmModal(true)}
+                className="flex items-center justify-center space-x-2 bg-gradient-to-r from-pink-50 via-orange-50 to-pink-50 hover:bg-pink-100 text-rose-700 px-4 py-2.5 rounded-2xl text-sm font-extrabold transition-all cursor-pointer shadow-xs border border-rose-200 active:scale-[0.99]"
+                title="Удалить пост из БД"
+              >
+                <Trash2 size={16} />
+                <span>Удалить пост</span>
+              </button>
+            )}
+
+            {/* Button 4: Сохранить изменения */}
+            <button
+              type="button"
+              onClick={() => {
+                handleSavePostConfig();
+                setShowSaveConfirmModal(true);
+              }}
+              disabled={isSaving}
+              className={`flex items-center justify-center space-x-2 bg-gradient-to-r from-sky-500 via-pink-500 to-orange-500 hover:opacity-95 text-white px-5 py-2.5 rounded-2xl text-sm font-extrabold transition-all shadow-md cursor-pointer border border-white/40 active:scale-[0.99] ${
+                !onDeleteDayRequest || !selectedId ? 'sm:col-span-2' : ''
+              }`}
+            >
+              {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+              <span>Сохранить изменения</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Status Notification */}
+        {statusMessage && (
+          <div className={`p-3.5 rounded-2xl flex items-start space-x-3 text-sm font-semibold shadow-xs border transition-all ${
+            statusMessage.type === 'success' 
+              ? 'bg-gradient-to-r from-sky-50/95 via-pink-50/95 via-orange-50/95 via-pink-50/95 to-sky-50/95 border-pink-300 text-slate-900' 
+              : 'bg-gradient-to-r from-rose-50/95 via-pink-50/95 to-orange-50/95 border-rose-300 text-rose-900'
+          }`}>
+            <AlertCircle size={18} className={`shrink-0 mt-0.5 ${statusMessage.type === 'success' ? 'text-pink-600' : 'text-rose-600'}`} />
+            <span className="leading-relaxed">{statusMessage.text}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4754,22 +4840,14 @@ export default function PromptEditor({
                   <div className="bg-white/80 border border-pink-200 p-3.5 rounded-xl text-[11px] text-slate-800 leading-relaxed space-y-2">
                     <span className="font-extrabold text-pink-700 block">💡 Как получить Telegram Emoji ID:</span>
                     <p>1. Отправьте кастомный эмодзи или стикер боту:</p>
-                    <div className="flex space-x-2 pt-0.5">
+                    <div className="flex flex-wrap gap-2 pt-0.5">
                       <a
-                        href="https://t.me/IIrkiBot"
+                        href="https://t.me/Emoji_ID_Extractor_bot"
                         target="_blank"
                         rel="noreferrer"
                         className="px-2.5 py-1 bg-gradient-to-r from-sky-100 to-pink-100 text-pink-700 hover:text-pink-800 rounded-lg font-mono text-[10px] font-bold flex items-center space-x-1 border border-pink-300"
                       >
-                        <span>🤖 @IIrkiBot</span>
-                      </a>
-                      <a
-                        href="https://t.me/CustomEmojiIdBot"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2.5 py-1 bg-gradient-to-r from-sky-100 to-pink-100 text-pink-700 hover:text-pink-800 rounded-lg font-mono text-[10px] font-bold flex items-center space-x-1 border border-pink-300"
-                      >
-                        <span>🤖 @CustomEmojiIdBot</span>
+                        <span>🤖 @Emoji_ID_Extractor_bot</span>
                       </a>
                     </div>
                     <p>2. Бот мгновенно пришлет ID эмодзи и готовый код для вставки.</p>
