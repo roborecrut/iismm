@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Sparkles, 
   Send, 
@@ -684,6 +684,21 @@ function renderInlineMarkdown(text: string, format: 'v2' | 'rich' = 'rich') {
   return renderFormattedText(text, format);
 }
 
+// Helper to detect markdown table delimiter line (|:---|:---:|:---|)
+export function isTableDelimiterRow(lineStr?: string): boolean {
+  if (!lineStr) return false;
+  const trimmed = lineStr.trim();
+  if (!trimmed) return false;
+  // A table delimiter row must only contain |, :, -, and whitespace
+  if (!/^\|?(\s*:?-{1,}:?\s*\|)+\s*:?-{1,}:?\s*\|?$/.test(trimmed) &&
+      !/^:?-{1,}:?(\s*\|\s*:?-{1,}:?)+$/.test(trimmed)) {
+    return false;
+  }
+  const clean = trimmed.replace(/^\|/, '').replace(/\|$/, '');
+  const cells = clean.split('|').map(c => c.trim());
+  return cells.length >= 1 && cells.every(c => /^:?-+:?$/.test(c));
+}
+
 type ParsedRichBlock =
   | { type: 'h1'; content: string }
   | { type: 'h2'; content: string }
@@ -846,14 +861,17 @@ function parseRichBlocks(text: string): ParsedRichBlock[] {
     }
 
     // 8. Markdown Table lines
-    const isTableStart = (trimmedLine.startsWith('|') && trimmedLine.endsWith('|')) ||
-                         (trimmedLine.includes('|') && trimmedLine.split('|').length >= 3);
+    // A Markdown table must have single pipe separators and be followed directly by a delimiter line (|:---|:---:|)
+    const nextLine = i + 1 < lines.length ? lines[i + 1] : '';
+    const hasTablePipes = trimmedLine.includes('|') && !trimmedLine.startsWith('||') && !trimmedLine.endsWith('||');
+    const isTableStart = hasTablePipes && isTableDelimiterRow(nextLine);
+
     if (isTableStart) {
-      const tableLines: string[] = [rawLine];
-      i++;
+      const tableLines: string[] = [rawLine, nextLine];
+      i += 2;
       while (i < lines.length) {
         const nextTrimmed = lines[i].trim();
-        if (nextTrimmed && (nextTrimmed.startsWith('|') || nextTrimmed.includes('|'))) {
+        if (nextTrimmed && (nextTrimmed.startsWith('|') || nextTrimmed.includes('|')) && !nextTrimmed.startsWith('#')) {
           tableLines.push(lines[i]);
           i++;
         } else {
@@ -863,37 +881,50 @@ function parseRichBlocks(text: string): ParsedRichBlock[] {
 
       const splitCells = (line: string): string[] => {
         let trimmed = line.trim();
-        if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
-        if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
-        return trimmed.split('|').map(c => c.trim());
+        if (trimmed.startsWith('|') && !trimmed.startsWith('||')) trimmed = trimmed.slice(1);
+        if (trimmed.endsWith('|') && !trimmed.endsWith('||')) trimmed = trimmed.slice(0, -1);
+
+        const cells: string[] = [];
+        let current = '';
+        for (let idx = 0; idx < trimmed.length; idx++) {
+          const char = trimmed[idx];
+          const nextChar = trimmed[idx + 1];
+
+          if (char === '\\' && nextChar === '|') {
+            current += '|';
+            idx++;
+          } else if (char === '|' && nextChar === '|') {
+            // Keep || together (spoilers inside a table cell)
+            current += '||';
+            idx++;
+          } else if (char === '|') {
+            cells.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        cells.push(current.trim());
+        return cells;
       };
 
       const rawRows = tableLines.map(splitCells).filter(cells => cells.length > 0);
 
-      if (rawRows.length > 0) {
+      if (rawRows.length >= 2) {
         const headers = rawRows[0];
+        const secondRow = rawRows[1];
+
         let alignments: ('left' | 'center' | 'right')[] = headers.map(() => 'left');
-        let dataRows: string[][] = [];
+        alignments = secondRow.map(c => {
+          const starts = c.startsWith(':');
+          const ends = c.endsWith(':');
+          if (starts && ends) return 'center';
+          if (ends) return 'right';
+          return 'left';
+        });
+        while (alignments.length < headers.length) alignments.push('left');
 
-        if (rawRows.length > 1) {
-          const secondRow = rawRows[1];
-          const isDelimiter = secondRow.every(c => /^:?-+:?$/.test(c));
-
-          if (isDelimiter) {
-            alignments = secondRow.map(c => {
-              const starts = c.startsWith(':');
-              const ends = c.endsWith(':');
-              if (starts && ends) return 'center';
-              if (ends) return 'right';
-              return 'left';
-            });
-            while (alignments.length < headers.length) alignments.push('left');
-            dataRows = rawRows.slice(2);
-          } else {
-            dataRows = rawRows.slice(1);
-          }
-        }
-
+        const dataRows = rawRows.slice(2);
         const normalizedRows = dataRows.map(row => {
           const rowCopy = [...row];
           while (rowCopy.length < headers.length) rowCopy.push('');
@@ -1003,7 +1034,7 @@ function parseRichBlocks(text: string): ParsedRichBlock[] {
           nextTrimmed.startsWith('* ') ||
           nextTrimmed.startsWith('- [') ||
           /^\d+\.\s/.test(nextTrimmed) ||
-          ((nextTrimmed.startsWith('|') && nextTrimmed.endsWith('|')) || (nextTrimmed.includes('|') && nextTrimmed.split('|').length >= 3))) {
+          (i + 1 < lines.length && isTableDelimiterRow(lines[i + 1]) && nextTrimmed.includes('|') && !nextTrimmed.startsWith('||'))) {
         break;
       }
       paragraphLines.push(lines[i]);
@@ -1291,14 +1322,6 @@ function RichPreviewRenderer({
   return (
     <div className="space-y-2.5 text-sm text-slate-900 leading-relaxed font-sans">
       {parsedBlocks.map((block, idx) => renderBlockNode(block, idx))}
-
-      {/* Telegram Link Preview inside Message Bubble */}
-      {linkPreviewEnabled && (
-        <TelegramLinkPreviewMockup
-          urlInfo={extractFirstUrl(postText)}
-          enabled={linkPreviewEnabled}
-        />
-      )}
     </div>
   );
 }
@@ -1381,6 +1404,20 @@ export default function PromptEditor({
   }, [dayRequests, selectedId]);
 
   const activeRequest = dayRequests.find(r => r.id === selectedId) || dayRequests[0];
+
+  // Unique existing tags collected from all posts in DB for quick selection
+  const existingTags = useMemo(() => {
+    const tagsSet = new Set<string>();
+    (dayRequests || []).forEach(req => {
+      if (req.category && typeof req.category === 'string' && req.category.trim()) {
+        tagsSet.add(req.category.trim().slice(0, 15));
+      }
+      if ((req as any).topic && typeof (req as any).topic === 'string' && (req as any).topic.trim()) {
+        tagsSet.add((req as any).topic.trim().slice(0, 15));
+      }
+    });
+    return Array.from(tagsSet).filter(Boolean);
+  }, [dayRequests]);
 
   // Core Header & Topic
   const [topic, setTopic] = useState<string>(''); // Max 15 chars (Theme for filter)
@@ -1809,10 +1846,11 @@ export default function PromptEditor({
   const toggleChannelSelection = (chUsername: string) => {
     setSelectedChannels(prev => {
       if (prev.includes(chUsername)) {
-        if (prev.length <= 1) return prev; // Keep at least one
-        return prev.filter(c => c !== chUsername);
+        const next = prev.filter(c => c !== chUsername);
+        return next.length > 0 ? next : ['bot_dm'];
       } else {
-        return [...prev, chUsername];
+        const cleanPrev = prev.filter(c => c !== 'bot_dm');
+        return [...cleanPrev, chUsername];
       }
     });
   };
@@ -2534,11 +2572,15 @@ export default function PromptEditor({
     );
   };
 
-  // Condition to show Link Preview and Inline Buttons
-  // In V2: shown for 'none' (Без медиа), 'video_note' (Кружок), 'audio' (Аудио), 'document' (Файл).
-  // In V2: hidden for 'photo' (Фото), 'album' (Альбом), 'video' (Видео).
-  // In Rich: always shown.
-  const canShowButtonsAndLinkPreview = messageFormat === 'rich' || ['none', 'video_note', 'audio', 'document'].includes(attachmentType);
+  // Condition to show Link Preview:
+  // ONLY in Markdown V2 mode AND for 'none' (Без медиа), 'video_note' (Кружок), 'audio' (Аудио), 'document' (Файл).
+  // Hidden in Rich mode completely, and hidden in V2 for photo, album, video.
+  const canShowLinkPreview = messageFormat === 'v2' && ['none', 'video_note', 'audio', 'document'].includes(attachmentType);
+
+  // Condition to show Inline Buttons:
+  // In V2: shown for 'none', 'video_note', 'audio', 'document'; hidden for 'photo', 'album', 'video'.
+  // In Rich: shown.
+  const canShowInlineButtons = messageFormat === 'rich' || ['none', 'video_note', 'audio', 'document'].includes(attachmentType);
 
   // Render Editor Column
   const renderEditorColumn = () => (
@@ -2550,32 +2592,69 @@ export default function PromptEditor({
           <span>Основные параметры поста</span>
         </h3>
 
+        {/* 1. Post Title */}
         <div>
-          {/* Topic */}
-          <div>
-            <div className="flex justify-between items-center mb-1.5">
-              <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider">
-                Тема для фильтра (Тег)
-              </label>
-              <span className={`text-[10px] font-mono ${topic.length >= 15 ? 'text-orange-500 font-bold' : 'text-slate-500'}`}>
-                {topic.length}/15
-              </span>
-            </div>
-            <div className="relative">
-              <Tag size={14} className="absolute left-3 top-3 text-pink-500" />
-              <input
-                type="text"
-                maxLength={15}
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder="маркетинг"
-                className="w-full bg-transparent border border-pink-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-pink-500 font-semibold shadow-2xs"
-              />
-            </div>
-          </div>
+          <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+            Название поста
+          </label>
+          <input
+            ref={titleInputRef}
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Введите название поста..."
+            className="w-full bg-transparent border border-pink-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-pink-500 shadow-2xs"
+          />
         </div>
 
-        {/* MULTI-SELECT CHANNELS CONNECTION */}
+        {/* 2. Topic / Tag with DB Tags Selector */}
+        <div className="space-y-2 pt-2 border-t border-pink-200/80">
+          <div className="flex justify-between items-center mb-1">
+            <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider">
+              Тема для фильтра (Тег)
+            </label>
+            <span className={`text-[10px] font-mono ${topic.length >= 15 ? 'text-orange-500 font-bold' : 'text-slate-500'}`}>
+              {topic.length}/15
+            </span>
+          </div>
+          <div className="relative">
+            <Tag size={14} className="absolute left-3 top-3 text-pink-500" />
+            <input
+              type="text"
+              maxLength={15}
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="маркетинг"
+              className="w-full bg-transparent border border-pink-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-pink-500 font-semibold shadow-2xs"
+            />
+          </div>
+
+          {/* Tags from DB */}
+          {existingTags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[10px] text-slate-500 font-mono">Теги из базы:</span>
+              {existingTags.map(t => {
+                const isSelected = topic.toLowerCase() === t.toLowerCase();
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTopic(t)}
+                    className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-gradient-to-r from-sky-400 via-pink-500 to-orange-400 text-white border-white/40 shadow-xs'
+                        : 'bg-white/90 text-slate-700 border-pink-200 hover:bg-pink-50 hover:border-pink-300'
+                    }`}
+                  >
+                    #{t}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 3. MULTI-SELECT CHANNELS CONNECTION */}
         <div className="space-y-2 pt-2 border-t border-pink-200/80">
           <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider">
             Каналы публикации (Мультивыбор, необязательно):
@@ -2648,7 +2727,7 @@ export default function PromptEditor({
           )}
         </div>
 
-        {/* FORMAT SWITCHER */}
+        {/* 4. FORMAT SWITCHER */}
         <div className="space-y-2 pt-3 border-t border-pink-200/80">
           <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider">
             Режим синтаксиса Telegram (Тип отправки):
@@ -2677,7 +2756,6 @@ export default function PromptEditor({
                     messageFormat === 'v2' ? 'bg-white/20 text-white' : 'bg-pink-100 text-pink-700 border border-pink-200'
                   }`}>Стандартный</span>
                 </div>
-                <div className={`text-[10px] font-normal mt-0.5 ${messageFormat === 'v2' ? 'text-white/90' : 'text-slate-500'}`}>sendMessage с экранированием спецсимволов (\. \- \!)</div>
               </div>
             </button>
 
@@ -2707,253 +2785,11 @@ export default function PromptEditor({
                   <span>Markdown Rich</span>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
                     messageFormat === 'rich' ? 'bg-white/20 text-white' : 'bg-pink-100 text-pink-700 border border-pink-200'
-                  }`}>InputRichMessage</span>
+                  }`}>Новый формат</span>
                 </div>
-                <div className={`text-[10px] font-normal mt-0.5 ${messageFormat === 'rich' ? 'text-white/90' : 'text-slate-500'}`}>Новый API Telegram (# H1, таблицы, details, без экранирования)</div>
               </div>
             </button>
           </div>
-        </div>
-
-        {/* SCHEDULED & AUTO-PUBLICATION SYSTEM */}
-        <div className="space-y-3 pt-3 border-t border-pink-200/80">
-          <div className="flex flex-wrap justify-between items-center gap-2">
-            <div className="flex items-center space-x-2">
-              <Clock className="text-pink-500" size={16} />
-              <label className="text-[11px] font-mono font-bold text-slate-800 uppercase tracking-wider">
-                Автопубликация по расписанию & Отложенный постинг (Крон):
-              </label>
-            </div>
-            
-            {/* Toggle Enable */}
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={triggerEnabled}
-                onChange={e => setTriggerEnabled(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-sky-400 peer-checked:to-pink-500"></div>
-              <span className="ml-2 text-xs font-bold text-slate-700">
-                {triggerEnabled ? 'Включено' : 'Выключено'}
-              </span>
-            </label>
-          </div>
-
-          {triggerEnabled && (
-            <div className="bg-white/80 border border-pink-200/80 rounded-2xl p-4 space-y-3.5 shadow-2xs">
-              {/* User Timezone Notice with Selector */}
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-pink-50/70 border border-pink-200/60 p-2.5 rounded-xl">
-                <div className="flex items-center space-x-2 text-slate-700">
-                  <Globe size={14} className="text-pink-500 shrink-0" />
-                  <span className="font-bold">Часовой пояс:</span>
-                  <select
-                    value={selectedTimezone}
-                    onChange={e => setSelectedTimezone(e.target.value)}
-                    className="bg-white border border-pink-300 rounded-lg px-2.5 py-1 text-xs font-bold text-purple-800 focus:outline-none focus:border-pink-500 cursor-pointer shadow-2xs"
-                  >
-                    <option value="Europe/Moscow">Москва (UTC+3 / МСК)</option>
-                    <option value="Asia/Tashkent">Ташкент (UTC+5)</option>
-                    <option value="Asia/Almaty">Алматы (UTC+5)</option>
-                    <option value="Asia/Dubai">Дубай (UTC+4)</option>
-                    <option value="Europe/London">Лондон (UTC+0)</option>
-                    <option value="America/New_York">Нью-Йорк (UTC-5)</option>
-                    <option value="Asia/Tokyo">Токио (UTC+9)</option>
-                    <option value="UTC">UTC (+00:00)</option>
-                  </select>
-                </div>
-                <span className="text-[10px] text-pink-600 font-medium">
-                  Учитывается при запуске крона
-                </span>
-              </div>
-
-              {/* Frequency Modes */}
-              <div>
-                <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase mb-1.5">
-                  Режим повтора / отложенной публикации:
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
-                  {[
-                    { id: 'exact_date', label: '📅 Отложенный', sub: 'Дата & Время' },
-                    { id: 'daily', label: '🔄 Ежедневно', sub: 'Каждый день' },
-                    { id: 'dayOfWeek', label: '📆 Еженедельно', sub: 'Дни недели & время' },
-                    { id: 'monthly', label: '🗓️ Раз в месяц', sub: 'Число месяца & время' },
-                    { id: 'interval_minutes', label: '⏱️ Интервал мин.', sub: 'Каждые N мин' },
-                    { id: 'interval_hours', label: '⏳ Интервал час.', sub: 'Каждые N час' }
-                  ].map(f => {
-                    const active = triggerFrequency === f.id;
-                    return (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setTriggerFrequency(f.id as any)}
-                        className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
-                          active
-                            ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-xs'
-                            : 'bg-transparent border-pink-200 text-slate-700 hover:bg-pink-50/50'
-                        }`}
-                      >
-                        <div className="text-xs font-bold">{f.label}</div>
-                        <div className={`text-[9px] ${active ? 'text-white/90' : 'text-slate-500'}`}>{f.sub}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Weekly Days Selector */}
-              {triggerFrequency === 'dayOfWeek' && (
-                <div className="p-3 bg-pink-50/50 border border-pink-200/80 rounded-xl space-y-2">
-                  <label className="block text-[10px] font-mono font-bold text-slate-700 uppercase">
-                    Выберите дни недели для публикации:
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => {
-                      const isSel = selectedDaysOfWeek.includes(day);
-                      return (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => {
-                            setSelectedDaysOfWeek(prev => 
-                              prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
-                            );
-                          }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                            isSel
-                              ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-2xs'
-                              : 'bg-white text-slate-700 border-pink-200 hover:bg-pink-100/50'
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Monthly Day Selector */}
-              {triggerFrequency === 'monthly' && (
-                <div className="p-3 bg-pink-50/50 border border-pink-200/80 rounded-xl space-y-2">
-                  <label className="block text-[10px] font-mono font-bold text-slate-700 uppercase">
-                    Число месяца для публикации (1 - 31):
-                  </label>
-                  <div className="flex items-center space-x-3">
-                    <select
-                      value={selectedDayOfMonth}
-                      onChange={e => setSelectedDayOfMonth(Number(e.target.value))}
-                      className="bg-white border border-pink-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-pink-500 shadow-2xs cursor-pointer"
-                    >
-                      {Array.from({ length: 31 }, (_, i) => i + 1).map(num => (
-                        <option key={num} value={num}>
-                          {num}-е число месяца
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-xs text-slate-600 font-medium">Каждый месяц {selectedDayOfMonth}-го числа</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Exact Date / Time inputs based on selected frequency */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                {triggerFrequency === 'exact_date' && (
-                  <div className="space-y-1">
-                    <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase">
-                      Точная дата и время публикации:
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={exactDateTime}
-                      onChange={e => setExactDateTime(e.target.value)}
-                      className="w-full bg-transparent border border-pink-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-pink-500"
-                    />
-                  </div>
-                )}
-
-                {(triggerFrequency === 'daily' || triggerFrequency === 'dayOfWeek' || triggerFrequency === 'monthly') && (
-                  <div className="space-y-1">
-                    <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase">
-                      Время выхода поста ({selectedTimezone}):
-                    </label>
-                    <input
-                      type="time"
-                      value={triggerTime}
-                      onChange={e => setTriggerTime(e.target.value)}
-                      className="w-full bg-transparent border border-pink-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-pink-500"
-                    />
-                  </div>
-                )}
-
-                {triggerFrequency === 'interval_minutes' && (
-                  <div className="space-y-1">
-                    <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase">
-                      Интервал отправки (Минуты):
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={1440}
-                      value={intervalMinutes}
-                      onChange={e => setIntervalMinutes(parseInt(e.target.value, 10) || 15)}
-                      className="w-full bg-transparent border border-pink-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-pink-500"
-                    />
-                  </div>
-                )}
-
-                {triggerFrequency === 'interval_hours' && (
-                  <div className="space-y-1">
-                    <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase">
-                      Интервал отправки (Часы):
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={168}
-                      value={intervalHours}
-                      onChange={e => setIntervalHours(parseInt(e.target.value, 10) || 2)}
-                      className="w-full bg-transparent border border-pink-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-pink-500"
-                    />
-                  </div>
-                )}
-
-                {/* DM Notification Checkbox */}
-                <div className="flex items-center space-x-2 pt-4">
-                  <input
-                    type="checkbox"
-                    id="notifyUser"
-                    checked={notifyUser}
-                    onChange={e => setNotifyUser(e.target.checked)}
-                    className="rounded border-slate-300 text-pink-500 h-4 w-4 cursor-pointer"
-                  />
-                  <label htmlFor="notifyUser" className="text-xs font-semibold text-slate-700 cursor-pointer">
-                    Уведомлять в ЛС боту при успешной отправке
-                  </label>
-                </div>
-              </div>
-
-              {/* Live Human Summary */}
-              <div className="bg-gradient-to-r from-sky-50 via-pink-50 to-orange-50 border border-pink-200/80 p-2.5 rounded-xl text-xs font-medium text-slate-700 flex items-center space-x-2">
-                <Sparkles size={14} className="text-pink-500 shrink-0" />
-                <span>
-                  <strong>Запланировано:</strong> {
-                    triggerFrequency === 'exact_date'
-                      ? `Отложенный пост на ${exactDateTime.replace('T', ' ')}`
-                      : triggerFrequency === 'daily'
-                      ? `Каждый день в ${triggerTime}`
-                      : triggerFrequency === 'dayOfWeek'
-                      ? `Дни (${selectedDaysOfWeek.join(', ') || 'Пн'}) в ${triggerTime}`
-                      : triggerFrequency === 'monthly'
-                      ? `Каждый месяц ${selectedDayOfMonth}-го числа в ${triggerTime}`
-                      : triggerFrequency === 'interval_minutes'
-                      ? `Каждые ${intervalMinutes} мин.`
-                      : `Каждые ${intervalHours} ч.`
-                  } ({selectedTimezone})
-                </span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -2961,7 +2797,7 @@ export default function PromptEditor({
       {messageFormat === 'v2' && (
         <div className="iirky-card-block rounded-2xl p-6 space-y-4">
           <label className="block text-[10px] font-mono font-bold text-slate-700 uppercase tracking-wider">
-            Вложения к посту (Медиафайлы для V2):
+            Вложения к посту:
           </label>
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
             {[
@@ -3350,52 +3186,12 @@ export default function PromptEditor({
           );
         })()}
 
-        {/* Post Title Input (At the top of the editor) */}
-        <div>
-          <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-            Название поста / карточки (только для карточки и БД):
-          </label>
-          <input
-            ref={titleInputRef}
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Введите название поста..."
-            className="w-full bg-transparent border border-pink-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-pink-500 shadow-2xs"
-          />
-        </div>
-
-        {/* Notice Banner */}
-        {messageFormat === 'v2' ? (
-          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 p-3 rounded-xl flex items-center justify-between gap-3 text-xs text-slate-800 shadow-2xs">
-            <div className="flex items-center space-x-2">
-              <Sparkles size={16} className="text-pink-600 shrink-0" />
-              <div className="leading-relaxed">
-                <span className="font-bold text-pink-700">Режим Markdown V2: </span>
-                Текст отправляется в Telegram с точным форматированием (жирный, курсив, спойлеры, ссылки).
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 p-3 rounded-xl flex items-start space-x-2.5 text-xs text-slate-800 shadow-2xs">
-            <Sparkles size={16} className="text-pink-600 shrink-0 mt-0.5" />
-            <div className="leading-relaxed">
-              <span className="font-bold text-pink-700">Режим Telegram Rich Message: </span>
-              Поддерживается объем до 32 768 символов, заголовки <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-pink-700 border border-pink-200">#</code>, спойлеры <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-pink-700 border border-pink-200">||</code>, таблицы, коллажи и кастомные эмодзи.
-            </div>
-          </div>
-        )}
-
         {/* Toolbar Section */}
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-pink-200/80 pb-2">
             <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase tracking-wider">
-              Текст публикации ({messageFormat === 'v2' ? 'Markdown V2' : 'Markdown Rich'})
+              Текст публикации
             </label>
-
-            <div className="text-[10px] font-mono text-slate-500">
-              Выделенный текст оборачивается выбранным форматированием!
-            </div>
           </div>
 
           {/* Format toolbar buttons */}
@@ -3473,20 +3269,6 @@ export default function PromptEditor({
               >
                 <LinkIcon size={14} />
               </button>
-              
-              <div className="ml-auto pl-2 border-l border-pink-300">
-                <FileUpload
-                  variant="compact"
-                  buttonLabel="Прикрепить файл"
-                  onUploaded={(key, url, fileInfo) => {
-                    if (fileInfo?.type.startsWith('image/')) {
-                      insertRichTag(`![${fileInfo.name}](${url})`);
-                    } else {
-                      insertRichTag(`[${fileInfo?.name || 'Файл'}](${url})`);
-                    }
-                  }}
-                />
-              </div>
             </div>
           ) : (
             <div className="space-y-2">
@@ -3694,7 +3476,7 @@ export default function PromptEditor({
         />
 
         {/* Link Preview Control & Card */}
-        {canShowButtonsAndLinkPreview && (
+        {canShowLinkPreview && (
           <div className="bg-gradient-to-r from-sky-100 via-pink-100 via-orange-100 via-pink-100 to-sky-100 border border-pink-300 rounded-xl p-3.5 space-y-2 shadow-2xs">
             <div className="flex items-center justify-between">
               <label className="flex items-center space-x-2 text-xs font-bold text-slate-800 cursor-pointer">
@@ -3749,7 +3531,7 @@ export default function PromptEditor({
       </div>
 
       {/* INLINE BUTTONS CONSTRUCTOR */}
-      {canShowButtonsAndLinkPreview && (
+      {canShowInlineButtons && (
         <div className="iirky-card-block rounded-2xl p-6 space-y-5">
           <div className="flex justify-between items-center border-b border-pink-200 pb-3">
             <div>
@@ -4051,6 +3833,247 @@ export default function PromptEditor({
         </div>
       </div>
 
+      {/* SCHEDULED & AUTO-PUBLICATION SYSTEM (Placed at the end of editor) */}
+      <div className="iirky-card-block rounded-2xl p-6 space-y-4">
+        <div className="flex flex-wrap justify-between items-center gap-2 border-b border-pink-200/80 pb-3">
+          <div className="flex items-center space-x-2">
+            <Clock className="text-pink-500" size={16} />
+            <h3 className="text-sm font-bold text-slate-900">
+              Автопубликация по расписанию & Отложенный постинг (Крон)
+            </h3>
+          </div>
+          
+          {/* Toggle Enable */}
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={triggerEnabled}
+              onChange={e => setTriggerEnabled(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-sky-400 peer-checked:to-pink-500"></div>
+            <span className="ml-2 text-xs font-bold text-slate-700">
+              {triggerEnabled ? 'Включено' : 'Выключено'}
+            </span>
+          </label>
+        </div>
+
+        {triggerEnabled && (
+          <div className="bg-white/80 border border-pink-200/80 rounded-2xl p-4 space-y-3.5 shadow-2xs">
+            {/* User Timezone Notice with Selector */}
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-pink-50/70 border border-pink-200/60 p-2.5 rounded-xl">
+              <div className="flex items-center space-x-2 text-slate-700">
+                <Globe size={14} className="text-pink-500 shrink-0" />
+                <span className="font-bold">Часовой пояс:</span>
+                <select
+                  value={selectedTimezone}
+                  onChange={e => setSelectedTimezone(e.target.value)}
+                  className="bg-white border border-pink-300 rounded-lg px-2.5 py-1 text-xs font-bold text-purple-800 focus:outline-none focus:border-pink-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="Europe/Moscow">Москва (UTC+3 / МСК)</option>
+                  <option value="Asia/Tashkent">Ташкент (UTC+5)</option>
+                  <option value="Asia/Almaty">Алматы (UTC+5)</option>
+                  <option value="Asia/Dubai">Дубай (UTC+4)</option>
+                  <option value="Europe/London">Лондон (UTC+0)</option>
+                  <option value="America/New_York">Нью-Йорк (UTC-5)</option>
+                  <option value="Asia/Tokyo">Токио (UTC+9)</option>
+                  <option value="UTC">UTC (+00:00)</option>
+                </select>
+              </div>
+              <span className="text-[10px] text-pink-600 font-medium">
+                Учитывается при запуске крона
+              </span>
+            </div>
+
+            {/* Frequency Modes */}
+            <div>
+              <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase mb-1.5">
+                Режим повтора / отложенной публикации:
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                {[
+                  { id: 'exact_date', label: '📅 Отложенный', sub: 'Дата & Время' },
+                  { id: 'daily', label: '🔄 Ежедневно', sub: 'Каждый день' },
+                  { id: 'dayOfWeek', label: '📆 Еженедельно', sub: 'Дни недели & время' },
+                  { id: 'monthly', label: '🗓️ Раз в месяц', sub: 'Число месяца & время' },
+                  { id: 'interval_minutes', label: '⏱️ Интервал мин.', sub: 'Каждые N мин' },
+                  { id: 'interval_hours', label: '⏳ Интервал час.', sub: 'Каждые N час' }
+                ].map(f => {
+                  const active = triggerFrequency === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setTriggerFrequency(f.id as any)}
+                      className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                        active
+                          ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-xs'
+                          : 'bg-transparent border-pink-200 text-slate-700 hover:bg-pink-50/50'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">{f.label}</div>
+                      <div className={`text-[9px] ${active ? 'text-white/90' : 'text-slate-500'}`}>{f.sub}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Weekly Days Selector */}
+            {triggerFrequency === 'dayOfWeek' && (
+              <div className="p-3 bg-pink-50/50 border border-pink-200/80 rounded-xl space-y-2">
+                <label className="block text-[10px] font-mono font-bold text-slate-700 uppercase">
+                  Выберите дни недели для публикации:
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => {
+                    const isSel = selectedDaysOfWeek.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDaysOfWeek(prev => 
+                            prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+                          );
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                          isSel
+                            ? 'bg-gradient-to-r from-sky-400 via-pink-500 via-orange-400 via-pink-500 to-sky-400 text-white border-white/40 shadow-2xs'
+                            : 'bg-white text-slate-700 border-pink-200 hover:bg-pink-100/50'
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Monthly Day Selector */}
+            {triggerFrequency === 'monthly' && (
+              <div className="p-3 bg-pink-50/50 border border-pink-200/80 rounded-xl space-y-2">
+                <label className="block text-[10px] font-mono font-bold text-slate-700 uppercase">
+                  Число месяца для публикации (1 - 31):
+                </label>
+                <div className="flex items-center space-x-3">
+                  <select
+                    value={selectedDayOfMonth}
+                    onChange={e => setSelectedDayOfMonth(Number(e.target.value))}
+                    className="bg-white border border-pink-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-pink-500 shadow-2xs cursor-pointer"
+                  >
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map(num => (
+                      <option key={num} value={num}>
+                        {num}-е число месяца
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-slate-600 font-medium">Каждый месяц {selectedDayOfMonth}-го числа</span>
+                </div>
+              </div>
+            )}
+
+            {/* Exact Date / Time inputs based on selected frequency */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {triggerFrequency === 'exact_date' && (
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase">
+                    Точная дата и время публикации:
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={exactDateTime}
+                    onChange={e => setExactDateTime(e.target.value)}
+                    className="w-full bg-transparent border border-pink-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-pink-500"
+                  />
+                </div>
+              )}
+
+              {(triggerFrequency === 'daily' || triggerFrequency === 'dayOfWeek' || triggerFrequency === 'monthly') && (
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase">
+                    Время выхода поста ({selectedTimezone}):
+                  </label>
+                  <input
+                    type="time"
+                    value={triggerTime}
+                    onChange={e => setTriggerTime(e.target.value)}
+                    className="w-full bg-transparent border border-pink-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-pink-500"
+                  />
+                </div>
+              )}
+
+              {triggerFrequency === 'interval_minutes' && (
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase">
+                    Интервал отправки (Минуты):
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={intervalMinutes}
+                    onChange={e => setIntervalMinutes(parseInt(e.target.value, 10) || 15)}
+                    className="w-full bg-transparent border border-pink-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-pink-500"
+                  />
+                </div>
+              )}
+
+              {triggerFrequency === 'interval_hours' && (
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-mono font-bold text-slate-600 uppercase">
+                    Интервал отправки (Часы):
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={intervalHours}
+                    onChange={e => setIntervalHours(parseInt(e.target.value, 10) || 2)}
+                    className="w-full bg-transparent border border-pink-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-pink-500"
+                  />
+                </div>
+              )}
+
+              {/* DM Notification Checkbox */}
+              <div className="flex items-center space-x-2 pt-4">
+                <input
+                  type="checkbox"
+                  id="notifyUser"
+                  checked={notifyUser}
+                  onChange={e => setNotifyUser(e.target.checked)}
+                  className="rounded border-slate-300 text-pink-500 h-4 w-4 cursor-pointer"
+                />
+                <label htmlFor="notifyUser" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                  Уведомлять в ЛС боту при успешной отправке
+                </label>
+              </div>
+            </div>
+
+            {/* Live Human Summary */}
+            <div className="bg-gradient-to-r from-sky-50 via-pink-50 to-orange-50 border border-pink-200/80 p-2.5 rounded-xl text-xs font-medium text-slate-700 flex items-center space-x-2">
+              <Sparkles size={14} className="text-pink-500 shrink-0" />
+              <span>
+                <strong>Запланировано:</strong> {
+                  triggerFrequency === 'exact_date'
+                    ? `Отложенный пост на ${exactDateTime.replace('T', ' ')}`
+                    : triggerFrequency === 'daily'
+                    ? `Каждый день в ${triggerTime}`
+                    : triggerFrequency === 'dayOfWeek'
+                    ? `Дни (${selectedDaysOfWeek.join(', ') || 'Пн'}) в ${triggerTime}`
+                    : triggerFrequency === 'monthly'
+                    ? `Каждый месяц ${selectedDayOfMonth}-го числа в ${triggerTime}`
+                    : triggerFrequency === 'interval_minutes'
+                    ? `Каждые ${intervalMinutes} мин.`
+                    : `Каждые ${intervalHours} ч.`
+                } ({selectedTimezone})
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Mobile helper button to switch to preview */}
       <div className="block md:hidden pt-2">
         <button
@@ -4088,14 +4111,14 @@ export default function PromptEditor({
             <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-sky-400 via-pink-500 to-orange-400 flex items-center justify-center font-bold text-white text-sm shadow-inner shrink-0">
               {selectedChannels.length > 0 && selectedChannels[0] !== 'bot_dm'
                 ? selectedChannels[0].replace('@', '').slice(0, 2).toUpperCase()
-                : 'S'}
+                : 'И'}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center space-x-1.5">
                 <span className="font-extrabold text-xs text-slate-900 truncate">
                   {selectedChannels.length > 0 && selectedChannels[0] !== 'bot_dm'
                     ? (channels.find(c => c.username === selectedChannels[0])?.name || selectedChannels[0])
-                    : 'SAV AI Bot'}
+                    : 'ИИSMM - ИИ посты'}
                 </span>
                 <span className="text-[10px] bg-pink-200/80 text-pink-800 px-1.5 py-0.2 rounded font-bold">
                   bot
@@ -4176,7 +4199,7 @@ export default function PromptEditor({
                 <div className="whitespace-pre-wrap font-sans text-slate-900">
                   {renderFormattedText(postText, 'v2') || <span className="italic text-slate-500">Текст вашего сообщения появится здесь...</span>}
                 </div>
-                {linkPreviewEnabled && canShowButtonsAndLinkPreview && extractFirstUrl(postText) && (
+                {linkPreviewEnabled && canShowLinkPreview && extractFirstUrl(postText) && (
                   <TelegramLinkPreviewMockup link={extractFirstUrl(postText)!} />
                 )}
               </>
@@ -4184,7 +4207,6 @@ export default function PromptEditor({
               <RichPreviewRenderer
                 postText={postText}
                 signature=""
-                linkPreviewEnabled={linkPreviewEnabled}
                 attachmentType={attachmentType}
                 attachmentUrl={getActiveAttachmentData().url}
               />
@@ -4198,7 +4220,7 @@ export default function PromptEditor({
           </div>
 
           {/* Inline Keyboard Buttons */}
-          {inlineButtons.length > 0 && canShowButtonsAndLinkPreview && (
+          {inlineButtons.length > 0 && canShowInlineButtons && (
             <div className="pt-2 space-y-1.5 border-t border-pink-200">
               {inlineButtons.map((row, rIdx) => (
                 <div key={rIdx} className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}>

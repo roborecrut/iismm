@@ -107,17 +107,17 @@ export function stripHTML(html: string): string {
 // Helper to format Markdown tables into aligned monospace blocks for Telegram
 function formatMarkdownTableForTelegram(tableStr: string, isInsideBlockquote: boolean = false): string {
   const rawLines = tableStr.trim().split('\n').map(l => l.trim()).filter(Boolean);
-  const dataLines = rawLines.filter(l => !l.match(/^\|?\s*:?-+:?\s*(\|?\s*:?-+:?\s*)*\|?$/));
-  if (dataLines.length === 0) return tableStr;
+  const dataLines = rawLines.filter(l => !l.match(/^\|?\s*:?-+:?\s*(\|?\s*:?-+:?\s*)*\|?$/) && !l.match(/^:?-+:?(\s*\|\s*:?-+:?)+$/));
+  if (dataLines.length === 0) return '';
 
   const rows: string[][] = dataLines.map(line => {
-    const cells = line.split('|').map(c => c.trim());
-    if (cells.length > 0 && cells[0] === '') cells.shift();
-    if (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
-    return cells;
+    let trimmed = line.trim();
+    if (trimmed.startsWith('|') && !trimmed.startsWith('||')) trimmed = trimmed.slice(1);
+    if (trimmed.endsWith('|') && !trimmed.endsWith('||')) trimmed = trimmed.slice(0, -1);
+    return trimmed.split('|').map(c => c.trim());
   });
 
-  if (rows.length === 0) return tableStr;
+  if (rows.length === 0) return '';
 
   const colCount = Math.max(...rows.map(r => r.length));
   const colWidths = new Array(colCount).fill(0);
@@ -128,19 +128,15 @@ function formatMarkdownTableForTelegram(tableStr: string, isInsideBlockquote: bo
     });
   });
 
-  const formattedRows = rows.map(r => {
+  const formattedRows = rows.map((r, rowIdx) => {
     return r.map((cell, idx) => {
-      const w = colWidths[idx] || 10;
+      const w = colWidths[idx] || 8;
       return cell.padEnd(w, ' ');
     }).join(' | ');
   });
 
   const formattedText = formattedRows.join('\n');
-  if (isInsideBlockquote) {
-    // Note: Telegram strictly forbids <pre> inside <blockquote>! We use <code> for monospace table inside details/quotes.
-    return `<code>\n${formattedText}\n</code>`;
-  }
-  return `<pre>\n${formattedText}\n</pre>`;
+  return `<pre>${formattedText}</pre>`;
 }
 
 // Convert rich/v2 markdown text to flawless Telegram HTML
